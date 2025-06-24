@@ -76,7 +76,7 @@ export function NinjaConnectionForm() {
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Ninja Account Connection</CardTitle>
+				<CardTitle data-testid='ninja-connection-form--card-title'>Ninja Account Connection</CardTitle>
 				<CardDescription>
 					{hasConnection
 						? 'Your Ninja account is connected. You can update your credentials below.'
@@ -92,6 +92,7 @@ export function NinjaConnectionForm() {
 							type='text'
 							placeholder='Enter your Ninja username'
 							disabled={hasConnection && !isEditing}
+							data-testid='ninja-connection-form--username-input'
 							{...register('username')}
 						/>
 						{errors.username && (
@@ -108,6 +109,7 @@ export function NinjaConnectionForm() {
 							type='password'
 							placeholder='Enter your Ninja password'
 							disabled={hasConnection && !isEditing}
+							data-testid='ninja-connection-form--password-input'
 							{...register('password')}
 						/>
 						{errors.password && (
@@ -152,7 +154,7 @@ export function NinjaConnectionForm() {
 							</Button>
 						) : (
 							<>
-								<Button type='submit' disabled={upsertMutation.isPending}>
+								<Button type='submit' disabled={upsertMutation.isPending} data-testid='ninja-connection-form--submit-button'>
 									{upsertMutation.isPending && (
 										<Loader2 className='mr-2 h-4 w-4 animate-spin' />
 									)}

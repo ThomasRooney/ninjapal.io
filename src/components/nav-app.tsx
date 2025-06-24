@@ -71,7 +71,7 @@ const NavApp = ({ title, breadcrumbs, children }: NavAppProps) => {
 						</BreadcrumbList>
 					</Breadcrumb>
 				) : (
-					<h2 className='font-medium text-sm'>{title}</h2>
+					<h2 className='font-medium text-sm' data-testid='ninja-connection--page-title'>{title}</h2>
 				)}
 			</div>
 			{children || <div />}

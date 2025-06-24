@@ -15,7 +15,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio --config drizzle.config.ts",
-    "db:seed": "supabase db reset --no-seed && drizzle-kit push --force && ",
+    "db:seed": "bunx supabase db reset --no-seed && drizzle-kit push --force",
     "db:zero:generate": "drizzle-zero generate --format --output src/server/db/zero-schema.gen.ts",
     "dev": "vinxi dev",
     "format": "biome format",
