@@ -9,16 +9,14 @@ import {
 } from '@/components/ui/card'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { useRouterState } from '@tanstack/react-router'
+import type { Schema } from "@/server/db/zero-schema.gen.ts";
 
 export function NinjaConnectionDebug() {
-	const z = useZero()
-	const routerState = useRouterState()
-	const user = routerState.matches[0]?.context?.user
-
-	const userId = user?.id || ''
+	const z = useZero<Schema>()
 
 	// Query ninja connection data from Zero
-	const connection = useQuery(z.query.ninjaConnections)
+	const [connections] = useQuery(z.query.ninjaConnections);
+  const connection = connections?.[0]
 	if (!connection) {
 		return (
 			<Card>
