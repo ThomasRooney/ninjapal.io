@@ -29,6 +29,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       userId: false, // New table - start with all columns disabled
       username: false,
       password: false,
+      attempts: false,
       oauthAccessToken: false,
       oauthRefreshToken: false,
       oauthExpiresAt: false,
