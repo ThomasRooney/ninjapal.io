@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/card'
 import type { Schema } from '@/server/db/zero-schema.gen.ts'
 import { useQuery, useZero } from '@rocicorp/zero/react'
+import { formatDistanceToNow } from 'date-fns'
 
 export function NinjaConnectionDebug() {
 	const z = useZero<Schema>()
@@ -41,9 +42,9 @@ export function NinjaConnectionDebug() {
 		<div className='space-y-1'>
 			<p className='text-sm font-medium'>{label}:</p>
 			{value ? (
-				<pre className='text-xs bg-muted p-2 rounded overflow-x-auto'>
-					{value}
-				</pre>
+				<div className='text-xs bg-muted p-2 rounded overflow-x-auto max-w-full'>
+					<code className='break-all'>{value}</code>
+				</div>
 			) : (
 				<p className='text-xs text-muted-foreground'>Not available</p>
 			)}
@@ -51,7 +52,7 @@ export function NinjaConnectionDebug() {
 	)
 
 	return (
-		<Card>
+		<Card className='overflow-hidden'>
 			<CardHeader>
 				<CardTitle data-testid='ninja-connection-debug--card-title'>
 					Debug Information
@@ -60,7 +61,7 @@ export function NinjaConnectionDebug() {
 					Token data from Zero sync (for debugging purposes)
 				</CardDescription>
 			</CardHeader>
-			<CardContent className='space-y-4'>
+			<CardContent className='space-y-4 overflow-hidden'>
 				<div className='grid gap-4'>
 					<TokenDisplay
 						label='OAuth Access Token'
@@ -98,8 +99,10 @@ export function NinjaConnectionDebug() {
 
 					<div className='flex justify-between text-sm'>
 						<span className='text-muted-foreground'>Last Updated:</span>
-						<span className='font-mono text-xs'>
-							{formatDate(connection.updatedAt)}
+						<span className='text-xs'>
+							{connection.updatedAt
+								? `${formatDistanceToNow(new Date(connection.updatedAt))} ago`
+								: 'Not set'}
 						</span>
 					</div>
 				</div>
