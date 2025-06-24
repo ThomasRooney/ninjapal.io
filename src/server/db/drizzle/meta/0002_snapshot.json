@@ -1,6 +1,6 @@
 {
-	"id": "7012645a-bcef-43d2-a495-e4271c0cee0e",
-	"prevId": "d2c6e98d-bdd2-44e0-b51e-83bb4ba7f6b4",
+	"id": "a4337090-b94c-48e3-99b6-c3b3ff5f3f1f",
+	"prevId": "7012645a-bcef-43d2-a495-e4271c0cee0e",
 	"version": "7",
 	"dialect": "postgresql",
 	"tables": {
@@ -56,6 +56,57 @@
 					"type": "varchar",
 					"primaryKey": false,
 					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.ninja_connections": {
+			"name": "ninja_connections",
+			"schema": "",
+			"columns": {
+				"user_id": {
+					"name": "user_id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"encrypted_access_token": {
+					"name": "encrypted_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"encrypted_refresh_token": {
+					"name": "encrypted_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"expires_at": {
+					"name": "expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
 				}
 			},
 			"indexes": {},

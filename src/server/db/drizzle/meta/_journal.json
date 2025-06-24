@@ -1,20 +1,27 @@
 {
-  "version": "5",
-  "dialect": "pg",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1745127231694,
-      "tag": "0000_glamorous_chameleon",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1749281054611,
-      "tag": "0001_bent_sally_floyd",
-      "breakpoints": true
-    }
-  ]
+	"version": "5",
+	"dialect": "pg",
+	"entries": [
+		{
+			"idx": 0,
+			"version": "7",
+			"when": 1745127231694,
+			"tag": "0000_glamorous_chameleon",
+			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "7",
+			"when": 1749281054611,
+			"tag": "0001_bent_sally_floyd",
+			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "7",
+			"when": 1750772996728,
+			"tag": "0002_luxuriant_nightmare",
+			"breakpoints": true
+		}
+	]
 }

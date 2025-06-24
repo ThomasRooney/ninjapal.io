@@ -25,6 +25,14 @@ export default drizzleZeroConfig(drizzleSchema, {
       name: true,
       email: true, // New column - now enabled for Zero sync
     },
+    ninjaConnections: {
+      userId: false, // New table - start with all columns disabled
+      encryptedAccessToken: false,
+      encryptedRefreshToken: false,
+      expiresAt: false,
+      createdAt: false,
+      updatedAt: false,
+    },
   },
 
   // Specify the casing style to use for the schema.

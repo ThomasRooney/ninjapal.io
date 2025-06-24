@@ -11,3 +11,5 @@ export const users = pgTable('users', {
 	email: varchar('email').notNull(),
 	name: varchar('name').notNull(),
 })
+
+export * from './schema/ninja'
