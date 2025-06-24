@@ -4,7 +4,7 @@ import { NinjaAuthManager } from './ninja-auth-manager.ts'
 import type { AuthState, Credentials } from './types.ts'
 
 export interface EnhancedAuthManagerConfig {
-	credentials?: Credentials
+	credentials: Credentials // Now required
 	userId?: string
 	dbConfig?: Parameters<(typeof DatabaseService)['prototype']['constructor']>[0]
 	autoSave?: boolean
@@ -19,7 +19,11 @@ export class EnhancedAuthManager {
 	private autoRestore: boolean
 
 	constructor(config: EnhancedAuthManagerConfig) {
-		this.authManager = NinjaAuthManager.getInstance(config.credentials)
+		// Credentials are required for creating auth manager
+		if (!config.credentials) {
+			throw new Error('Credentials are required for EnhancedAuthManager')
+		}
+		this.authManager = NinjaAuthManager.create(config.credentials)
 		this.userId = config.userId
 		this.autoSave = config.autoSave ?? true
 		this.autoRestore = config.autoRestore ?? true

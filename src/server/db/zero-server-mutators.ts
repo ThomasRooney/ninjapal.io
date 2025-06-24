@@ -141,7 +141,7 @@ export function createServerMutators(
 
 				try {
 					// Create auth manager instance with the user's credentials
-					const authManager = NinjaAuthManager.getInstance({
+					const authManager = NinjaAuthManager.create({
 						email: connection.username,
 						password: connection.password,
 					})

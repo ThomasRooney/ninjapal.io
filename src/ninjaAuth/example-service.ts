@@ -5,14 +5,15 @@
 
 import { config } from './config.ts'
 import { NinjaAuthManager } from './ninja-auth-manager.ts'
+import type { Credentials } from './types.ts'
 
 export class NinjaApiService {
 	private authManager: NinjaAuthManager
 	private isInitialized = false
 
-	constructor() {
-		// Initialize auth manager using singleton pattern
-		this.authManager = NinjaAuthManager.getInstance()
+	constructor(credentials: Credentials) {
+		// Initialize auth manager with user credentials
+		this.authManager = NinjaAuthManager.create(credentials)
 	}
 
 	/**
@@ -217,7 +218,10 @@ export class NinjaApiService {
 
 // Example usage:
 /*
-const service = new NinjaApiService();
+const service = new NinjaApiService({
+  email: 'user@example.com',
+  password: 'password123'
+});
 
 // Initialize the service
 await service.initialize();

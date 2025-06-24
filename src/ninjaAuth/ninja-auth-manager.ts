@@ -36,8 +36,6 @@ interface CacheEntry<T> {
 }
 
 export class NinjaAuthManager implements IAuthManager {
-	private static instance: NinjaAuthManager
-
 	private state: EnhancedAuthState = {}
 	private stateLoaded = false
 	private browserAutomator: IBrowserAutomator
@@ -54,17 +52,19 @@ export class NinjaAuthManager implements IAuthManager {
 		refreshCount: 0,
 	}
 
-	// Private constructor for singleton
+	// Private constructor for controlled instantiation
 	private constructor(
 		browserAutomator?: IBrowserAutomator,
 		credentials?: Credentials,
 		initialState?: EnhancedAuthState,
 	) {
 		this.browserAutomator = browserAutomator || new PlaywrightBrowserAutomator()
-		this.credentials = credentials || {
-			email: config.credentials.email,
-			password: config.credentials.password,
+
+		// Credentials must be provided
+		if (!credentials) {
+			throw new Error('AuthManager constructor was called without credentials.')
 		}
+		this.credentials = credentials
 
 		if (initialState) {
 			this.state = initialState
@@ -73,22 +73,24 @@ export class NinjaAuthManager implements IAuthManager {
 	}
 
 	/**
-	 * Get singleton instance of NinjaAuthManager
-	 * Handles internal dependency creation
+	 * Factory method to create a new NinjaAuthManager instance for a specific user.
+	 * @param credentials The user's email and password (required).
+	 * @param initialState Optional initial auth state to hydrate the instance.
+	 * @returns A new instance of NinjaAuthManager.
 	 */
-	public static getInstance(credentials?: Credentials): NinjaAuthManager {
-		if (!NinjaAuthManager.instance) {
-			NinjaAuthManager.instance = new NinjaAuthManager(undefined, credentials)
+	public static create(
+		credentials: Credentials,
+		initialState?: EnhancedAuthState,
+	): NinjaAuthManager {
+		// Validate credentials at the public API level
+		if (!credentials || !credentials.email || !credentials.password) {
+			throw new Error(
+				'Credentials with email and password are required to create an AuthManager instance.',
+			)
 		}
-		return NinjaAuthManager.instance
-	}
 
-	/**
-	 * Reset singleton instance (mainly for testing)
-	 */
-	public static resetInstance(): void {
-		// @ts-expect-error - resetting singleton for testing
-		NinjaAuthManager.instance = undefined
+		// Create a new instance with the provided credentials
+		return new NinjaAuthManager(undefined, credentials, initialState)
 	}
 
 	/**
@@ -152,7 +154,7 @@ export class NinjaAuthManager implements IAuthManager {
 			)
 
 			// Store identity artifacts in state
-			this.authState.identity = {
+			this.state.identity = {
 				cookies: identity.cookies,
 				authorizationCode: identity.authorizationCode,
 				pkceVerifier: identity.pkceVerifier,
@@ -193,15 +195,13 @@ export class NinjaAuthManager implements IAuthManager {
 
 		// Check if we have valid OAuth tokens in state
 		if (
-			this.authState.oauthTokens &&
-			!this.isTokenExpired(this.authState.oauthTokens.expiresAt)
+			this.state.oauthTokens &&
+			!this.isTokenExpired(this.state.oauthTokens.expiresAt)
 		) {
-			const idToken = this.authState.oauthTokens.idToken
+			const idToken = this.state.oauthTokens.idToken
 			// Cache with remaining TTL
 			const remainingTTL =
-				this.authState.oauthTokens.expiresAt -
-				Date.now() -
-				TOKEN_EXPIRY_BUFFER_MS
+				this.state.oauthTokens.expiresAt - Date.now() - TOKEN_EXPIRY_BUFFER_MS
 			if (remainingTTL > 0) {
 				this.setCachedItem(cacheKey, idToken, remainingTTL)
 			}
@@ -209,14 +209,14 @@ export class NinjaAuthManager implements IAuthManager {
 		}
 
 		// Try to refresh OAuth token if we have a refresh token
-		if (this.authState.oauthTokens?.refreshToken) {
+		if (this.state.oauthTokens?.refreshToken) {
 			try {
 				this.logEvent('token_refresh', { stage: 'oauth' })
 				await this.refreshOAuthTokens()
-				const idToken = this.authState.oauthTokens?.idToken
+				const idToken = this.state.oauthTokens?.idToken
 				// Cache with new TTL
 				const ttl =
-					this.authState.oauthTokens?.expiresAt -
+					this.state.oauthTokens?.expiresAt -
 					Date.now() -
 					TOKEN_EXPIRY_BUFFER_MS
 				this.setCachedItem(cacheKey, idToken, ttl)
@@ -226,7 +226,7 @@ export class NinjaAuthManager implements IAuthManager {
 					'OAuth token refresh failed, proceeding with full re-auth:',
 					error,
 				)
-				this.authState.oauthTokens = undefined
+				this.state.oauthTokens = undefined
 			}
 		}
 
@@ -242,13 +242,13 @@ export class NinjaAuthManager implements IAuthManager {
 				identity.pkceVerifier,
 			)
 
-			this.authState.oauthTokens = oauthTokens
+			this.state.oauthTokens = oauthTokens
 
 			// Clear the authorization code after successful exchange (single-use only)
-			if (this.authState.identity) {
-				this.authState.identity.authorizationCode = undefined
-				this.authState.identity.pkceVerifier = undefined
-				this.authState.identity.state = undefined
+			if (this.state.identity) {
+				this.state.identity.authorizationCode = undefined
+				this.state.identity.pkceVerifier = undefined
+				this.state.identity.state = undefined
 			}
 
 			this.updateMetadata('success', Date.now() - startTime)
@@ -302,11 +302,9 @@ export class NinjaAuthManager implements IAuthManager {
 		const tokenPromise = this.acquireAylaToken()
 			.then((token) => {
 				// Cache with TTL from token expiry
-				if (this.authState.aylaToken) {
+				if (this.state.aylaToken) {
 					const ttl =
-						this.authState.aylaToken.expiresAt -
-						Date.now() -
-						TOKEN_EXPIRY_BUFFER_MS
+						this.state.aylaToken.expiresAt - Date.now() - TOKEN_EXPIRY_BUFFER_MS
 					if (ttl > 0) {
 						this.setCachedItem(cacheKey, token, ttl)
 					}
@@ -331,10 +329,10 @@ export class NinjaAuthManager implements IAuthManager {
 
 		// Check if we have a valid Ayla token in state
 		if (
-			this.authState.aylaToken &&
-			!this.isTokenExpired(this.authState.aylaToken.expiresAt)
+			this.state.aylaToken &&
+			!this.isTokenExpired(this.state.aylaToken.expiresAt)
 		) {
-			return this.authState.aylaToken.accessToken
+			return this.state.aylaToken.accessToken
 		}
 
 		// Get OAuth ID token (this handles OAuth refresh if needed)
@@ -347,7 +345,7 @@ export class NinjaAuthManager implements IAuthManager {
 		try {
 			const aylaToken = await this.exchangeIdTokenForAylaToken(idToken)
 
-			this.authState.aylaToken = aylaToken
+			this.state.aylaToken = aylaToken
 			this.updateMetadata('success', Date.now() - startTime)
 			await this.saveState()
 
@@ -374,7 +372,7 @@ export class NinjaAuthManager implements IAuthManager {
 		// Clear cached tokens
 		const cacheKey = `ayla_api_${this.credentials.email}`
 		this.tokenCache.delete(cacheKey)
-		this.authState.aylaToken = undefined
+		this.state.aylaToken = undefined
 		this.metrics.refreshCount++
 
 		return this.getAPIToken()
@@ -449,20 +447,6 @@ export class NinjaAuthManager implements IAuthManager {
 		)
 	}
 
-	/**
-	 * Wait for any ongoing refresh to complete
-	 */
-	private async waitForRefresh(): Promise<void> {
-		let attempts = 0
-		while (this.isRefreshing && attempts < 50) {
-			await new Promise((resolve) => setTimeout(resolve, 100))
-			attempts++
-		}
-		if (this.isRefreshing) {
-			throw new AuthError('Token refresh timeout', 'refresh')
-		}
-	}
-
 	private async exchangeCodeForOAuthTokens(
 		authCode: string,
 		pkceVerifier: string,
@@ -513,7 +497,7 @@ export class NinjaAuthManager implements IAuthManager {
 			}
 
 			const userInfo = await userInfoResponse.json()
-			this.authState.userInfo = userInfo
+			this.state.userInfo = userInfo
 
 			return {
 				accessToken: tokenData.access_token,
@@ -527,7 +511,7 @@ export class NinjaAuthManager implements IAuthManager {
 	}
 
 	private async refreshOAuthTokens(): Promise<void> {
-		if (!this.authState.oauthTokens?.refreshToken) {
+		if (!this.state.oauthTokens?.refreshToken) {
 			throw new Error('No refresh token available')
 		}
 
@@ -543,7 +527,7 @@ export class NinjaAuthManager implements IAuthManager {
 					data: {
 						client_id: config.oauth.clientId,
 						grant_type: 'refresh_token',
-						refresh_token: this.authState.oauthTokens.refreshToken,
+						refresh_token: this.state.oauthTokens.refreshToken,
 						scope: config.oauth.scope,
 					},
 				},
@@ -558,11 +542,11 @@ export class NinjaAuthManager implements IAuthManager {
 
 			const tokenData = await response.json()
 
-			this.authState.oauthTokens = {
+			this.state.oauthTokens = {
 				accessToken: tokenData.access_token,
 				idToken: tokenData.id_token,
 				refreshToken:
-					tokenData.refresh_token || this.authState.oauthTokens.refreshToken,
+					tokenData.refresh_token || this.state.oauthTokens.refreshToken,
 				expiresAt: Date.now() + tokenData.expires_in * 1000,
 			}
 
@@ -649,7 +633,6 @@ export class NinjaAuthManager implements IAuthManager {
 	): void {
 		if (result === 'success') {
 			this.metrics.successCount++
-			this.metrics.lastSuccessAt = new Date().toISOString()
 			if (latencyMs) {
 				const current = this.metrics.averageLatencyMs || 0
 				const count = this.metrics.successCount
@@ -658,81 +641,11 @@ export class NinjaAuthManager implements IAuthManager {
 			}
 		} else {
 			this.metrics.failureCount++
-			this.metrics.lastFailureAt = new Date().toISOString()
 		}
 	}
 
 	private logEvent(type: AuthEvent['type'], data?: unknown): void {
-		const event: AuthEvent = {
-			type,
-			timestamp: new Date().toISOString(),
-			data,
-		}
-
 		// Log events to console for now
 		console.log(`[NinjaAuthManager] Event: ${type}`, data || '')
-	}
-
-	/**
-	 * Get current auth state
-	 */
-	getAuthState(): AuthState | null {
-		return this.authState
-	}
-
-	/**
-	 * Set auth state (for restoring from storage)
-	 */
-	setAuthState(state: AuthState): void {
-		this.authState = state
-	}
-
-	/**
-	 * Clear auth state
-	 */
-	clearAuthState(): void {
-		this.authState = {
-			identityArtifacts: null,
-			oauthTokens: null,
-			aylaToken: null,
-		}
-	}
-
-	/**
-	 * Get full auth state (for compatibility)
-	 */
-	async getFullAuthState(): Promise<AuthState> {
-		// If we don't have all the required tokens, perform full authentication
-		if (!this.authState.oauthTokens || !this.authState.aylaToken) {
-			const identity = await this.getIdentityAuth()
-			const oauthTokens = await this.getOAuthTokens()
-			const aylaToken = await this.getAylaToken()
-
-			this.authState = {
-				identityArtifacts: identity,
-				oauthTokens,
-				aylaToken,
-			}
-		}
-
-		return this.authState
-	}
-
-	/**
-	 * Refresh OAuth token
-	 */
-	async refreshOAuthToken(): Promise<OAuthTokens | null> {
-		if (!this.authState.oauthTokens?.refreshToken) {
-			console.error('[NinjaAuthManager] No refresh token available')
-			return null
-		}
-
-		try {
-			await this.refreshOAuthTokens()
-			return this.authState.oauthTokens
-		} catch (error) {
-			console.error('[NinjaAuthManager] Failed to refresh OAuth token:', error)
-			return null
-		}
 	}
 }

@@ -2,10 +2,6 @@
 // Supports environment variables and fallback defaults for development
 
 export interface AuthConfig {
-	credentials: {
-		email: string
-		password: string
-	}
 	oauth: {
 		clientId: string
 		redirectUri: string
@@ -46,11 +42,6 @@ const AYLA_CONFIG = {
 // Load configuration from environment variables with fallback defaults
 function loadConfig(): AuthConfig {
 	const config: AuthConfig = {
-		credentials: {
-			email: process.env.NINJA_USERNAME || process.env.TEST_USER_EMAIL || '',
-			password:
-				process.env.NINJA_PASSWORD || process.env.TEST_USER_PASSWORD || '',
-		},
 		oauth: {
 			clientId: process.env.OAUTH_CLIENT_ID || OAUTH_CONFIG.CLIENT_ID,
 			redirectUri: process.env.OAUTH_REDIRECT_URI || OAUTH_CONFIG.REDIRECT_URI,
@@ -82,8 +73,6 @@ function loadConfig(): AuthConfig {
 
 function validateConfig(config: AuthConfig): void {
 	const requiredFields = [
-		{ path: 'credentials.email', value: config.credentials.email },
-		{ path: 'credentials.password', value: config.credentials.password },
 		{ path: 'oauth.clientId', value: config.oauth.clientId },
 		{ path: 'oauth.authBaseUrl', value: config.oauth.authBaseUrl },
 		{ path: 'ayla.baseUrl', value: config.ayla.baseUrl },
@@ -100,12 +89,6 @@ function validateConfig(config: AuthConfig): void {
 		throw new Error(
 			`Missing required configuration fields: ${fieldNames}. Please check environment variables or defaults.`,
 		)
-	}
-
-	// Validate email format
-	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-	if (!emailRegex.test(config.credentials.email)) {
-		throw new Error(`Invalid email format: ${config.credentials.email}`)
 	}
 
 	// Validate URLs
@@ -125,10 +108,6 @@ export const config = loadConfig()
 // Utility function to mask sensitive values for logging
 export function getMaskedConfig(): Partial<AuthConfig> {
 	return {
-		credentials: {
-			email: config.credentials.email,
-			password: '***MASKED***',
-		},
 		oauth: config.oauth,
 		ayla: {
 			...config.ayla,
