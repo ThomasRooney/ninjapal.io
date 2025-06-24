@@ -50,79 +50,79 @@ export default drizzleZeroConfig(drizzleSchema, {
       lanIp: true, // Enable for display
       connectionStatus: true, // Enable for display
       
-      // Signal & Connectivity - NEW COLUMNS
-      rssi: false,
-      bt_rssi: false,
+      // Signal & Connectivity
+      rssi: true,
+      bt_rssi: true,
       
-      // Physical State - NEW COLUMNS
-      is_lid_open: false,
+      // Physical State
+      is_lid_open: true,
       
-      // Temperature Readings - NEW COLUMNS
-      temp_air: false,
-      temp_grill: false,
-      temp_uipcb: false,
-      temp_mainpcb: false,
-      probe1_temp: false,
-      probe2_temp: false,
+      // Temperature Readings
+      temp_air: true,
+      temp_grill: true,
+      temp_uipcb: true,
+      temp_mainpcb: true,
+      probe1_temp: true,
+      probe2_temp: true,
       
-      // Cooking State - NEW COLUMNS
-      cook_state_raw: false,
-      cook_mode: false,
-      cook_state: false,
-      cook_smoke_level: false,
-      cook_notifications: false,
-      cook_defaults: false,
+      // Cooking State
+      cook_state_raw: true,
+      cook_mode: true,
+      cook_state: true,
+      cook_smoke_level: true,
+      cook_notifications: true,
+      cook_defaults: true,
       
-      // Device State - NEW COLUMNS
-      power_state: false,
-      error_code: false,
-      grill_state_raw: false,
-      probe_state_raw: false,
-      combined_state_raw: false,
+      // Device State
+      power_state: true,
+      error_code: true,
+      grill_state_raw: true,
+      probe_state_raw: true,
+      combined_state_raw: true,
       
-      // Timers & Scheduling - NEW COLUMNS
-      seconds_until_auto_off: false,
-      seconds_left_on_timer: false,
-      estimated_end_at: false,
+      // Timers & Scheduling
+      seconds_until_auto_off: true,
+      seconds_left_on_timer: true,
+      estimated_end_at: true,
       
-      // Firmware & Versions - NEW COLUMNS
-      ota_fw_version: false,
-      wifi_fw_version: false,
-      wifi_hw_version: false,
-      main_pcb_fw_version: false,
-      main_pcb_hw_version: false,
-      ubd_version: false,
+      // Firmware & Versions
+      ota_fw_version: true,
+      wifi_fw_version: true,
+      wifi_hw_version: true,
+      main_pcb_fw_version: true,
+      main_pcb_hw_version: true,
+      ubd_version: true,
       
-      // Device Info - NEW COLUMNS
-      device_serial_num: false,
-      device_model_number: false,
-      wifi_module_serial_number: false,
-      build_factory: false,
+      // Device Info
+      device_serial_num: true,
+      device_model_number: true,
+      wifi_module_serial_number: true,
+      build_factory: true,
       
-      // OTA & Updates - NEW COLUMNS
-      ota_progress: false,
+      // OTA & Updates
+      ota_progress: true,
       
-      // Probe State - NEW COLUMNS
-      is_probe1_installed: false,
-      is_probe2_installed: false,
+      // Probe State
+      is_probe1_installed: true,
+      is_probe2_installed: true,
       
-      // Debug & Diagnostics - NEW COLUMNS
-      is_module_debug: false,
+      // Debug & Diagnostics
+      is_module_debug: true,
       
-      // Commands & Responses - NEW COLUMNS
-      last_cook_response: false,
-      last_exec_response: false,
+      // Commands & Responses
+      last_cook_response: true,
+      last_exec_response: true,
       
-      // Setpoints & Commands - NEW COLUMNS
-      grill_power_setpoint: false,
-      reset_wifi_commanded_at: false,
-      reset_factory_commanded_at: false,
-      cook_command: false,
-      exec_command: false,
-      module_debug_setpoint: false,
-      rt_log_enabled_setpoint: false,
-      rssi_report_period_setpoint: false,
-      cook_skip_directive: false,
+      // Setpoints & Commands
+      grill_power_setpoint: true,
+      reset_wifi_commanded_at: true,
+      reset_factory_commanded_at: true,
+      cook_command: true,
+      exec_command: true,
+      module_debug_setpoint: true,
+      rt_log_enabled_setpoint: true,
+      rssi_report_period_setpoint: true,
+      cook_skip_directive: true,
       
       // Legacy fields
       additionalDeviceProperties: true, // Enable for JSON modal

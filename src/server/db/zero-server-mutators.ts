@@ -476,7 +476,7 @@ export function createServerMutators(
 								}
 							}
 
-							// Set the value in deviceData
+							// Set the value in deviceData only if column is enabled
 							deviceData[columnName] = convertedValue
 						}
 					}
