@@ -41,6 +41,7 @@ const HomePageHeader = ({
 					<Link
 						className='font-semibold text-sm flex items-center gap-2 p-1.5'
 						to='/'
+						data-testid='main-heading'
 					>
 						<Logo />
 						Ninjapal
