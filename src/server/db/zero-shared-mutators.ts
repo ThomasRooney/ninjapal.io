@@ -68,8 +68,9 @@ export function createSharedMutators(authData: AuthData) {
 				if (!authData.sub) throw new Error('Not authenticated')
 
 				// Ensure users can only upsert their own connection
-				if (args.userId !== authData.sub)
-					throw new Error("Cannot modify another user's connection")
+				if (args.userId !== authData.sub) {
+					throw new Error("Cannot modify another user's connection.")
+				}
 
 				await tx.mutate.ninjaConnections.upsert({
 					...args,

@@ -1,5 +1,5 @@
 {
-	"id": "d2c6e98d-bdd2-44e0-b51e-83bb4ba7f6b4",
+	"id": "4285eb4e-8162-4ecc-a42a-f0cc40477b18",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"version": "7",
 	"dialect": "postgresql",
@@ -19,6 +19,12 @@
 					"type": "varchar",
 					"primaryKey": false,
 					"notNull": true
+				},
+				"email": {
+					"name": "email",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": false
 				}
 			},
 			"indexes": {},
@@ -50,6 +56,94 @@
 					"type": "varchar",
 					"primaryKey": false,
 					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.ninja_connections": {
+			"name": "ninja_connections",
+			"schema": "",
+			"columns": {
+				"user_id": {
+					"name": "user_id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"username": {
+					"name": "username",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"password": {
+					"name": "password",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"attempts": {
+					"name": "attempts",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"oauth_access_token": {
+					"name": "oauth_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"oauth_refresh_token": {
+					"name": "oauth_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"oauth_expires_at": {
+					"name": "oauth_expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_access_token": {
+					"name": "ayla_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_refresh_token": {
+					"name": "ayla_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_expires_at": {
+					"name": "ayla_expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
 				}
 			},
 			"indexes": {},

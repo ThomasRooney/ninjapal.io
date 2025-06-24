@@ -12,36 +12,32 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQuery } from '@tanstack/react-query'
 import { useRouterState } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { z } from 'zod'
+import { z as zod } from 'zod'
+import { useZero, useQuery } from "@rocicorp/zero/react";
+import { useMutation } from "@tanstack/react-query";
+import type { Schema } from "@/server/db/zero-schema.gen.ts";
 
-const ninjaConnectionSchema = z.object({
-	username: z.string().min(1, 'Username is required'),
-	password: z.string().min(1, 'Password is required'),
+const ninjaConnectionSchema = zod.object({
+	username: zod.string().min(1, 'Username is required'),
+	password: zod.string().min(1, 'Password is required'),
 })
 
-type NinjaConnectionFormData = z.infer<typeof ninjaConnectionSchema>
+type NinjaConnectionFormData = zod.infer<typeof ninjaConnectionSchema>
 
 export function NinjaConnectionForm() {
 	const [isEditing, setIsEditing] = useState(false)
 	const routerState = useRouterState()
-	const user = routerState.matches[0]?.context?.user
+	const user = routerState.matches[0]?.context?.user!
+  const z = useZero<Schema>()
 
-	// Query existing connection data
-	const { data: connection } = useQuery({
-		queryKey: ['ninja-connection', user?.id],
-		queryFn: async () => {
-			if (!user?.id) return null
-			const response = await fetch(`/api/ninja-connections/${user.id}`)
-			if (!response.ok) return null
-			return response.json()
-		},
-		enabled: !!user?.id,
-	})
+  const [connections] = useQuery(z.query.ninjaConnections)
+
+  const connection = connections?.[0];
+
 
 	const {
 		register,
@@ -64,22 +60,7 @@ export function NinjaConnectionForm() {
 
 	const upsertMutation = useMutation({
 		mutationFn: async (data: NinjaConnectionFormData) => {
-			if (!user?.id) throw new Error('User not authenticated')
-			const response = await fetch('/api/ninja-connections/upsert', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					userId: user.id,
-					...data,
-				}),
-			})
-			if (!response.ok) {
-				const error = await response.json()
-				throw new Error(error.error || 'Failed to save connection')
-			}
-			return response.json()
+      await z.mutate.ninjaConnections.upsert({ userId: user?.id, ...data})
 		},
 		onSuccess: () => {
 			setIsEditing(false)
@@ -152,7 +133,7 @@ export function NinjaConnectionForm() {
 						</Alert>
 					)}
 
-					{connection?.attempts !== undefined && connection.attempts > 0 && (
+					{connection?.attempts !== undefined && Number(connection.attempts) > 0 && (
 						<Alert variant='destructive'>
 							<AlertDescription>
 								Failed authentication attempts: {connection.attempts}

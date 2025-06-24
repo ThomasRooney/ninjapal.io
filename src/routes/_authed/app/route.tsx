@@ -3,10 +3,13 @@ import { SidebarProvider } from '@/components/ui/sidebar.tsx'
 import { useSyncUserZero } from '@/hooks/use-sync-user-zero.ts'
 import { initializeZero, zeroAtom } from '@/lib/zero-setup.ts'
 import { ZeroProvider } from '@rocicorp/zero/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, createFileRoute } from '@tanstack/react-router'
 import { useSyncExternalStore } from 'react'
 import { useEffect, useMemo } from 'react'
 import { Suspense } from 'react'
+
+const queryClient = new QueryClient()
 
 export const Route = createFileRoute('/_authed/app')({
 	component: RouteComponent,
@@ -51,9 +54,11 @@ function RouteComponent() {
 
 	return (
 		<Suspense fallback={null}>
-			<ZeroProvider zero={zero}>
-				<AppContent />
-			</ZeroProvider>
+			<QueryClientProvider client={queryClient}>
+				<ZeroProvider zero={zero}>
+					<AppContent />
+				</ZeroProvider>
+			</QueryClientProvider>
 		</Suspense>
 	)
 }

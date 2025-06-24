@@ -7,23 +7,18 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
-import { useZero } from '@rocicorp/zero/react'
+import { useQuery, useZero } from '@rocicorp/zero/react'
 import { useRouterState } from '@tanstack/react-router'
 
 export function NinjaConnectionDebug() {
-	const zero = useZero()
+	const z = useZero()
 	const routerState = useRouterState()
 	const user = routerState.matches[0]?.context?.user
 
 	const userId = user?.id || ''
 
 	// Query ninja connection data from Zero
-	const [connection] = zero.query
-		.ninjaConnections()
-		.where('userId', '=', userId)
-		.limit(1)
-		.materialize()
-
+	const connection = useQuery(z.query.ninjaConnections)
 	if (!connection) {
 		return (
 			<Card>

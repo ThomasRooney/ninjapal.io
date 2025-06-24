@@ -68,7 +68,10 @@ export const permissions = definePermissions<AuthData, Schema>(
 				row: {
 					select: [allowIfSelfNinja],
 					insert: [allowIfSelfNinja],
-					update: [allowIfSelfNinja],
+					update: {
+						preMutation: [allowIfSelfNinja],
+						postMutation: [allowIfSelfNinja]
+					},
 					delete: [allowIfSelfNinja],
 				},
 			},

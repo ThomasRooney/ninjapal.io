@@ -1,7 +1,15 @@
--- Drop the existing table to recreate with all changes
-DROP TABLE IF EXISTS "ninja_connections";
-
--- Create the table with all the correct columns
+CREATE TABLE "persons" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"name" varchar NOT NULL,
+	"email" varchar
+);
+--> statement-breakpoint
+CREATE TABLE "users" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"email" varchar NOT NULL,
+	"name" varchar NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "ninja_connections" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"username" varchar(255) NOT NULL,
