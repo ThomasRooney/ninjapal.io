@@ -57,4 +57,88 @@ test.describe('Ninja Connection Page', () => {
     await expect(usernameInput).toHaveValue('testuser@example.com');
     await expect(passwordInput).toHaveValue('testpassword');
   });
+
+  test('should allow creating and then editing a ninja connection', async ({ page }) => {
+    await page.goto('/app/ninja-connection');
+
+    // Step 1: Create initial connection
+    const usernameInput = page.getByTestId('ninja-connection-form--username-input');
+    const passwordInput = page.getByTestId('ninja-connection-form--password-input');
+    const submitButton = page.getByTestId('ninja-connection-form--submit-button');
+
+    await usernameInput.fill('initial.user@example.com');
+    await passwordInput.fill('initialpassword123');
+    await submitButton.click();
+
+    // Wait for success message
+    await expect(page.locator('text=Ninja account credentials saved successfully!')).toBeVisible();
+
+    // Step 2: Verify fields are now read-only and Edit button is visible
+    await expect(usernameInput).toBeDisabled();
+    await expect(passwordInput).toBeDisabled();
+    const editButton = page.getByTestId('ninja-connection-form--edit-button');
+    await expect(editButton).toBeVisible();
+
+    // Step 3: Click Edit Credentials to enter edit mode
+    await editButton.click();
+
+    // Step 4: Verify fields are now editable
+    await expect(usernameInput).not.toBeDisabled();
+    await expect(passwordInput).not.toBeDisabled();
+
+    // Update credentials
+    await usernameInput.fill('updated.user@example.com');
+    await passwordInput.fill('updatedpassword456');
+
+    // Step 5: Submit the update
+    const updateButton = page.getByRole('button', { name: 'Update Account' });
+    await updateButton.click();
+
+    // Step 6: Verify success and fields are updated
+    await expect(page.locator('text=Ninja account credentials saved successfully!')).toBeVisible();
+    
+    // Wait for the form to switch back to view mode (edit button reappears)
+    await expect(editButton).toBeVisible();
+    
+    // Now verify fields are disabled and have updated values
+    await expect(usernameInput).toBeDisabled();
+    await expect(passwordInput).toBeDisabled();
+    await expect(usernameInput).toHaveValue('updated.user@example.com', { timeout: 10000 });
+    await expect(passwordInput).toHaveValue('updatedpassword456', { timeout: 10000 });
+  });
+
+  test('should cancel edit mode and revert to original values', async ({ page }) => {
+    await page.goto('/app/ninja-connection');
+
+    // Step 1: Create initial connection
+    const usernameInput = page.getByTestId('ninja-connection-form--username-input');
+    const passwordInput = page.getByTestId('ninja-connection-form--password-input');
+    const submitButton = page.getByTestId('ninja-connection-form--submit-button');
+
+    await usernameInput.fill('original.user@example.com');
+    await passwordInput.fill('originalpassword123');
+    await submitButton.click();
+
+    // Wait for success
+    await expect(page.locator('text=Ninja account credentials saved successfully!')).toBeVisible();
+
+    // Step 2: Enter edit mode
+    const editButton = page.getByTestId('ninja-connection-form--edit-button');
+    await editButton.click();
+
+    // Step 3: Modify fields but don't save
+    await usernameInput.fill('temporary.user@example.com');
+    await passwordInput.fill('temporarypassword456');
+
+    // Step 4: Click Cancel
+    const cancelButton = page.getByTestId('ninja-connection-form--cancel-button');
+    await cancelButton.click();
+
+    // Step 5: Verify form reverted to read-only with original values
+    await expect(usernameInput).toBeDisabled();
+    await expect(passwordInput).toBeDisabled();
+    await expect(editButton).toBeVisible();
+    await expect(usernameInput).toHaveValue('original.user@example.com');
+    await expect(passwordInput).toHaveValue('originalpassword123');
+  });
 });

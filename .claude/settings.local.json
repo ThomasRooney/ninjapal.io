@@ -4,7 +4,9 @@
       "Bash(bun:*)",
       "Update(*)",
       "mcp__zen__chat",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

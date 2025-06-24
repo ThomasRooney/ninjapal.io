@@ -11,15 +11,15 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import type { Schema } from '@/server/db/zero-schema.gen.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useRouterState } from '@tanstack/react-router'
+import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useMutation } from '@tanstack/react-query'
+import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { z as zod } from 'zod'
-import { useZero, useQuery } from "@rocicorp/zero/react";
-import { useMutation } from "@tanstack/react-query";
-import type { Schema } from "@/server/db/zero-schema.gen.ts";
 
 const ninjaConnectionSchema = zod.object({
 	username: zod.string().min(1, 'Username is required'),
@@ -29,41 +29,53 @@ const ninjaConnectionSchema = zod.object({
 type NinjaConnectionFormData = zod.infer<typeof ninjaConnectionSchema>
 
 export function NinjaConnectionForm() {
-	const [isEditing, setIsEditing] = useState(false)
 	const routerState = useRouterState()
-	const user = routerState.matches[0]?.context?.user!
-  const z = useZero<Schema>()
+	const user = routerState.matches[0]?.context?.user
+	const navigate = useNavigate()
+	const search = useSearch({
+		from: '/_authed/app/_layout/ninja-connection',
+	}) as { mode?: string }
+	const z = useZero<Schema>()
 
-  const [connections] = useQuery(z.query.ninjaConnections)
+	const [connections] = useQuery(z.query.ninjaConnections)
 
-  const connection = connections?.[0];
+	const connection = connections?.[0]
+	const hasConnection = !!connection?.username
 
+	// Form is in edit mode if: no connection yet OR URL has mode=edit
+	const isEditing = !hasConnection || search?.mode === 'edit'
 
 	const {
 		register,
 		handleSubmit,
 		formState: { errors },
 		setValue,
+		reset,
 	} = useForm<NinjaConnectionFormData>({
 		resolver: zodResolver(ninjaConnectionSchema),
 		defaultValues: {
-			username: connection?.username || '',
-			password: connection?.password || '',
+			username: '',
+			password: '',
 		},
 	})
 
 	// Set form values when connection data loads
-	if (connection && !isEditing) {
-		setValue('username', connection.username)
-		setValue('password', connection.password)
-	}
+	useEffect(() => {
+		if (connection) {
+			reset({
+				username: connection.username,
+				password: connection.password,
+			})
+		}
+	}, [connection, reset])
 
 	const upsertMutation = useMutation({
 		mutationFn: async (data: NinjaConnectionFormData) => {
-      await z.mutate.ninjaConnections.upsert({ userId: user?.id, ...data})
+			await z.mutate.ninjaConnections.upsert({ userId: user?.id, ...data })
 		},
 		onSuccess: () => {
-			setIsEditing(false)
+			// Clear edit mode from URL
+			navigate({ search: {} })
 		},
 	})
 
@@ -71,12 +83,12 @@ export function NinjaConnectionForm() {
 		upsertMutation.mutate(data)
 	}
 
-	const hasConnection = !!connection?.username
-
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle data-testid='ninja-connection-form--card-title'>Ninja Account Connection</CardTitle>
+				<CardTitle data-testid='ninja-connection-form--card-title'>
+					Ninja Account Connection
+				</CardTitle>
 				<CardDescription>
 					{hasConnection
 						? 'Your Ninja account is connected. You can update your credentials below.'
@@ -135,26 +147,32 @@ export function NinjaConnectionForm() {
 						</Alert>
 					)}
 
-					{connection?.attempts !== undefined && Number(connection.attempts) > 0 && (
-						<Alert variant='destructive'>
-							<AlertDescription>
-								Failed authentication attempts: {connection.attempts}
-							</AlertDescription>
-						</Alert>
-					)}
+					{connection?.attempts !== undefined &&
+						Number(connection.attempts) > 0 && (
+							<Alert variant='destructive'>
+								<AlertDescription>
+									Failed authentication attempts: {connection.attempts}
+								</AlertDescription>
+							</Alert>
+						)}
 
 					<div className='flex gap-2'>
 						{hasConnection && !isEditing ? (
 							<Button
 								type='button'
-								onClick={() => setIsEditing(true)}
+								onClick={() => navigate({ search: { mode: 'edit' } })}
 								variant='outline'
+								data-testid='ninja-connection-form--edit-button'
 							>
 								Edit Credentials
 							</Button>
 						) : (
 							<>
-								<Button type='submit' disabled={upsertMutation.isPending} data-testid='ninja-connection-form--submit-button'>
+								<Button
+									type='submit'
+									disabled={upsertMutation.isPending}
+									data-testid='ninja-connection-form--submit-button'
+								>
 									{upsertMutation.isPending && (
 										<Loader2 className='mr-2 h-4 w-4 animate-spin' />
 									)}
@@ -165,10 +183,13 @@ export function NinjaConnectionForm() {
 										type='button'
 										variant='outline'
 										onClick={() => {
-											setIsEditing(false)
-											setValue('username', connection.username)
-											setValue('password', connection.password)
+											navigate({ search: {} })
+											reset({
+												username: connection.username,
+												password: connection.password,
+											})
 										}}
+										data-testid='ninja-connection-form--cancel-button'
 									>
 										Cancel
 									</Button>

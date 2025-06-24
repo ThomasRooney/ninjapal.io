@@ -23,7 +23,9 @@ export function NinjaConnectionDebug() {
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle data-testid='ninja-connection-debug--card-title'>Debug Information</CardTitle>
+					<CardTitle data-testid='ninja-connection-debug--card-title'>
+						Debug Information
+					</CardTitle>
 					<CardDescription>No connection data available</CardDescription>
 				</CardHeader>
 			</Card>
@@ -54,7 +56,9 @@ export function NinjaConnectionDebug() {
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle data-testid='ninja-connection-debug--card-title'>Debug Information</CardTitle>
+				<CardTitle data-testid='ninja-connection-debug--card-title'>
+					Debug Information
+				</CardTitle>
 				<CardDescription>
 					Token data from Zero sync (for debugging purposes)
 				</CardDescription>
