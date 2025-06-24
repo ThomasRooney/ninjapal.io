@@ -405,6 +405,38 @@ export function createServerMutators(
 						}
 					}
 
+					// Create filtered properties map that excludes mapped properties
+					const filteredPropertiesMap = Object.fromEntries(
+						Object.entries(propertiesMap).filter(
+							([propName]) => !DEVICE_PROPERTY_MAPPINGS[propName],
+						),
+					)
+
+					// Define keys that are already handled as dedicated columns
+					const handledTopLevelKeys = new Set([
+						'dsn',
+						'product_name',
+						'model',
+						'mac',
+						'lan_ip',
+						'connection_status',
+						'properties', // Original properties array from API
+					])
+
+					// Extract only unmapped device fields
+					const unmappedApiFields = Object.fromEntries(
+						Object.entries(device).filter(
+							([key]) => !handledTopLevelKeys.has(key),
+						),
+					)
+
+					// Build clean additionalDeviceProperties without duplication
+					const additionalDeviceProperties = {
+						...unmappedApiFields,
+						properties: filteredPropertiesMap,
+						lastSyncedAt: new Date().toISOString(),
+					}
+
 					// Build device data with mapped properties
 					const deviceData: Record<string, unknown> = {
 						id: crypto.randomUUID(),
@@ -415,13 +447,7 @@ export function createServerMutators(
 						mac: device.mac || null,
 						lanIp: device.lan_ip || null,
 						connectionStatus: device.connection_status || 'unknown',
-						additionalDeviceProperties: JSON.parse(
-							JSON.stringify({
-								...device,
-								properties: propertiesMap,
-								lastSyncedAt: new Date().toISOString(),
-							}),
-						),
+						additionalDeviceProperties,
 						createdAt: Date.now(),
 						updatedAt: Date.now(),
 					}
