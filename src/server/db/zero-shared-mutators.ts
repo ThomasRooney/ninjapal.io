@@ -55,6 +55,91 @@ export function createSharedMutators(authData: AuthData) {
 				await tx.mutate.users.upsert(args)
 			},
 		},
+		ninjaConnections: {
+			async upsert(
+				tx: Transaction<Schema>,
+				args: {
+					userId: string
+					username: string
+					password: string
+					attempts?: number
+				},
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Ensure users can only upsert their own connection
+				if (args.userId !== authData.sub)
+					throw new Error("Cannot modify another user's connection")
+
+				await tx.mutate.ninjaConnections.upsert({
+					...args,
+					attempts: args.attempts ?? 0,
+					updatedAt: Date.now(),
+				})
+			},
+			async updateTokens(
+				tx: Transaction<Schema>,
+				args: {
+					userId: string
+					oauthAccessToken?: string | null
+					oauthRefreshToken?: string | null
+					oauthExpiresAt?: number | null
+					aylaAccessToken?: string | null
+					aylaRefreshToken?: string | null
+					aylaExpiresAt?: number | null
+				},
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Ensure users can only update their own tokens
+				if (args.userId !== authData.sub)
+					throw new Error("Cannot modify another user's tokens")
+
+				const updates: Record<string, string | number | null> = { updatedAt: Date.now() }
+
+				// Only include defined values in the update
+				if (args.oauthAccessToken !== undefined)
+					updates.oauthAccessToken = args.oauthAccessToken
+				if (args.oauthRefreshToken !== undefined)
+					updates.oauthRefreshToken = args.oauthRefreshToken
+				if (args.oauthExpiresAt !== undefined)
+					updates.oauthExpiresAt = args.oauthExpiresAt
+				if (args.aylaAccessToken !== undefined)
+					updates.aylaAccessToken = args.aylaAccessToken
+				if (args.aylaRefreshToken !== undefined)
+					updates.aylaRefreshToken = args.aylaRefreshToken
+				if (args.aylaExpiresAt !== undefined)
+					updates.aylaExpiresAt = args.aylaExpiresAt
+
+				await tx.mutate.ninjaConnections.update({
+					userId: args.userId,
+					...updates,
+				})
+			},
+			async incrementAttempts(
+				tx: Transaction<Schema>,
+				args: { userId: string },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Ensure users can only increment their own attempts
+				if (args.userId !== authData.sub)
+					throw new Error("Cannot modify another user's attempts")
+
+				const connection = await tx.query.ninjaConnections
+					.where('userId', args.userId)
+					.one()
+					.run()
+
+				if (!connection) throw new Error('Connection not found')
+
+				await tx.mutate.ninjaConnections.update({
+					userId: args.userId,
+					attempts: (connection.attempts ?? 0) + 1,
+					updatedAt: Date.now(),
+				})
+			},
+		},
 	} as const satisfies CustomMutatorDefs<Schema>
 }
 

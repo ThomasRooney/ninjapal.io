@@ -69,5 +69,54 @@ export function createServerMutators(
 				console.log(`[Server] User upserted: ${args.email} (${args.id})`)
 			},
 		},
+		ninjaConnections: {
+			async upsert(
+				tx: Transaction<Schema>,
+				args: {
+					userId: string
+					username: string
+					password: string
+					attempts?: number
+				},
+			) {
+				// Delegate to shared mutator
+				await sharedMutators.ninjaConnections.upsert(tx, args)
+
+				// Add server-specific logic
+				console.log(
+					`[Server] Ninja connection upserted for user: ${args.userId}`,
+				)
+			},
+			async updateTokens(
+				tx: Transaction<Schema>,
+				args: {
+					userId: string
+					oauthAccessToken?: string | null
+					oauthRefreshToken?: string | null
+					oauthExpiresAt?: number | null
+					aylaAccessToken?: string | null
+					aylaRefreshToken?: string | null
+					aylaExpiresAt?: number | null
+				},
+			) {
+				// Delegate to shared mutator
+				await sharedMutators.ninjaConnections.updateTokens(tx, args)
+
+				// Add server-specific logic
+				console.log(`[Server] Ninja tokens updated for user: ${args.userId}`)
+			},
+			async incrementAttempts(
+				tx: Transaction<Schema>,
+				args: { userId: string },
+			) {
+				// Delegate to shared mutator
+				await sharedMutators.ninjaConnections.incrementAttempts(tx, args)
+
+				// Add server-specific logic
+				console.log(
+					`[Server] Ninja connection attempts incremented for user: ${args.userId}`,
+				)
+			},
+		},
 	}
 }

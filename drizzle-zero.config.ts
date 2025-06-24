@@ -26,18 +26,18 @@ export default drizzleZeroConfig(drizzleSchema, {
       email: true, // New column - now enabled for Zero sync
     },
     ninjaConnections: {
-      userId: false, // New table - start with all columns disabled
-      username: false,
-      password: false,
-      attempts: false,
-      oauthAccessToken: false,
-      oauthRefreshToken: false,
-      oauthExpiresAt: false,
-      aylaAccessToken: false,
-      aylaRefreshToken: false,
-      aylaExpiresAt: false,
-      createdAt: false,
-      updatedAt: false,
+      userId: true, // Enable for Zero sync
+      username: true,
+      password: true,
+      attempts: true,
+      oauthAccessToken: true,
+      oauthRefreshToken: true,
+      oauthExpiresAt: true,
+      aylaAccessToken: true,
+      aylaRefreshToken: true,
+      aylaExpiresAt: true,
+      createdAt: true,
+      updatedAt: true,
     },
   },
 

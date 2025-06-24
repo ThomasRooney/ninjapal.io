@@ -8,7 +8,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 export const ninjaConnections = pgTable('ninja_connections', {
-	userId: uuid('user_id').primaryKey(), // Foreign key to auth.users.id
+	userId: uuid('user_id').primaryKey().notNull(), // Foreign key to auth.users.id
 	username: varchar('username', { length: 255 }).notNull(),
 	password: text('password').notNull(),
 	attempts: integer('attempts').notNull().default(0),

@@ -25,8 +25,12 @@ export type ZeroSchema = Schema
 
 export type Person = Row<typeof zeroSchema.tables.persons>
 export type User = Row<typeof zeroSchema.tables.users>
+export type NinjaConnection = Row<typeof zeroSchema.tables.ninjaConnections>
 export type InsertPerson = InsertValue<typeof zeroSchema.tables.persons>
 export type InsertUser = InsertValue<typeof zeroSchema.tables.users>
+export type InsertNinjaConnection = InsertValue<
+	typeof zeroSchema.tables.ninjaConnections
+>
 export const permissions = definePermissions<AuthData, Schema>(
 	zeroSchema,
 	() => {
@@ -39,6 +43,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 			authData: AuthData,
 			{ cmp }: ExpressionBuilder<Schema, 'users'>,
 		) => cmp('id', authData.sub as string)
+
+		const allowIfSelfNinja = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'ninjaConnections'>,
+		) => cmp('userId', authData.sub as string)
 
 		return {
 			persons: {
@@ -53,6 +62,14 @@ export const permissions = definePermissions<AuthData, Schema>(
 					select: ANYONE_CAN,
 					insert: ANYONE_CAN,
 					delete: [allowIfSelf],
+				},
+			},
+			ninjaConnections: {
+				row: {
+					select: [allowIfSelfNinja],
+					insert: [allowIfSelfNinja],
+					update: [allowIfSelfNinja],
+					delete: [allowIfSelfNinja],
 				},
 			},
 		} satisfies PermissionsConfig<AuthData, Schema>
