@@ -1,0 +1,545 @@
+{
+	"id": "6471b818-9597-4a0e-978f-94fe67485159",
+	"prevId": "04c265e5-5e0c-4028-91d6-aec2d1e808b4",
+	"version": "7",
+	"dialect": "postgresql",
+	"tables": {
+		"public.persons": {
+			"name": "persons",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"email": {
+					"name": "email",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.users": {
+			"name": "users",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"email": {
+					"name": "email",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.ninja_connections": {
+			"name": "ninja_connections",
+			"schema": "",
+			"columns": {
+				"user_id": {
+					"name": "user_id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"username": {
+					"name": "username",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"password": {
+					"name": "password",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"attempts": {
+					"name": "attempts",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"oauth_access_token": {
+					"name": "oauth_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"oauth_refresh_token": {
+					"name": "oauth_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"oauth_expires_at": {
+					"name": "oauth_expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_access_token": {
+					"name": "ayla_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_refresh_token": {
+					"name": "ayla_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_expires_at": {
+					"name": "ayla_expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.devices": {
+			"name": "devices",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true,
+					"default": "gen_random_uuid()"
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "uuid",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"dsn": {
+					"name": "dsn",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"product_name": {
+					"name": "product_name",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"model": {
+					"name": "model",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"mac": {
+					"name": "mac",
+					"type": "varchar(17)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"lan_ip": {
+					"name": "lan_ip",
+					"type": "varchar(45)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"connection_status": {
+					"name": "connection_status",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"rssi": {
+					"name": "rssi",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"bt_rssi": {
+					"name": "bt_rssi",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_lid_open": {
+					"name": "is_lid_open",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"temp_air": {
+					"name": "temp_air",
+					"type": "numeric(5, 1)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"temp_grill": {
+					"name": "temp_grill",
+					"type": "numeric(5, 1)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"temp_uipcb": {
+					"name": "temp_uipcb",
+					"type": "numeric(5, 1)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"temp_mainpcb": {
+					"name": "temp_mainpcb",
+					"type": "numeric(5, 1)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"probe1_temp": {
+					"name": "probe1_temp",
+					"type": "numeric(5, 1)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"probe2_temp": {
+					"name": "probe2_temp",
+					"type": "numeric(5, 1)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_state_raw": {
+					"name": "cook_state_raw",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_mode": {
+					"name": "cook_mode",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_state": {
+					"name": "cook_state",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_smoke_level": {
+					"name": "cook_smoke_level",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_notifications": {
+					"name": "cook_notifications",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_defaults": {
+					"name": "cook_defaults",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"power_state": {
+					"name": "power_state",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"error_code": {
+					"name": "error_code",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"grill_state_raw": {
+					"name": "grill_state_raw",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"probe_state_raw": {
+					"name": "probe_state_raw",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"combined_state_raw": {
+					"name": "combined_state_raw",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"seconds_until_auto_off": {
+					"name": "seconds_until_auto_off",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"seconds_left_on_timer": {
+					"name": "seconds_left_on_timer",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"estimated_end_at": {
+					"name": "estimated_end_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ota_fw_version": {
+					"name": "ota_fw_version",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"wifi_fw_version": {
+					"name": "wifi_fw_version",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"wifi_hw_version": {
+					"name": "wifi_hw_version",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"main_pcb_fw_version": {
+					"name": "main_pcb_fw_version",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"main_pcb_hw_version": {
+					"name": "main_pcb_hw_version",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ubd_version": {
+					"name": "ubd_version",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"device_serial_num": {
+					"name": "device_serial_num",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"device_model_number": {
+					"name": "device_model_number",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"wifi_module_serial_number": {
+					"name": "wifi_module_serial_number",
+					"type": "varchar(100)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"build_factory": {
+					"name": "build_factory",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ota_progress": {
+					"name": "ota_progress",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_probe1_installed": {
+					"name": "is_probe1_installed",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_probe2_installed": {
+					"name": "is_probe2_installed",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"is_module_debug": {
+					"name": "is_module_debug",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"last_cook_response": {
+					"name": "last_cook_response",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"last_exec_response": {
+					"name": "last_exec_response",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"grill_power_setpoint": {
+					"name": "grill_power_setpoint",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"reset_wifi_commanded_at": {
+					"name": "reset_wifi_commanded_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"reset_factory_commanded_at": {
+					"name": "reset_factory_commanded_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_command": {
+					"name": "cook_command",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"exec_command": {
+					"name": "exec_command",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"module_debug_setpoint": {
+					"name": "module_debug_setpoint",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"rt_log_enabled_setpoint": {
+					"name": "rt_log_enabled_setpoint",
+					"type": "boolean",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"rssi_report_period_setpoint": {
+					"name": "rssi_report_period_setpoint",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"cook_skip_directive": {
+					"name": "cook_skip_directive",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"additional_device_properties": {
+					"name": "additional_device_properties",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"devices_dsn_unique": {
+					"name": "devices_dsn_unique",
+					"nullsNotDistinct": false,
+					"columns": ["dsn"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		}
+	},
+	"enums": {},
+	"schemas": {},
+	"sequences": {},
+	"roles": {},
+	"policies": {},
+	"views": {},
+	"_meta": {
+		"columns": {},
+		"schemas": {},
+		"tables": {}
+	}
+}

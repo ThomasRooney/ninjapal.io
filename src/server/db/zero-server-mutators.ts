@@ -240,9 +240,12 @@ export function createServerMutators(
 					throw new Error('Credentials not set')
 				}
 
-				// Import the NinjaAuthManager
+				// Import the NinjaAuthManager and property mappings
 				const { NinjaAuthManager } = await import(
 					'@/ninjaAuth/ninja-auth-manager.ts'
+				)
+				const { DEVICE_PROPERTY_MAPPINGS } = await import(
+					'@/server/db/device-property-mappings.ts'
 				)
 
 				// Create auth manager instance with stored state if available
@@ -402,7 +405,8 @@ export function createServerMutators(
 						}
 					}
 
-					await tx.mutate.devices.insert({
+					// Build device data with mapped properties
+					const deviceData: Record<string, unknown> = {
 						id: crypto.randomUUID(),
 						userId: authData.sub,
 						dsn: device.dsn,
@@ -420,7 +424,66 @@ export function createServerMutators(
 						),
 						createdAt: Date.now(),
 						updatedAt: Date.now(),
-					})
+					}
+
+					// Map each property to its corresponding column
+					for (const [propName, propData] of Object.entries(propertiesMap)) {
+						const mapping = DEVICE_PROPERTY_MAPPINGS[propName]
+						if (mapping) {
+							const { columnName, dataType } = mapping
+							const propValue = (propData as Record<string, unknown>).value
+
+							// Convert value based on data type
+							let convertedValue = null
+							if (propValue !== null && propValue !== undefined) {
+								switch (dataType) {
+									case 'integer':
+										convertedValue =
+											typeof propValue === 'number'
+												? propValue
+												: Number.parseInt(propValue)
+										break
+									case 'numeric':
+										convertedValue =
+											typeof propValue === 'number'
+												? propValue
+												: Number.parseFloat(propValue)
+										break
+									case 'boolean':
+										convertedValue =
+											typeof propValue === 'boolean'
+												? propValue
+												: propValue === 1 ||
+													propValue === '1' ||
+													propValue === 'true'
+										break
+									case 'timestamptz':
+										// Handle timestamp conversion - expected format may vary
+										if (propName === 'GET_Estimated_End_Time' && propValue) {
+											// Try to parse as Unix timestamp or ISO string
+											const parsed =
+												typeof propValue === 'number'
+													? new Date(propValue * 1000) // Unix timestamp
+													: new Date(propValue)
+											convertedValue = Number.isNaN(parsed.getTime())
+												? null
+												: parsed
+										}
+										break
+									default:
+										convertedValue = String(propValue)
+										break
+								}
+							}
+
+							// Set the value in deviceData
+							deviceData[columnName] = convertedValue
+						}
+					}
+
+					await tx.mutate.devices.insert(
+						deviceData as Parameters<typeof tx.mutate.devices.insert>[0],
+					)
 				}
 
 				console.log(
