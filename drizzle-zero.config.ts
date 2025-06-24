@@ -27,8 +27,8 @@ export default drizzleZeroConfig(drizzleSchema, {
     },
     ninjaConnections: {
       userId: false, // New table - start with all columns disabled
-      encryptedAccessToken: false,
-      encryptedRefreshToken: false,
+      accessToken: false,
+      refreshToken: false,
       expiresAt: false,
       createdAt: false,
       updatedAt: false,
