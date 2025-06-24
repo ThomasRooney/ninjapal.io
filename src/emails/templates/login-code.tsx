@@ -13,7 +13,7 @@ import {
 	Text,
 } from '@react-email/components'
 
-interface ZeroStartLoginCodeEmailProps {
+interface NinjaPalLoginCodeEmailProps {
 	validationCode?: string
 	magicLink: string
 }
@@ -26,26 +26,26 @@ const baseUrl =
 			: ''
 		: ''
 
-export const ZeroStartLoginCodeEmail = ({
+export const NinjaPalLoginCodeEmail = ({
 	validationCode,
 	magicLink,
-}: ZeroStartLoginCodeEmailProps) => (
+}: NinjaPalLoginCodeEmailProps) => (
 	<Html>
 		<Head />
 		<Body style={main}>
-			<Preview>Your login code for Zero Start</Preview>
+			<Preview>Your login code for Ninja Pal</Preview>
 			<Container style={container}>
 				<Img
 					src={`${baseUrl}/static/logo.png`}
 					width='42'
 					height='42'
-					alt='Zero Start'
+					alt='Ninja Pal'
 					style={logo}
 				/>
-				<Heading style={heading}>Your login code for Zero Start</Heading>
+				<Heading style={heading}>Your login code for Ninja Pal</Heading>
 				<Section style={buttonContainer}>
 					<Button style={button} href={magicLink}>
-						Login to Zero Start
+						Login to Ninja Pal
 					</Button>
 				</Section>
 				<Text style={paragraph}>
@@ -55,19 +55,19 @@ export const ZeroStartLoginCodeEmail = ({
 				<code style={code}>{validationCode}</code>
 				<Hr style={hr} />
 				<Link href={baseUrl} style={reportLink}>
-					Zero Start
+					Ninja Pal
 				</Link>
 			</Container>
 		</Body>
 	</Html>
 )
 
-ZeroStartLoginCodeEmail.PreviewProps = {
+NinjaPalLoginCodeEmail.PreviewProps = {
 	validationCode: 'tt226-5398x',
 	magicLink: 'https://your-app.com/magic-link',
-} as ZeroStartLoginCodeEmailProps
+} as NinjaPalLoginCodeEmailProps
 
-export default ZeroStartLoginCodeEmail
+export default NinjaPalLoginCodeEmail
 
 const logo = {
 	// borderRadius: 21,

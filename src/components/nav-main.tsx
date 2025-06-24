@@ -79,7 +79,7 @@ const AuthPageHeader = () => {
 				to='/'
 			>
 				<Logo />
-				Zero Start
+				Ninja Pal
 			</Link>
 		</nav>
 	)

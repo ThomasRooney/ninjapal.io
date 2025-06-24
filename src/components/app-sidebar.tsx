@@ -45,7 +45,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						>
 							<Link to='/'>
 								<Logo />
-								<span className='text-sm font-semibold'>Zero Start</span>
+								<span className='text-sm font-semibold'>Ninja Pal</span>
 							</Link>
 						</SidebarMenuButton>
 					</SidebarMenuItem>

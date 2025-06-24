@@ -102,6 +102,7 @@ export function SupabaseSignupForm({
 												<Input
 													placeholder='m@example.com'
 													type='email'
+													data-testid='signup-email'
 													{...field}
 												/>
 											</FormControl>
@@ -116,7 +117,11 @@ export function SupabaseSignupForm({
 										<FormItem>
 											<FormLabel>Password</FormLabel>
 											<FormControl>
-												<Input type='password' {...field} />
+												<Input
+													type='password'
+													data-testid='signup-password'
+													{...field}
+												/>
 											</FormControl>
 											<FormMessage />
 										</FormItem>
@@ -137,6 +142,7 @@ export function SupabaseSignupForm({
 								<Button
 									type='submit'
 									className='w-full rounded'
+									data-testid='signup-submit'
 									disabled={status === 'pending'}
 								>
 									{status === 'pending' ? 'Signing up...' : 'Sign Up'}

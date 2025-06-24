@@ -95,7 +95,9 @@ export function createSharedMutators(authData: AuthData) {
 				if (args.userId !== authData.sub)
 					throw new Error("Cannot modify another user's tokens")
 
-				const updates: Record<string, string | number | null> = { updatedAt: Date.now() }
+				const updates: Record<string, string | number | null> = {
+					updatedAt: Date.now(),
+				}
 
 				// Only include defined values in the update
 				if (args.oauthAccessToken !== undefined)

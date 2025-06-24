@@ -110,6 +110,7 @@ export function SupabaseLoginForm({
 											<Input
 												placeholder='m@example.com'
 												type='email'
+												data-testid='login-email'
 												{...field}
 											/>
 										</FormControl>
@@ -124,7 +125,11 @@ export function SupabaseLoginForm({
 									<FormItem>
 										<FormLabel>Password</FormLabel>
 										<FormControl>
-											<Input type='password' {...field} />
+											<Input
+												type='password'
+												data-testid='login-password'
+												{...field}
+											/>
 										</FormControl>
 										<FormMessage />
 									</FormItem>
@@ -138,7 +143,11 @@ export function SupabaseLoginForm({
 								</div>
 							)}
 
-							<Button type='submit' className='w-full rounded'>
+							<Button
+								type='submit'
+								className='w-full rounded'
+								data-testid='login-submit'
+							>
 								Login
 							</Button>
 						</form>

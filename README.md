@@ -1,4 +1,4 @@
-# Tanstack React Start + Zero Starter
+# Ninja Pal
 
 A modern full-stack starter with Supabase authentication, Zero Sync for real-time data, and TanStack Start.
 
