@@ -1,5 +1,8 @@
 import { Atom } from '@/lib/atom.ts'
-import { type ClientMutators, createClientMutators } from '@/lib/zero-client-mutators.ts'
+import {
+	type ClientMutators,
+	createClientMutators,
+} from '@/lib/zero-client-mutators.ts'
 import type { AuthData, ZeroSchema } from '@/server/db/zero-permissions.ts'
 import { schema } from '@/server/db/zero-schema.gen'
 import { Zero } from '@rocicorp/zero'
@@ -68,7 +71,7 @@ export function initializeZero(user: User) {
 	// Call preload after zero instance is created
 	preload(zero)
 	console.log('🟪 Creating new Zero instance for user', user.id)
-	
+
 	return zero
 }
 

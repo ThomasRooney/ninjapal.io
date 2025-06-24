@@ -14,7 +14,7 @@ import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import appCss from '@/styles.css?url'
 import { createServerFn } from '@tanstack/react-start'
 
-const fetchUser = createServerFn({ 
+const fetchUser = createServerFn({
 	method: 'GET',
 }).handler(async () => {
 	const supabase = await getSupabaseServerClient()

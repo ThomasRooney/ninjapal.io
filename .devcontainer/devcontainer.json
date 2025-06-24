@@ -48,7 +48,6 @@
     "source=${localEnv:HOME}/.gitconfig,target=/home/node/.gitconfig,type=bind,consistency=cached"
   ],
   "containerEnv": {
-    "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true",
     "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",

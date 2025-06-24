@@ -42,8 +42,6 @@ EOF
 # Note: GEMINI_API_KEY from environment is mapped to GOOGLE_API_KEY as expected by the Gemini API
 if [ ! -z "$GEMINI_API_KEY" ]; then
     echo "GOOGLE_API_KEY=$GEMINI_API_KEY" >> .env
-    echo "# GOOGLE_API_KEY is set from GEMINI_API_KEY environment variable" >> .env
-    echo "GOOGLE_ALLOWED_MODELS=pro" >> .env
 fi
 
 # Add OpenAI API key if available  

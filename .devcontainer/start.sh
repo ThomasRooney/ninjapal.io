@@ -9,5 +9,6 @@
     fi
 )
 
-npx playwright install-deps
-npx playwright install
+yes | npx playwright install-deps
+yes | npx playwright install
+curl -fsSL https://bun.sh/install | bash

@@ -1,5 +1,8 @@
 import type { AuthData } from '@/server/db/zero-permissions.ts'
-import { createSharedMutators, type SharedMutators } from '@/server/db/zero-shared-mutators.ts'
+import {
+	type SharedMutators,
+	createSharedMutators,
+} from '@/server/db/zero-shared-mutators.ts'
 
 /**
  * Client mutators that use shared mutators directly
