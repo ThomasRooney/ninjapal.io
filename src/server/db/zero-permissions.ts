@@ -26,11 +26,13 @@ export type ZeroSchema = Schema
 export type Person = Row<typeof zeroSchema.tables.persons>
 export type User = Row<typeof zeroSchema.tables.users>
 export type NinjaConnection = Row<typeof zeroSchema.tables.ninjaConnections>
+export type Device = Row<typeof zeroSchema.tables.devices>
 export type InsertPerson = InsertValue<typeof zeroSchema.tables.persons>
 export type InsertUser = InsertValue<typeof zeroSchema.tables.users>
 export type InsertNinjaConnection = InsertValue<
 	typeof zeroSchema.tables.ninjaConnections
 >
+export type InsertDevice = InsertValue<typeof zeroSchema.tables.devices>
 export const permissions = definePermissions<AuthData, Schema>(
 	zeroSchema,
 	() => {
@@ -47,6 +49,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 		const allowIfSelfNinja = (
 			authData: AuthData,
 			{ cmp }: ExpressionBuilder<Schema, 'ninjaConnections'>,
+		) => cmp('userId', authData.sub as string)
+
+		const allowIfSelfDevice = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'devices'>,
 		) => cmp('userId', authData.sub as string)
 
 		return {
@@ -73,6 +80,17 @@ export const permissions = definePermissions<AuthData, Schema>(
 						postMutation: [allowIfSelfNinja],
 					},
 					delete: [allowIfSelfNinja],
+				},
+			},
+			devices: {
+				row: {
+					select: [allowIfSelfDevice],
+					insert: [allowIfSelfDevice],
+					update: {
+						preMutation: [allowIfSelfDevice],
+						postMutation: [allowIfSelfDevice],
+					},
+					delete: [allowIfSelfDevice],
 				},
 			},
 		} satisfies PermissionsConfig<AuthData, Schema>
