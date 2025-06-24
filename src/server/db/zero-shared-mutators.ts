@@ -142,6 +142,19 @@ export function createSharedMutators(authData: AuthData) {
 					updatedAt: Date.now(),
 				})
 			},
+			async validateAndRefreshCredentials(
+				tx: Transaction<Schema>,
+				args: { userId: string },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Ensure users can only test their own connection
+				if (args.userId !== authData.sub)
+					throw new Error("Cannot test another user's connection")
+
+				// The actual testing logic is handled in the server mutator
+				// This shared mutator just handles permission checks
+			},
 		},
 	} as const satisfies CustomMutatorDefs<Schema>
 }

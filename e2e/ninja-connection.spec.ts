@@ -141,4 +141,41 @@ test.describe('Ninja Connection Page', () => {
     await expect(usernameInput).toHaveValue('original.user@example.com');
     await expect(passwordInput).toHaveValue('originalpassword123');
   });
+
+  test('should show Test Credentials button and handle test results', async ({ page }) => {
+    await page.goto('/app/ninja-connection');
+
+    // Step 1: Create initial connection
+    const usernameInput = page.getByTestId('ninja-connection-form--username-input');
+    const passwordInput = page.getByTestId('ninja-connection-form--password-input');
+    const submitButton = page.getByTestId('ninja-connection-form--submit-button');
+
+    await usernameInput.fill('test.ninja@example.com');
+    await passwordInput.fill('testninjapassword123');
+    await submitButton.click();
+
+    // Wait for success
+    await expect(page.locator('text=Ninja account credentials saved successfully!')).toBeVisible();
+
+    // Step 2: Verify Test Credentials button is visible
+    const testButton = page.getByTestId('ninja-connection-form--test-button');
+    await expect(testButton).toBeVisible();
+    await expect(testButton).toContainText('Test Credentials');
+
+    // Step 3: Click Test Credentials
+    await testButton.click();
+
+    // Step 4: Verify button shows loading state
+    await expect(testButton).toContainText('Testing...');
+    await expect(testButton).toBeDisabled();
+
+    // Step 5: Wait for test result (either success or failure)
+    // The test will likely fail since we're using fake credentials
+    const resultAlert = page.locator('[role="alert"]').filter({ hasText: /Connection test/ });
+    await expect(resultAlert).toBeVisible({ timeout: 30000 });
+
+    // Step 6: Verify button returns to normal state
+    await expect(testButton).toContainText('Test Credentials');
+    await expect(testButton).not.toBeDisabled();
+  });
 });

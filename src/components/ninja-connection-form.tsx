@@ -79,6 +79,20 @@ export function NinjaConnectionForm() {
 		},
 	})
 
+	const testCredentialsMutation = useMutation({
+		mutationFn: async () => {
+			await z.mutate.ninjaConnections.validateAndRefreshCredentials({
+				userId: user?.id,
+			})
+		},
+		onSuccess: () => {
+			// Credentials tested successfully
+		},
+		onError: (error) => {
+			console.error('Failed to test credentials:', error)
+		},
+	})
+
 	const onSubmit = (data: NinjaConnectionFormData) => {
 		upsertMutation.mutate(data)
 	}
@@ -147,6 +161,23 @@ export function NinjaConnectionForm() {
 						</Alert>
 					)}
 
+					{testCredentialsMutation.isSuccess && (
+						<Alert>
+							<AlertDescription>
+								Login credentials verified! Your Ninja account is connected and
+								working.
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{testCredentialsMutation.error && (
+						<Alert variant='destructive'>
+							<AlertDescription>
+								Connection test failed: {testCredentialsMutation.error.message}
+							</AlertDescription>
+						</Alert>
+					)}
+
 					{connection?.attempts !== undefined &&
 						Number(connection.attempts) > 0 && (
 							<Alert variant='destructive'>
@@ -158,14 +189,32 @@ export function NinjaConnectionForm() {
 
 					<div className='flex gap-2'>
 						{hasConnection && !isEditing ? (
-							<Button
-								type='button'
-								onClick={() => navigate({ search: { mode: 'edit' } })}
-								variant='outline'
-								data-testid='ninja-connection-form--edit-button'
-							>
-								Edit Credentials
-							</Button>
+							<>
+								<Button
+									type='button'
+									onClick={() => navigate({ search: { mode: 'edit' } })}
+									variant='outline'
+									data-testid='ninja-connection-form--edit-button'
+								>
+									Edit Credentials
+								</Button>
+								<Button
+									type='button'
+									onClick={() => testCredentialsMutation.mutate()}
+									disabled={testCredentialsMutation.isPending}
+									variant='secondary'
+									data-testid='ninja-connection-form--test-button'
+								>
+									{testCredentialsMutation.isPending ? (
+										<>
+											<Loader2 className='mr-2 h-4 w-4 animate-spin' />
+											Testing...
+										</>
+									) : (
+										'Test Credentials'
+									)}
+								</Button>
+							</>
 						) : (
 							<>
 								<Button
