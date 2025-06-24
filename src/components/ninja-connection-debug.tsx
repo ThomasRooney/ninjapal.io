@@ -52,7 +52,7 @@ export function NinjaConnectionDebug() {
 	)
 
 	return (
-		<Card className='overflow-hidden'>
+		<Card>
 			<CardHeader>
 				<CardTitle data-testid='ninja-connection-debug--card-title'>
 					Debug Information
@@ -61,7 +61,7 @@ export function NinjaConnectionDebug() {
 					Token data from Zero sync (for debugging purposes)
 				</CardDescription>
 			</CardHeader>
-			<CardContent className='space-y-4 overflow-hidden'>
+			<CardContent className='space-y-4'>
 				<div className='grid gap-4'>
 					<TokenDisplay
 						label='OAuth Access Token'
