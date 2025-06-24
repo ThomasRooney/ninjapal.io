@@ -6,3 +6,5 @@ dist-ssr
 .env
 routeTree.gen.ts
 zero-schema.gen.ts
+.idea
+count.txt
