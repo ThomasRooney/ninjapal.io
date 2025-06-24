@@ -16,6 +16,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router'
+import { formatDistanceToNow } from 'date-fns'
 import { Loader2 } from 'lucide-react'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
@@ -178,14 +179,12 @@ export function NinjaConnectionForm() {
 						</Alert>
 					)}
 
-					{connection?.attempts !== undefined &&
-						Number(connection.attempts) > 0 && (
-							<Alert variant='destructive'>
-								<AlertDescription>
-									Failed authentication attempts: {connection.attempts}
-								</AlertDescription>
-							</Alert>
-						)}
+					{connection?.updatedAt && (
+						<div className='text-sm text-muted-foreground'>
+							Last updated:{' '}
+							{formatDistanceToNow(new Date(connection.updatedAt))} ago
+						</div>
+					)}
 
 					<div className='flex gap-2'>
 						{hasConnection && !isEditing ? (

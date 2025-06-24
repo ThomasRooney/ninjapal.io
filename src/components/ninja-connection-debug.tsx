@@ -7,16 +7,15 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
+import type { Schema } from '@/server/db/zero-schema.gen.ts'
 import { useQuery, useZero } from '@rocicorp/zero/react'
-import { useRouterState } from '@tanstack/react-router'
-import type { Schema } from "@/server/db/zero-schema.gen.ts";
 
 export function NinjaConnectionDebug() {
 	const z = useZero<Schema>()
 
 	// Query ninja connection data from Zero
-	const [connections] = useQuery(z.query.ninjaConnections);
-  const connection = connections?.[0]
+	const [connections] = useQuery(z.query.ninjaConnections)
+	const connection = connections?.[0]
 	if (!connection) {
 		return (
 			<Card>
@@ -30,7 +29,7 @@ export function NinjaConnectionDebug() {
 		)
 	}
 
-	const formatDate = (date: Date | null | undefined) => {
+	const formatDate = (date: Date | number | null | undefined) => {
 		if (!date) return 'Not set'
 		return new Date(date).toLocaleString()
 	}
@@ -97,10 +96,6 @@ export function NinjaConnectionDebug() {
 
 					<div className='border-t pt-4' />
 
-					<div className='flex justify-between text-sm'>
-						<span className='text-muted-foreground'>Attempts:</span>
-						<span className='font-mono'>{connection.attempts}</span>
-					</div>
 					<div className='flex justify-between text-sm'>
 						<span className='text-muted-foreground'>Last Updated:</span>
 						<span className='font-mono text-xs'>
