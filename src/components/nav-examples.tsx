@@ -2,6 +2,7 @@
 
 import { Link, useMatches } from '@tanstack/react-router'
 import {
+	Activity,
 	DatabaseZap,
 	Mail,
 	TreePalm,
@@ -49,6 +50,11 @@ const items = [
 		title: 'Ninja Connection',
 		url: '/app/ninja-connection',
 		icon: Unplug,
+	},
+	{
+		title: 'Device Status',
+		url: '/app/status',
+		icon: Activity,
 	},
 ]
 

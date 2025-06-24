@@ -1,0 +1,257 @@
+{
+	"id": "04c265e5-5e0c-4028-91d6-aec2d1e808b4",
+	"prevId": "4285eb4e-8162-4ecc-a42a-f0cc40477b18",
+	"version": "7",
+	"dialect": "postgresql",
+	"tables": {
+		"public.persons": {
+			"name": "persons",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"email": {
+					"name": "email",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.users": {
+			"name": "users",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "varchar",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"email": {
+					"name": "email",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"name": {
+					"name": "name",
+					"type": "varchar",
+					"primaryKey": false,
+					"notNull": true
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.ninja_connections": {
+			"name": "ninja_connections",
+			"schema": "",
+			"columns": {
+				"user_id": {
+					"name": "user_id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true
+				},
+				"username": {
+					"name": "username",
+					"type": "varchar(255)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"password": {
+					"name": "password",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"attempts": {
+					"name": "attempts",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"default": 0
+				},
+				"oauth_access_token": {
+					"name": "oauth_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"oauth_refresh_token": {
+					"name": "oauth_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"oauth_expires_at": {
+					"name": "oauth_expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_access_token": {
+					"name": "ayla_access_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_refresh_token": {
+					"name": "ayla_refresh_token",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"ayla_expires_at": {
+					"name": "ayla_expires_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		},
+		"public.devices": {
+			"name": "devices",
+			"schema": "",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "uuid",
+					"primaryKey": true,
+					"notNull": true,
+					"default": "gen_random_uuid()"
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "uuid",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"dsn": {
+					"name": "dsn",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": true
+				},
+				"product_name": {
+					"name": "product_name",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"model": {
+					"name": "model",
+					"type": "varchar(256)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"mac": {
+					"name": "mac",
+					"type": "varchar(17)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"lan_ip": {
+					"name": "lan_ip",
+					"type": "varchar(45)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"connection_status": {
+					"name": "connection_status",
+					"type": "varchar(50)",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"additional_device_properties": {
+					"name": "additional_device_properties",
+					"type": "jsonb",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "timestamp with time zone",
+					"primaryKey": false,
+					"notNull": true,
+					"default": "now()"
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {
+				"devices_dsn_unique": {
+					"name": "devices_dsn_unique",
+					"nullsNotDistinct": false,
+					"columns": ["dsn"]
+				}
+			},
+			"policies": {},
+			"checkConstraints": {},
+			"isRLSEnabled": false
+		}
+	},
+	"enums": {},
+	"schemas": {},
+	"sequences": {},
+	"roles": {},
+	"policies": {},
+	"views": {},
+	"_meta": {
+		"columns": {},
+		"schemas": {},
+		"tables": {}
+	}
+}

@@ -211,5 +211,14 @@ export function createServerMutators(
 				}
 			},
 		},
+		devices: {
+			async refreshFakeData(tx: Transaction<Schema>) {
+				// Delegate to shared mutator
+				await sharedMutators.devices.refreshFakeData(tx)
+
+				// Add server-specific logic
+				console.log(`[Server] Fake devices refreshed for user: ${authData.sub}`)
+			},
+		},
 	}
 }

@@ -39,6 +39,19 @@ export default drizzleZeroConfig(drizzleSchema, {
       createdAt: true,
       updatedAt: true,
     },
+    devices: {
+      id: true, // Primary key must be enabled for Zero
+      userId: true, // Enable for user association
+      dsn: true, // Enable for display
+      productName: true, // Enable for display
+      model: true, // Enable for display
+      mac: true, // Enable for display
+      lanIp: true, // Enable for display
+      connectionStatus: true, // Enable for display
+      additionalDeviceProperties: true, // Enable for JSON modal
+      createdAt: true, // Enable for timestamps
+      updatedAt: true, // Enable for timestamps
+    },
   },
 
   // Specify the casing style to use for the schema.

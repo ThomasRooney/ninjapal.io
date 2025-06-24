@@ -1,5 +1,6 @@
 import type { AuthData } from '@/server/db/zero-permissions.ts'
 import type { Schema } from '@/server/db/zero-schema.gen'
+import { faker } from '@faker-js/faker'
 import type { CustomMutatorDefs, Transaction } from '@rocicorp/zero'
 
 /**
@@ -154,6 +155,50 @@ export function createSharedMutators(authData: AuthData) {
 
 				// The actual testing logic is handled in the server mutator
 				// This shared mutator just handles permission checks
+			},
+		},
+		devices: {
+			async refreshFakeData(tx: Transaction<Schema>) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Delete existing devices for this user
+				const existingDevices = await tx.query.devices
+					.where('userId', authData.sub)
+					.run()
+
+				for (const device of existingDevices) {
+					await tx.mutate.devices.delete({ id: device.id })
+				}
+
+				// Generate 3 fake devices
+				for (let i = 0; i < 3; i++) {
+					const deviceId = crypto.randomUUID()
+					const randomNum = Math.floor(Math.random() * 1000)
+
+					await tx.mutate.devices.insert({
+						id: deviceId,
+						userId: authData.sub,
+						dsn: `FAKE-DSN-${randomNum}`,
+						productName: faker.commerce.productName(),
+						model: `Model-${faker.vehicle.model()}`,
+						mac: faker.internet.mac(),
+						lanIp: faker.internet.ipv4(),
+						connectionStatus: Math.random() > 0.5 ? 'online' : 'offline',
+						additionalDeviceProperties: {
+							firmwareVersion: `v${faker.system.semver()}`,
+							signalStrength: -Math.floor(Math.random() * 50 + 30),
+							temperature: Math.floor(Math.random() * 20 + 20),
+							humidity: Math.floor(Math.random() * 40 + 30),
+							lastSeen: new Date().toISOString(),
+							features: faker.helpers.arrayElements(
+								['wifi', 'bluetooth', 'zigbee', 'zwave'],
+								{ min: 1, max: 3 },
+							),
+						},
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					})
+				}
 			},
 		},
 	} as const satisfies CustomMutatorDefs<Schema>
