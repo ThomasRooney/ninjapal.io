@@ -1,3 +1,4 @@
+import type { EnhancedAuthState } from '@/ninjaAuth/types.ts'
 import type { AuthData } from '@/server/db/zero-permissions.ts'
 import type { Schema } from '@/server/db/zero-schema.gen'
 import { createSharedMutators } from '@/server/db/zero-shared-mutators.ts'
@@ -166,6 +167,7 @@ export function createServerMutators(
 						userId: args.userId,
 						attempts: 0,
 					})
+					await tx.query.ninjaConnections.one()
 
 					// If ID token succeeds, then try to get API token
 					try {
@@ -218,6 +220,212 @@ export function createServerMutators(
 
 				// Add server-specific logic
 				console.log(`[Server] Fake devices refreshed for user: ${authData.sub}`)
+			},
+			async syncRealDevices(tx: Transaction<Schema>) {
+				if (!authData.sub) {
+					throw new Error('Not authenticated')
+				}
+
+				// Get the connection from the database
+				const connection = await tx.query.ninjaConnections
+					.where('userId', authData.sub)
+					.one()
+					.run()
+
+				if (!connection) {
+					throw new Error('No connection found for user')
+				}
+
+				if (!connection.username || !connection.password) {
+					throw new Error('Credentials not set')
+				}
+
+				// Import the NinjaAuthManager
+				const { NinjaAuthManager } = await import(
+					'@/ninjaAuth/ninja-auth-manager.ts'
+				)
+
+				// Create auth manager instance with stored state if available
+				const initialState: EnhancedAuthState = {}
+
+				if (
+					connection.oauthAccessToken &&
+					connection.oauthRefreshToken &&
+					connection.oauthExpiresAt
+				) {
+					initialState.oauthTokens = {
+						accessToken: connection.oauthAccessToken,
+						idToken: '', // We don't store this, will be refreshed
+						refreshToken: connection.oauthRefreshToken,
+						expiresAt: connection.oauthExpiresAt,
+					}
+				}
+
+				if (connection.aylaAccessToken && connection.aylaExpiresAt) {
+					initialState.aylaToken = {
+						accessToken: connection.aylaAccessToken,
+						refreshToken: connection.aylaRefreshToken || undefined,
+						expiresAt: connection.aylaExpiresAt,
+					}
+				}
+
+				const authManager = NinjaAuthManager.create(
+					{
+						email: connection.username,
+						password: connection.password,
+					},
+					initialState,
+				)
+
+				// Get API token (will refresh if expired)
+				const apiToken = await authManager.getAPIToken()
+
+				// Check if state changed and update DB if needed
+				const newState = authManager.getState()
+				if (
+					newState.aylaToken?.accessToken !== connection.aylaAccessToken ||
+					newState.aylaToken?.expiresAt !== connection.aylaExpiresAt
+				) {
+					await sharedMutators.ninjaConnections.updateTokens(tx, {
+						userId: authData.sub,
+						aylaAccessToken: newState.aylaToken?.accessToken || null,
+						aylaRefreshToken: newState.aylaToken?.refreshToken || null,
+						aylaExpiresAt: newState.aylaToken?.expiresAt || null,
+					})
+				}
+
+				// Prepare headers for API calls
+				const headers = {
+					authorization: `auth_token ${apiToken}`,
+					accept: 'application/json',
+					'user-agent':
+						'Dalvik/2.1.0 (Linux; U; Android 16; sdk_gphone64_arm64 Build/BP22.250325.006)',
+				}
+
+				// Fetch devices
+				const devicesResponse = await fetch(
+					'https://ads-eu.aylanetworks.com/apiv1/devices.json',
+					{ headers },
+				)
+
+				if (!devicesResponse.ok) {
+					throw new Error(
+						`Failed to fetch devices: ${devicesResponse.status} ${devicesResponse.statusText}`,
+					)
+				}
+
+				const devicesData = await devicesResponse.json()
+
+				// Delete existing devices for this user
+				const existingDevices = await tx.query.devices
+					.where('userId', authData.sub)
+					.run()
+
+				for (const device of existingDevices) {
+					await tx.mutate.devices.delete({ id: device.id })
+				}
+
+				// Fetch properties for each device concurrently
+				interface DeviceWrapper {
+					device: {
+						dsn: string
+						product_name?: string
+						model?: string
+						mac?: string
+						lan_ip?: string
+						connection_status?: string
+						[key: string]: unknown
+					}
+				}
+				const propertyPromises = devicesData.map(
+					async (deviceWrapper: DeviceWrapper) => {
+						const device = deviceWrapper.device
+						try {
+							const propsResponse = await fetch(
+								`https://ads-eu.aylanetworks.com/apiv1/dsns/${device.dsn}/properties.json`,
+								{ headers },
+							)
+							if (propsResponse.ok) {
+								const propsData = await propsResponse.json()
+								return { device, properties: propsData }
+							}
+							return { device, properties: null }
+						} catch (error) {
+							console.warn(
+								`Failed to fetch properties for device ${device.dsn}:`,
+								error,
+							)
+							return { device, properties: null }
+						}
+					},
+				)
+
+				const propertyResults = await Promise.allSettled(propertyPromises)
+
+				// Log any failures
+				const failedCount = propertyResults.filter(
+					(r) => r.status === 'rejected',
+				).length
+				if (failedCount > 0) {
+					console.warn(
+						`[Server] Failed to fetch properties for ${failedCount} devices`,
+					)
+				}
+
+				// Extract successful results
+				const devicesWithProperties = propertyResults
+					.filter(
+						(
+							result,
+						): result is PromiseFulfilledResult<{
+							device: DeviceWrapper['device']
+							properties: unknown
+						}> => result.status === 'fulfilled',
+					)
+					.map((result) => result.value)
+
+				// Insert new devices
+				for (const { device, properties } of devicesWithProperties) {
+					// Transform properties array into a more useful object format
+					const propertiesMap: Record<string, unknown> = {}
+					if (properties && Array.isArray(properties)) {
+						for (const propWrapper of properties) {
+							const prop = propWrapper.property
+							if (prop?.name) {
+								propertiesMap[prop.name] = {
+									value: prop.value,
+									type: prop.type,
+									base_type: prop.base_type,
+									updated_at: prop.data_updated_at,
+								}
+							}
+						}
+					}
+
+					await tx.mutate.devices.insert({
+						id: crypto.randomUUID(),
+						userId: authData.sub,
+						dsn: device.dsn,
+						productName: device.product_name || null,
+						model: device.model || null,
+						mac: device.mac || null,
+						lanIp: device.lan_ip || null,
+						connectionStatus: device.connection_status || 'unknown',
+						additionalDeviceProperties: JSON.parse(
+							JSON.stringify({
+								...device,
+								properties: propertiesMap,
+								lastSyncedAt: new Date().toISOString(),
+							}),
+						),
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					})
+				}
+
+				console.log(
+					`[Server] Synced ${devicesWithProperties.length} real devices for user: ${authData.sub}`,
+				)
 			},
 		},
 	}

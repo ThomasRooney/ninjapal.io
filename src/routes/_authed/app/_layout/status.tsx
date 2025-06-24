@@ -50,7 +50,10 @@ function RouteComponent() {
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true)
 		try {
-			await z.mutate.devices.refreshFakeData()
+			await z.mutate.devices.syncRealDevices()
+		} catch (error) {
+			console.error('Failed to sync devices:', error)
+			// Optionally show an error toast/notification here
 		} finally {
 			setIsRefreshing(false)
 		}
@@ -133,7 +136,8 @@ function RouteComponent() {
 					{(!devices || devices.length === 0) && (
 						<div className='flex items-center justify-center h-32'>
 							<p className='text-sm text-muted-foreground'>
-								No devices found. Click "Refresh Status" to generate test data.
+								No devices found. Click "Refresh Status" to sync devices from
+								your Ninja account.
 							</p>
 						</div>
 					)}

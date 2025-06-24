@@ -200,6 +200,12 @@ export function createSharedMutators(authData: AuthData) {
 					})
 				}
 			},
+			async syncRealDevices(tx: Transaction<Schema>) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// The actual sync logic is handled in the server mutator
+				// This shared mutator just handles permission checks
+			},
 		},
 	} as const satisfies CustomMutatorDefs<Schema>
 }
