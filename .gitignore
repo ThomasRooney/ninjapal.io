@@ -11,3 +11,5 @@ count.txt
 test-results
 playwright-report
 auth-state.json
+.output
+.tanstack

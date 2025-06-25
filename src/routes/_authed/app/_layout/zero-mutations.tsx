@@ -44,7 +44,7 @@ function PersonList({ view }: { view: 'json' | 'table' }) {
 						className='flex items-center justify-between hover:bg-secondary/40 group'
 					>
 						<MouseDownLink
-							to='/_authed/app/_layout/person/$personId'
+							to='/app/person/$personId'
 							params={{ personId: person.id }}
 							className='flex grow items-center pl-4 py-2'
 						>
