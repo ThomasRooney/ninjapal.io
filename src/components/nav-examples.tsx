@@ -3,6 +3,7 @@
 import { Link, useMatches } from '@tanstack/react-router'
 import {
 	Activity,
+	Cpu,
 	DatabaseZap,
 	Mail,
 	TreePalm,
@@ -55,6 +56,11 @@ const items = [
 		title: 'Device Status',
 		url: '/app/status',
 		icon: Activity,
+	},
+	{
+		title: 'Devices',
+		url: '/app/devices',
+		icon: Cpu,
 	},
 ]
 
