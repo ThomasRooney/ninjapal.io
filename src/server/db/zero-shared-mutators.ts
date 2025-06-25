@@ -9,26 +9,6 @@ import type { CustomMutatorDefs, Transaction } from '@rocicorp/zero'
  */
 export function createSharedMutators(authData: AuthData) {
 	return {
-		persons: {
-			async insert(
-				tx: Transaction<Schema>,
-				args: { id: string; name: string },
-			) {
-				// e.g. permission check: only logged-in users can insert
-				if (!authData.sub) throw new Error('Not authenticated')
-				await tx.mutate.persons.insert(args)
-			},
-			async delete(tx: Transaction<Schema>, args: { id: string }) {
-				if (!authData.sub) throw new Error('Not authenticated')
-				await tx.mutate.persons.delete(args)
-			},
-			async deleteMany(tx: Transaction<Schema>, args: { ids: string[] }) {
-				if (!authData.sub) throw new Error('Not authenticated')
-				for (const id of args.ids) {
-					await tx.mutate.persons.delete({ id })
-				}
-			},
-		},
 		users: {
 			async create(
 				tx: Transaction<Schema>,

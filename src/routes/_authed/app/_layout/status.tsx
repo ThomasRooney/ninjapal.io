@@ -14,12 +14,12 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table.tsx'
+import type { Schema } from '@/server/db/zero-schema.gen.ts'
+import type { SharedMutators } from '@/server/db/zero-shared-mutators.ts'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { RefreshCw } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import type { Schema } from "@/server/db/zero-schema.gen.ts";
-import type { SharedMutators } from "@/server/db/zero-shared-mutators.ts";
 
 export const Route = createFileRoute('/_authed/app/_layout/status')({
 	component: RouteComponent,
@@ -52,7 +52,7 @@ function RouteComponent() {
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true)
 		try {
-			await z.mutate.devices.syncRealDevices().server;
+			await z.mutate.devices.syncRealDevices().server
 		} catch (error) {
 			console.error('Failed to sync devices:', error)
 			// Optionally show an error toast/notification here

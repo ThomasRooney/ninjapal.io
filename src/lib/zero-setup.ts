@@ -25,9 +25,8 @@ export function preload(z: Zero<ZeroSchema, ClientMutators>) {
 	}
 	didPreload = true
 
-	// Preload all users and persons with CACHE_FOREVER policy
+	// Preload all users with CACHE_FOREVER policy
 	z.query.users.preload(CACHE_FOREVER)
-	z.query.persons.preload(CACHE_FOREVER)
 }
 
 let currentUserId: string | null = null

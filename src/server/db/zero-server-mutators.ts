@@ -14,33 +14,6 @@ export function createServerMutators(
 	const sharedMutators = createSharedMutators(authData)
 
 	return {
-		persons: {
-			async insert(
-				tx: Transaction<Schema>,
-				args: { id: string; name: string },
-			) {
-				// Delegate to shared mutator for core logic
-				await sharedMutators.persons.insert(tx, args)
-
-				// Add server-specific logic here if needed
-				// e.g. logging, notifications, analytics, etc.
-				console.log(`[Server] Person created: ${args.name} (${args.id})`)
-			},
-			async delete(tx: Transaction<Schema>, args: { id: string }) {
-				// Delegate to shared mutator
-				await sharedMutators.persons.delete(tx, args)
-
-				// Add server-specific logic
-				console.log(`[Server] Person deleted: ${args.id}`)
-			},
-			async deleteMany(tx: Transaction<Schema>, args: { ids: string[] }) {
-				// Delegate to shared mutator
-				await sharedMutators.persons.deleteMany(tx, args)
-
-				// Add server-specific logic
-				console.log(`[Server] Persons deleted: ${args.ids.length} items`)
-			},
-		},
 		users: {
 			async create(
 				tx: Transaction<Schema>,

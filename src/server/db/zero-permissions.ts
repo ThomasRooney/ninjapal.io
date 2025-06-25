@@ -23,11 +23,9 @@ export const schema = zeroSchema
 // Define permissions with explicit types
 export type ZeroSchema = Schema
 
-export type Person = Row<typeof zeroSchema.tables.persons>
 export type User = Row<typeof zeroSchema.tables.users>
 export type NinjaConnection = Row<typeof zeroSchema.tables.ninjaConnections>
 export type Device = Row<typeof zeroSchema.tables.devices>
-export type InsertPerson = InsertValue<typeof zeroSchema.tables.persons>
 export type InsertUser = InsertValue<typeof zeroSchema.tables.users>
 export type InsertNinjaConnection = InsertValue<
 	typeof zeroSchema.tables.ninjaConnections
@@ -36,11 +34,6 @@ export type InsertDevice = InsertValue<typeof zeroSchema.tables.devices>
 export const permissions = definePermissions<AuthData, Schema>(
 	zeroSchema,
 	() => {
-		const allowIfLoggedIn = (
-			authData: AuthData,
-			{ cmpLit }: ExpressionBuilder<Schema, 'persons'>,
-		) => cmpLit(authData.sub, 'IS NOT', null)
-
 		const allowIfSelf = (
 			authData: AuthData,
 			{ cmp }: ExpressionBuilder<Schema, 'users'>,
@@ -57,13 +50,6 @@ export const permissions = definePermissions<AuthData, Schema>(
 		) => cmp('userId', authData.sub as string)
 
 		return {
-			persons: {
-				row: {
-					select: ANYONE_CAN,
-					insert: ANYONE_CAN,
-					delete: [allowIfLoggedIn],
-				},
-			},
 			users: {
 				row: {
 					select: ANYONE_CAN,
