@@ -13,19 +13,13 @@ import {
 	FormControl,
 	FormField,
 	FormItem,
-	FormLabel,
 	FormMessage,
 } from '@/components/ui/form.tsx'
 import { Input } from '@/components/ui/input.tsx'
-import {
-	signIn,
-	signInWithGoogle,
-	signInWithMagicLink,
-} from '@/lib/auth-client.ts'
+import { signInWithGoogle, signInWithMagicLink } from '@/lib/auth-client.ts'
 import { cn } from '@/lib/utils.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { IconBrandGoogle } from '@tabler/icons-react'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 import React from 'react'
 import { useForm } from 'react-hook-form'
@@ -47,14 +41,13 @@ export function LoginFormMagic({
 		},
 	})
 
-	const navigate = useNavigate()
 	const [isPending, setIsPending] = React.useState(false)
 	const [emailSent, setEmailSent] = React.useState(false)
 
 	async function onSubmit(values: z.infer<typeof formSchema>) {
 		setIsPending(true)
 		try {
-			const { data, error } = await signInWithMagicLink(values.email)
+			const { error } = await signInWithMagicLink(values.email)
 			if (error) {
 				form.setError('root', {
 					message: error.message || 'Failed to send magic link',

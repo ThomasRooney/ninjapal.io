@@ -1,21 +1,11 @@
 import * as crypto from 'node:crypto'
 import { DatabaseService } from '../../../ninjapal.com/app.ninjapal.io/src/db'
-import {
-	type AuthState,
-	type AuthStateStore,
-	type AylaToken,
-	IdentityArtifacts,
-	type OAuthTokens,
+import type {
+	AuthState,
+	AuthStateStore,
+	AylaToken,
+	OAuthTokens,
 } from './types.ts'
-
-interface StoredAuthState {
-	id: string
-	userId: string
-	state: AuthState
-	createdAt: Date
-	updatedAt: Date
-	expiresAt: Date
-}
 
 export class DatabaseAuthStore implements AuthStateStore {
 	private db: DatabaseService

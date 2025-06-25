@@ -7,7 +7,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
@@ -67,7 +66,6 @@ function DeviceDetailPage() {
 	}
 
 	const grillState = parseJsonSafely(device.grill_state_raw)
-	const cookState = parseJsonSafely(device.cook_state_raw)
 	const probeState = parseJsonSafely(device.probe_state_raw)
 
 	return (
@@ -186,7 +184,7 @@ function DeviceDetailPage() {
 							</CardHeader>
 							<CardContent>
 								<div className='space-y-3'>
-									{probeState.probes.map((probe: Probe, index: number) => (
+									{probeState.probes.map((probe: Probe) => (
 										<div
 											key={probe.name}
 											className='flex items-center justify-between p-3 rounded-lg bg-muted/50'

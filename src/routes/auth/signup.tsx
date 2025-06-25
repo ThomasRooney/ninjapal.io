@@ -1,5 +1,4 @@
 import NavMain from '@/components/nav-main.tsx'
-import { SignUp } from '@/components/sign-up.tsx'
 import { SupabaseSignupForm } from '@/components/supabase-signup.tsx'
 import { createFileRoute } from '@tanstack/react-router'
 

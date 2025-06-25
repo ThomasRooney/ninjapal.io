@@ -6,7 +6,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select'
-import { type MockDevice, mockDevices } from '@/lib/mock-data'
+import { mockDevices } from '@/lib/mock-data'
 
 interface DeviceSelectorProps {
 	value: string

@@ -91,7 +91,7 @@ export default function ControlPage() {
 					</CardContent>
 				</Card>
 
-				<CookControls isLoggedIn={false} />
+				<CookControls />
 			</div>
 		</div>
 	)

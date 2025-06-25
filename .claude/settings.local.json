@@ -21,7 +21,11 @@
       "Bash(rg:*)",
       "WebFetch(domain:github.com)",
       "Bash(mv:*)",
-      "Bash(npm run check:*)"
+      "Bash(npm run check:*)",
+      "Bash(npx biome format:*)",
+      "Bash(timeout 10 bun:*)",
+      "Bash(true)",
+      "Bash(npx biome check:*)"
     ],
     "deny": []
   }

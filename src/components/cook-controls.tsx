@@ -19,13 +19,7 @@ import { Switch } from '@/components/ui/switch'
 import { Play, Square } from 'lucide-react'
 import { useState } from 'react'
 
-interface CookControlsProps {
-	isLoggedIn?: boolean
-}
-
-export default function CookControls({
-	isLoggedIn = false,
-}: CookControlsProps) {
+export default function CookControls() {
 	const [mode, setMode] = useState<
 		'grill' | 'smoker' | 'air fry' | 'roast' | 'bake' | 'reheat' | 'dehydrate'
 	>('smoker')

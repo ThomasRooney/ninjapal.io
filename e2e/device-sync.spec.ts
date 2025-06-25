@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { execSync } from 'child_process';
 
 test.describe('Device Sync Property Deduplication', () => {
   let uniqueEmail: string;

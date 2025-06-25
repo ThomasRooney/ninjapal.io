@@ -467,13 +467,13 @@ export function createServerMutators(
 										convertedValue =
 											typeof propValue === 'number'
 												? propValue
-												: Number.parseInt(propValue)
+												: Number.parseInt(propValue as string)
 										break
 									case 'numeric':
 										convertedValue =
 											typeof propValue === 'number'
 												? propValue
-												: Number.parseFloat(propValue)
+												: Number.parseFloat(propValue as string)
 										break
 									case 'boolean':
 										convertedValue =
@@ -490,7 +490,7 @@ export function createServerMutators(
 											const parsed =
 												typeof propValue === 'number'
 													? new Date(propValue * 1000) // Unix timestamp
-													: new Date(propValue)
+													: new Date(propValue as string | number)
 											convertedValue = Number.isNaN(parsed.getTime())
 												? null
 												: parsed

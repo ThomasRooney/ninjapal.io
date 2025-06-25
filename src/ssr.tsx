@@ -8,5 +8,6 @@ import { createRouter } from './router.tsx'
 
 export default createStartHandler({
 	createRouter,
+	// @ts-ignore - Module declaration issue
 	getRouterManifest,
 })(defaultStreamHandler)

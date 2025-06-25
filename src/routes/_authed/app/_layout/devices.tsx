@@ -9,7 +9,7 @@ import {
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Link } from '@tanstack/react-router'
-import { AlertCircle, Cpu, Loader2 } from 'lucide-react'
+import { Cpu, Loader2 } from 'lucide-react'
 
 export const Route = createFileRoute('/_authed/app/_layout/devices')({
 	component: DevicesPage,

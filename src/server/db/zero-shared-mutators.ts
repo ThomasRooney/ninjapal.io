@@ -144,7 +144,7 @@ export function createSharedMutators(authData: AuthData) {
 				})
 			},
 			async validateAndRefreshCredentials(
-				tx: Transaction<Schema>,
+				_tx: Transaction<Schema>,
 				args: { userId: string },
 			) {
 				if (!authData.sub) throw new Error('Not authenticated')
@@ -200,7 +200,7 @@ export function createSharedMutators(authData: AuthData) {
 					})
 				}
 			},
-			async syncRealDevices(tx: Transaction<Schema>) {
+			async syncRealDevices(_tx: Transaction<Schema>) {
 				if (!authData.sub) throw new Error('Not authenticated')
 
 				// The actual sync logic is handled in the server mutator

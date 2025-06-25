@@ -26,7 +26,7 @@ function PersonComponent() {
 		const nextIndex = (currentIndex + 1) % persons.length
 		const nextPerson = persons[nextIndex]
 		router.navigate({
-			to: '/app/$personId',
+			to: '/_authed/app/_layout/person/$personId',
 			params: { personId: nextPerson.id },
 			replace: true, // Use replace to avoid building up history
 		})
@@ -37,7 +37,7 @@ function PersonComponent() {
 		const prevIndex = (currentIndex - 1 + persons.length) % persons.length
 		const prevPerson = persons[prevIndex]
 		router.navigate({
-			to: '/app/$personId',
+			to: '/_authed/app/_layout/person/$personId',
 			params: { personId: prevPerson.id },
 			replace: true, // Use replace to avoid building up history
 		})

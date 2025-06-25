@@ -11,10 +11,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from '@/components/ui/chart'
-import {
-	type TemperatureDataPoint,
-	generateTemperatureData,
-} from '@/lib/mock-data'
+import { generateTemperatureData } from '@/lib/mock-data'
 import { useMemo } from 'react'
 import {
 	Area,

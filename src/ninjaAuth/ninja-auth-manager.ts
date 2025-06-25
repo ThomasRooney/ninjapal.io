@@ -3,15 +3,14 @@ import { existsSync } from 'node:fs'
 import { request } from '@playwright/test'
 import { PlaywrightBrowserAutomator } from './browser-automator.ts'
 import { config } from './config.ts'
-import {
-	type AuthEvent,
-	type AuthMetrics,
-	type Credentials,
-	type EnhancedAuthState,
-	type IAuthManager,
-	type IBrowserAutomator,
-	type IdentityArtifacts,
-	UserInfoResponse,
+import type {
+	AuthEvent,
+	AuthMetrics,
+	Credentials,
+	EnhancedAuthState,
+	IAuthManager,
+	IBrowserAutomator,
+	IdentityArtifacts,
 } from './types.ts'
 
 const AUTH_STATE_FILE = 'auth-state.json'
@@ -115,7 +114,7 @@ export class NinjaAuthManager implements IAuthManager {
 			if (!request) {
 				throw new Error('In-flight request not found')
 			}
-			return request
+			return request as Promise<IdentityArtifacts>
 		}
 
 		// Perform browser authentication with race condition protection
@@ -295,7 +294,7 @@ export class NinjaAuthManager implements IAuthManager {
 			if (!request) {
 				throw new Error('In-flight request not found')
 			}
-			return request
+			return request as Promise<string>
 		}
 
 		// Perform token acquisition with race condition protection

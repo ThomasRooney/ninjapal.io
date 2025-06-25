@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input.tsx'
 import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
 import { cn } from '@/lib/utils.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -33,7 +33,6 @@ export function SupabaseSignupForm({
 	className,
 	...props
 }: React.ComponentPropsWithoutRef<'div'>) {
-	const navigate = useNavigate()
 	const [status, setStatus] = useState<
 		'idle' | 'pending' | 'success' | 'error'
 	>('idle')
@@ -54,7 +53,7 @@ export function SupabaseSignupForm({
 
 		try {
 			const supabase = getSupabaseBrowserClient()
-			const { error, data } = await supabase.auth.signUp({
+			const { error } = await supabase.auth.signUp({
 				email: values.email,
 				password: values.password,
 			})
