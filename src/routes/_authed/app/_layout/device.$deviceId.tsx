@@ -10,7 +10,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
-import { notFound } from '@tanstack/react-router'
 import {
 	Activity,
 	AlertCircle,
@@ -34,7 +33,7 @@ function DeviceDetailPage() {
 	const device = devices?.[0]
 
 	if (devices && !device) {
-		return null;
+		return null
 	}
 
 	if (!devices) {
