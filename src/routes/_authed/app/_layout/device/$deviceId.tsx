@@ -24,6 +24,10 @@ import {
 
 export const Route = createFileRoute('/_authed/app/_layout/device/$deviceId')({
 	component: DeviceDetailPage,
+	// ssr: false is explicitly set here because the setting from the parent
+	// /app route is not being inherited by this nested dynamic route. This
+	// prevents 404 errors on page reload in SPA mode.
+	ssr: false,
 })
 
 function DeviceDetailPage() {
