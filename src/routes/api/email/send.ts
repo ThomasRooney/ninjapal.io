@@ -1,5 +1,5 @@
 import { sendEmail } from '@/server/email/send.ts'
-import { createAPIFileRoute } from '@tanstack/react-start/api'
+import { createServerFileRoute } from '@tanstack/react-start/server'
 import React from 'react'
 import { z } from 'zod'
 
@@ -11,7 +11,7 @@ const emailSchema = z.object({
 	data: z.record(z.unknown()),
 })
 
-export const APIRoute = createAPIFileRoute('/api/email/send')({
+export const ServerRoute = createServerFileRoute('/api/email/send').methods({
 	POST: async ({ request }) => {
 		try {
 			// Parse the request body
@@ -41,9 +41,7 @@ export const APIRoute = createAPIFileRoute('/api/email/send')({
 				JSON.stringify({
 					success: true,
 					messageId:
-						typeof result === 'object' && result !== null
-							? result.id
-							: undefined,
+						typeof result === 'object' && result !== null ? result.id : undefined,
 				}),
 				{
 					headers: {

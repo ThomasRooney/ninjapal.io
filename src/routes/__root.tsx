@@ -103,7 +103,9 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	const { user } = Route.useRouteContext()
+	const ctx = Route.useRouteContext()
+
+	const user = ctx.user
 
 	console.log('Server-side route context:', { user })
 

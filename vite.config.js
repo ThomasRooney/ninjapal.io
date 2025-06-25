@@ -3,16 +3,16 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 import { resolve } from 'node:path'
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import tsConfigPaths from 'vite-tsconfig-paths'
 
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
-		TanStackRouterVite({
-			target: 'react',
-			autoCodeSplitting: true,
-			routeFileIgnorePattern: 'api/*',
+		tsConfigPaths({
+			projects: ['./tsconfig.json'],
 		}),
+		tanstackStart({}),
 		react(),
 		tailwindcss(),
 	],
