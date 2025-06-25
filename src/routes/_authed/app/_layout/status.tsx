@@ -18,6 +18,8 @@ import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { RefreshCw } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import type { Schema } from "@/server/db/zero-schema.gen.ts";
+import type { SharedMutators } from "@/server/db/zero-shared-mutators.ts";
 
 export const Route = createFileRoute('/_authed/app/_layout/status')({
 	component: RouteComponent,
@@ -39,7 +41,7 @@ interface Device {
 }
 
 function RouteComponent() {
-	const z = useZero()
+	const z = useZero<Schema, SharedMutators>()
 	const [devices] = useQuery(z.query.devices)
 	const [selectedDevice, setSelectedDevice] = useState<Record<
 		string,
@@ -50,9 +52,7 @@ function RouteComponent() {
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true)
 		try {
-			// TODO: Fix type issue with syncRealDevices
-			// @ts-ignore
-			await z.mutate.syncRealDevices()
+			await z.mutate.devices.syncRealDevices().server;
 		} catch (error) {
 			console.error('Failed to sync devices:', error)
 			// Optionally show an error toast/notification here

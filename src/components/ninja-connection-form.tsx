@@ -12,6 +12,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Schema } from '@/server/db/zero-schema.gen.ts'
+import type { SharedMutators } from '@/server/db/zero-shared-mutators.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { useMutation } from '@tanstack/react-query'
@@ -33,12 +34,12 @@ export function NinjaConnectionForm() {
 	const routerState = useRouterState()
 	const user = routerState.matches[0]?.context?.user
 	const navigate = useNavigate({
-		from: '/_authed/app/_layout/ninja-connection',
+		from: '/app/ninja-connection',
 	})
 	const search = useSearch({
 		from: '/_authed/app/_layout/ninja-connection',
 	}) as { mode?: string }
-	const z = useZero<Schema>()
+	const z = useZero<Schema, SharedMutators>()
 
 	const [connections] = useQuery(z.query.ninjaConnections)
 
@@ -86,11 +87,9 @@ export function NinjaConnectionForm() {
 
 	const testCredentialsMutation = useMutation({
 		mutationFn: async () => {
-			// TODO: Fix type issue with validateAndRefreshCredentials
-			// @ts-ignore
 			await z.mutate.ninjaConnections.validateAndRefreshCredentials({
 				userId: user?.id || '',
-			})
+			}).server
 		},
 		onSuccess: () => {
 			// Credentials tested successfully
