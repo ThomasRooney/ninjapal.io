@@ -34,7 +34,7 @@ function DeviceDetailPage() {
 	const device = devices?.[0]
 
 	if (devices && !device) {
-		throw notFound()
+		return null;
 	}
 
 	if (!devices) {
