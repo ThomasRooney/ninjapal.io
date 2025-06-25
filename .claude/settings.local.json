@@ -20,7 +20,8 @@
       "Bash(brew install:*)",
       "Bash(rg:*)",
       "WebFetch(domain:github.com)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(npm run check:*)"
     ],
     "deny": []
   }

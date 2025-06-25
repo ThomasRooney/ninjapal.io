@@ -6,7 +6,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCallback } from 'react'
 
-export const Route = createFileRoute('/_authed/app/_layout/$personId')({
+export const Route = createFileRoute('/_authed/app/_layout/person/$personId')({
 	component: PersonComponent,
 	ssr: false,
 })

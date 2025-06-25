@@ -41,7 +41,9 @@ export const ServerRoute = createServerFileRoute('/api/email/send').methods({
 				JSON.stringify({
 					success: true,
 					messageId:
-						typeof result === 'object' && result !== null ? result.id : undefined,
+						typeof result === 'object' && result !== null
+							? result.id
+							: undefined,
 				}),
 				{
 					headers: {
