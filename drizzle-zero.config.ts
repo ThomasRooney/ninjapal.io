@@ -18,13 +18,6 @@ export default drizzleZeroConfig(drizzleSchema, {
       email: true,
       name: true,
     },
-    persons: {
-      // or this can be set to false
-      // e.g. id: false,
-      id: true,
-      name: true,
-      email: true, // New column - now enabled for Zero sync
-    },
     ninjaConnections: {
       userId: true, // Enable for Zero sync
       username: true,
