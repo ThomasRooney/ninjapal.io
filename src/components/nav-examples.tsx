@@ -6,7 +6,6 @@ import {
 	Cpu,
 	DatabaseZap,
 	Mail,
-	TreePalm,
 	Unplug,
 	UserIcon,
 	Users,
@@ -31,11 +30,6 @@ const items = [
 		title: 'Zero Users',
 		url: '/app/users',
 		icon: Users,
-	},
-	{
-		title: 'Tanstack Examples',
-		url: '/app/tanstack-examples',
-		icon: TreePalm,
 	},
 	{
 		title: 'Emails',
