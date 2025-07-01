@@ -1,129 +1,87 @@
-# Ninja Pal
+# ninjapal.io
 
-A modern full-stack starter with Supabase authentication, Zero Sync for real-time data, and TanStack Start.
+Real-time BBQ & smoker monitoring for the perfect cook, every time.
+
+## What is Ninja Pal?
+
+Ninja Pal is a web application that connects to your BBQ smoker for remote monitoring and control. Track temperatures, get alerts, and review your cook history - all from your phone or computer.
+
+## Key Features
+
+- **Real-Time Monitoring** - Live temperature tracking for grill and multiple probes
+- **Temperature Charts** - Visual graphs showing temperature trends over time  
+- **Smart Alerts** - Notifications when target temps are reached or device goes offline
+- **Cook Controls** - Start/stop cooks, adjust temperatures, and switch cooking modes
+- **Cook History** - Log every session with CSV export capability
+- **Multi-Device Support** - Manage multiple smokers from one dashboard
+
+## Tech Stack
+
+- **Frontend**: React + TanStack Router
+- **Backend**: Supabase (PostgreSQL)
+- **Real-time**: Zero Sync
+- **ORM**: Drizzle
+- **UI**: Tailwind CSS + shadcn/ui
+- **Runtime**: Bun
 
 ## Quick Start
 
-### Option 1: Local Development (Recommended)
+### Local Development
 
 ```bash
-# Install dependencies
+# Clone and install
+git clone https://github.com/your-username/ninjapal.io.git
+cd ninjapal.io
 bun install
 
-# Set up environment
+# Setup environment
 cp .env.local.example .env
 
-# Start local Supabase
+# Start local services
 bun supabase:start
-
-# Push the schema to the database
 bun db:push
+bun zero-cache    # In a new terminal
 
-# Start Zero Cache
-bun zero-cache
-
-# Start dev server (in another terminal)
+# Start development
 bun dev
 ```
 
-### Option 2: Cloud Supabase
+Visit http://localhost:3000
+
+### Using Cloud Supabase
 
 ```bash
-# Install dependencies
-bun install
-
-# Set up environment
+# Setup environment
 cp .env.cloud.example .env
-# Edit .env with your Supabase project credentials
+# Add your Supabase project URL and anon key to .env
 
-# Push the schema to the database
+# Initialize database
 bun db:push
 
-# Start Zero Cache
-bun zero-cache
-
-# Start dev server
+# Start services
+bun zero-cache    # In a new terminal
 bun dev
 ```
 
-## Stack
-
-- Tanstack Start
-- Zero Sync
-- Supabase
-- Drizzle
-- Shadcn
-- Biome
-- React Email
-- Resend
-- Shadcn UI
-
-## Available Scripts
-
-### Supabase Management
+## Development Commands
 
 ```bash
-bun supabase:start    # Start local Supabase services
-bun supabase:stop     # Stop local Supabase services
-bun supabase:status   # Check status of local services
-bun supabase:reset    # Reset local database to initial state
-bun db:seed           # Reset and seed database
+# Database
+bun db:push          # Push schema changes
+bun db:seed          # Reset and seed database  
+bun db:studio        # Open Drizzle Studio
+
+# Development
+bun dev              # Start dev server
+bun build            # Build for production
+bun check            # Run linter/formatter
+
+# Supabase (local)
+bun supabase:start   # Start local Supabase
+bun supabase:stop    # Stop local Supabase
+bun supabase:reset   # Reset database
 ```
 
-### Development
+## License
 
-```bash
-bun dev               # Start development server
-bun zero-cache        # Start Zero cache server
-bun build             # Build for production
-```
-
-### Database & Schema
-
-```bash
-bun db:push           # Push schema changes to database
-bun db:generate       # Generate migration files
-bun db:migrate        # Apply migrations
-bun db:studio         # Open Drizzle Studio
-bun db:zero:generate  # Generate Zero schema
-```
-
-## Schema workflow
-
-- Edit your Drizzle schema in `src/db/schema.ts`.
-- Run `bun db:zero:generate` to update your Zero schema.
-- Run `bun db:generate` to scaffold a migration.
-- Apply with `bun db:migrate` (or `bun db:push` to force-sync).
-- Restart Zero cache (`bun zero-cache`).
-- Restart your dev server (`bun dev`).
-
-## Email workflow
-
-- Edit your React Email templates in `src/emails`.
-- Run `bun email:dev` to start the email server.
-- Run `bun email:export` to export the emails.
-- Run `bun email:send` to send an email.
-
-## Troubleshooting
-
-### Zero Cache "Port in Use" Error
-
-If you get an error when running `bun zero-cache` that the port is already in use, you can kill existing zero-cache processes:
-
-```bash
-# Kill all zero-cache processes
-pkill -f zero-cache
-
-# Then restart zero-cache
-bun zero-cache
-```
-
-Alternatively, you can find and kill specific processes:
-
-```bash
-# Find zero-cache processes
-ps aux | grep zero-cache
-
-# Kill by PID (replace XXXX with actual PID)
-kill XXXX
-```
+MIT
