@@ -81,7 +81,3 @@ bun supabase:start   # Start local Supabase
 bun supabase:stop    # Stop local Supabase
 bun supabase:reset   # Reset database
 ```
-
-## License
-
-MIT
