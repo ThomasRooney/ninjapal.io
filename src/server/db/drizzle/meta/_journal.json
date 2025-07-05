@@ -22,6 +22,13 @@
 			"when": 1750806478065,
 			"tag": "0002_brown_doctor_octopus",
 			"breakpoints": true
+		},
+		{
+			"idx": 3,
+			"version": "7",
+			"when": 1751736897541,
+			"tag": "0003_fat_vargas",
+			"breakpoints": true
 		}
 	]
 }

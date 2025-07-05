@@ -8,8 +8,15 @@ import {
 	CardTitle,
 } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getSupabaseServerClient } from '@/lib/supabase'
+import { formatTemperature } from '@/lib/temperature-utils'
+import { createDb } from '@/server/db/db'
+import * as schema from '@/server/db/schema'
+import { users } from '@/server/db/schema'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
+import { eq } from 'drizzle-orm'
 import {
 	Activity,
 	AlertCircle,
@@ -20,13 +27,46 @@ import {
 	WifiOff,
 } from 'lucide-react'
 
+const getUserPreferences = createServerFn({
+	method: 'GET',
+}).handler(async () => {
+	const supabase = await getSupabaseServerClient()
+	const {
+		data: { session },
+	} = await supabase.auth.getSession()
+
+	if (!session?.user?.id) {
+		return { prefers_celsius: false }
+	}
+
+	const databaseUrl =
+		process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL
+	if (!databaseUrl) {
+		throw new Error('Database URL not configured')
+	}
+
+	const db = await createDb(databaseUrl, schema)
+	const result = await db
+		.select({ prefers_celsius: users.prefers_celsius })
+		.from(users)
+		.where(eq(users.id, session.user.id))
+		.limit(1)
+
+	return { prefers_celsius: result[0]?.prefers_celsius ?? false }
+})
+
 export const Route = createFileRoute('/_authed/app/_layout/device/$deviceId')({
 	component: DeviceDetailPage,
 	ssr: false,
+	loader: async () => {
+		const preferences = await getUserPreferences()
+		return { preferences }
+	},
 })
 
 function DeviceDetailPage() {
 	const { deviceId } = Route.useParams()
+	const { preferences } = Route.useLoaderData()
 	const z = useZero()
 	const [devices] = useQuery(z.query.devices.where('id', deviceId))
 
@@ -110,14 +150,21 @@ function DeviceDetailPage() {
 								<div className='flex items-center justify-between'>
 									<Thermometer className='h-5 w-5 text-muted-foreground' />
 									<div className='text-right'>
-										<p className='text-2xl font-bold'>
+										<p className='text-2xl font-bold' data-testid='temperature-display'>
 											{grillState?.inputs?.temps?.grill
-												? `${grillState.inputs.temps.grill}°F`
+												? formatTemperature(
+														grillState.inputs.temps.grill,
+														preferences.prefers_celsius,
+													)
 												: '—'}
 										</p>
 										{device.temperature_setpoint && (
 											<p className='text-sm text-muted-foreground'>
-												Target: {device.temperature_setpoint}°F
+												Target:{' '}
+												{formatTemperature(
+													device.temperature_setpoint,
+													preferences.prefers_celsius,
+												)}
 											</p>
 										)}
 									</div>
@@ -196,7 +243,10 @@ function DeviceDetailPage() {
 											{probe['plugged in'] && (
 												<div className='text-right'>
 													<p className='text-xl font-semibold'>
-														{probe.temp}°F
+														{formatTemperature(
+															probe.temp,
+															preferences.prefers_celsius,
+														)}
 													</p>
 													{probe.progress < 100 && (
 														<p className='text-sm text-muted-foreground'>
@@ -260,7 +310,12 @@ function DeviceDetailPage() {
 									<div>
 										<p className='text-sm text-muted-foreground'>Setpoint</p>
 										<p>
-											{grillState.setpoint ? `${grillState.setpoint}°F` : '—'}
+											{grillState.setpoint
+												? formatTemperature(
+														grillState.setpoint,
+														preferences.prefers_celsius,
+													)
+												: '—'}
 										</p>
 									</div>
 									<div>

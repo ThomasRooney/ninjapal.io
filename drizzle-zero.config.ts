@@ -17,6 +17,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       id: true,
       email: true,
       name: true,
+      prefers_celsius: false, // Initially false during expand phase
     },
     ninjaConnections: {
       userId: true, // Enable for Zero sync

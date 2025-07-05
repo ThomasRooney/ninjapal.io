@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { request } from '@playwright/test'
 import { PlaywrightBrowserAutomator } from './browser-automator.ts'
-import { config } from './config.ts'
+import { AYLA_PUBLIC_CONFIG, config, getAylaServerConfig } from './config.ts'
 import type {
 	AuthEvent,
 	AuthMetrics,
@@ -572,7 +572,7 @@ export class NinjaAuthManager implements IAuthManager {
 					data: {
 						token: idToken,
 						app_id: config.ayla.appId,
-						app_secret: config.ayla.appSecret,
+						app_secret: getAylaServerConfig().APP_SECRET,
 					},
 				},
 			)
