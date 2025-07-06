@@ -58,6 +58,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       temp_mainpcb: true,
       probe1_temp: true,
       probe2_temp: true,
+      temp_smoke: false, // New column - disabled for migration
       
       // Cooking State
       cook_state_raw: true,
@@ -70,6 +71,14 @@ export default drizzleZeroConfig(drizzleSchema, {
       // Device State
       power_state: true,
       error_code: true,
+      
+      // Grill State flattened fields - disabled for migration
+      gs_state: false, // New column from grill_state_raw.state
+      gs_message: false, // New column from grill_state_raw.message
+      gs_eventmask: false, // New column from grill_state_raw.eventmask
+      gs_sim: false, // New column from grill_state_raw.sim
+      
+      // RAW JSON fields (to be deprecated)
       grill_state_raw: true,
       probe_state_raw: true,
       combined_state_raw: true,

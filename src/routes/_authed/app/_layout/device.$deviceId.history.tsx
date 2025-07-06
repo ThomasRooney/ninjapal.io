@@ -1,6 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useZero } from '@/hooks/use-typed-zero'
-import { reconstructHistorySnapshots } from '@/lib/historyUtils'
+import {
+	type HistoryChange,
+	calculateHistoryDiffs,
+	reconstructHistorySnapshots,
+} from '@/lib/historyUtils'
 import { useQuery } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { History, Loader2 } from 'lucide-react'
@@ -49,8 +53,11 @@ function DeviceHistoryPage() {
 	)
 
 	// Process the records to extract full device state at each point in time
+	// and calculate the differences between consecutive entries
 	const history = useMemo(() => {
-		return reconstructHistorySnapshots(historyRecords)
+		if (!historyRecords) return []
+		const snapshots = reconstructHistorySnapshots(historyRecords)
+		return calculateHistoryDiffs(snapshots)
 	}, [historyRecords])
 
 	if (!historyRecords) {
@@ -107,10 +114,10 @@ function DeviceHistoryPage() {
 							</span>
 						</div>
 					</CardHeader>
-					{Object.keys(entry.state).length > 0 && (
+					{Object.keys(entry.fields).length > 0 ? (
 						<CardContent>
 							<div className='space-y-2'>
-								{Object.entries(entry.state)
+								{Object.entries(entry.fields)
 									.sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
 									.map(([field, value]) => (
 										<div
@@ -120,12 +127,40 @@ function DeviceHistoryPage() {
 											<span className='font-medium mr-2'>
 												{getFieldDisplayName(field)}:
 											</span>
-											<span className='text-right text-muted-foreground'>
-												{formatFieldValue(value)}
+											<span className='text-right'>
+												{value.status === 'added' && (
+													<span className='text-green-600'>
+														{formatFieldValue(value.to)}
+													</span>
+												)}
+												{value.status === 'removed' && (
+													<span className='text-red-500 line-through'>
+														{formatFieldValue(value.from)}
+													</span>
+												)}
+												{value.status === 'changed' && (
+													<>
+														<span className='text-red-500 line-through'>
+															{formatFieldValue(value.from)}
+														</span>
+														<span className='mx-1 text-muted-foreground'>
+															→
+														</span>
+														<span className='text-green-600'>
+															{formatFieldValue(value.to)}
+														</span>
+													</>
+												)}
 											</span>
 										</div>
 									))}
 							</div>
+						</CardContent>
+					) : (
+						<CardContent>
+							<p className='text-sm text-muted-foreground'>
+								No changes detected in this event.
+							</p>
 						</CardContent>
 					)}
 				</Card>

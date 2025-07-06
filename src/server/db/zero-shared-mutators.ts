@@ -206,13 +206,27 @@ export function createSharedMutators(authData: AuthData) {
 				// This shared mutator just handles permission checks
 			},
 			async update(
-				_tx: Transaction<Schema>,
-				_args: { id: string; data: Record<string, unknown> },
+				tx: Transaction<Schema>,
+				args: { id: string; data: Record<string, unknown> },
 			) {
 				if (!authData.sub) throw new Error('Not authenticated')
 
-				// The actual update logic is handled in the server mutator
-				// This shared mutator just handles permission checks
+				// Verify the device belongs to the user
+				const device = await tx.query.devices
+					.where('id', args.id)
+					.where('userId', authData.sub)
+					.one()
+					.run()
+
+				if (!device) {
+					throw new Error('Device not found or access denied')
+				}
+
+				// Perform the update
+				await tx.mutate.devices.update({
+					id: args.id,
+					...args.data,
+				})
 			},
 		},
 	} as const satisfies CustomMutatorDefs<Schema>

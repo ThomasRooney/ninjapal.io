@@ -484,6 +484,63 @@ export function createServerMutators(
 
 								// Set the value in deviceData only if column is enabled
 								deviceData[columnName] = convertedValue
+
+								// Special handling for GET_GrillState - flatten the JSON structure
+								if (propName === 'GET_GrillState' && propValue) {
+									try {
+										const grillState =
+											typeof propValue === 'string'
+												? JSON.parse(propValue)
+												: propValue
+
+										// Flatten top-level grill state fields
+										if (grillState.state !== undefined)
+											deviceData.gs_state = grillState.state
+										if (grillState.message !== undefined)
+											deviceData.gs_message = grillState.message
+										if (grillState.eventmask !== undefined)
+											deviceData.gs_eventmask = grillState.eventmask
+										if (grillState.sim !== undefined)
+											deviceData.gs_sim = grillState.sim
+
+										// Extract nested temperature data
+										if (grillState.inputs?.temps) {
+											const temps = grillState.inputs.temps
+
+											// IMPORTANT: The temperature values set here are preliminary fallbacks.
+											// They will be overwritten by the more accurate GET_Temp_* properties
+											// processed later in this loop. This dual-write approach ensures we have
+											// some data even if individual temperature properties are missing.
+											if (temps.grill !== undefined)
+												deviceData.temp_grill = temps.grill
+											if (temps.air !== undefined)
+												deviceData.temp_air = temps.air
+											if (temps.smoke !== undefined)
+												deviceData.temp_smoke = temps.smoke
+											if (temps.probe0_a !== undefined)
+												deviceData.probe1_temp = temps.probe0_a
+											if (temps.probe1_a !== undefined)
+												deviceData.probe2_temp = temps.probe1_a
+											if (temps.main !== undefined)
+												deviceData.temp_mainpcb = temps.main
+											if (temps.ui !== undefined)
+												deviceData.temp_uipcb = temps.ui
+										}
+
+										// Extract IO data
+										if (grillState.inputs?.io) {
+											const io = grillState.inputs.io
+											if (io['lid open'] !== undefined) {
+												deviceData.is_lid_open = io['lid open'] === 1
+											}
+										}
+									} catch (error) {
+										console.warn(
+											`Failed to parse grill_state for device ${device.dsn}:`,
+											error,
+										)
+									}
+								}
 							}
 						}
 

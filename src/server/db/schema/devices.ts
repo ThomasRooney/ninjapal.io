@@ -58,6 +58,15 @@ export const devices = pgTable(
 		// Device State
 		power_state: varchar('power_state', { length: 50 }),
 		error_code: integer('error_code'),
+
+		// Grill State flattened from grill_state_raw
+		gs_state: varchar('gs_state', { length: 50 }), // from 'state'
+		gs_message: text('gs_message'), // from 'message'
+		gs_eventmask: varchar('gs_eventmask', { length: 50 }), // from 'eventmask'
+		gs_sim: integer('gs_sim'), // from 'sim'
+		temp_smoke: numeric('temp_smoke', { precision: 5, scale: 1 }), // from inputs.temps.smoke
+
+		// RAW JSON fields (to be deprecated)
 		grill_state_raw: text('grill_state_raw'), // JSON string
 		probe_state_raw: text('probe_state_raw'), // JSON string
 		combined_state_raw: text('combined_state_raw'), // JSON string
