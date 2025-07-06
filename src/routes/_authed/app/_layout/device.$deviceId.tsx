@@ -335,7 +335,6 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 												{formatTemperature(
 													probe.temp,
 													zeroUser?.prefers_celsius ?? false,
-													'celsius',
 												)}
 											</p>
 											{probe.progress < 100 && (
@@ -360,8 +359,8 @@ function DeviceDetailLayout() {
 	const z = useZero()
 	const matchRoute = useMatchRoute()
 
-	// Check if we're on the index route
-	const isIndex = matchRoute({ to: '/app/device/$deviceId', fuzzy: false })
+	// Check if we're on the index route using the route's own path
+	const isIndex = matchRoute({ to: Route.fullPath, fuzzy: false })
 
 	// Get the current user from route context
 	const { user } = Route.useRouteContext()

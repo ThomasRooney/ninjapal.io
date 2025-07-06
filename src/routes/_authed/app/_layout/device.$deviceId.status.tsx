@@ -92,6 +92,7 @@ function DeviceStatusPage() {
 										? formatTemperature(
 												grillState.setpoint,
 												zeroUser?.prefers_celsius ?? false,
+												'celsius',
 											)
 										: '—'}
 								</p>

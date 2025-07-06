@@ -17,7 +17,7 @@ export const celsiusToFahrenheit = (
 export const formatTemperature = (
 	temp: number | null | undefined,
 	prefersCelsius: boolean,
-	raw_data_format: TemperatureUnit = 'fahrenheit',
+	raw_data_format: TemperatureUnit = 'celsius',
 ): string => {
 	if (temp === null || temp === undefined) return '--'
 
