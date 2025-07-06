@@ -7,12 +7,12 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
-import type { Schema } from '@/server/db/zero-schema.gen.ts'
-import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useZero } from '@/hooks/use-typed-zero'
+import { useQuery } from '@rocicorp/zero/react'
 import { formatDistanceToNow } from 'date-fns'
 
 export function NinjaConnectionDebug() {
-	const z = useZero<Schema>()
+	const z = useZero()
 
 	// Query ninja connection data from Zero
 	const [connections] = useQuery(z.query.ninjaConnections)

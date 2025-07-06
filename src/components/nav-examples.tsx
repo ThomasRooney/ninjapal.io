@@ -1,7 +1,8 @@
 'use client'
 
+import { useIsFetching } from '@tanstack/react-query'
 import { Link, useMatches } from '@tanstack/react-router'
-import { Activity, Cpu, Mail, Unplug, UserIcon } from 'lucide-react'
+import { Activity, Cpu, Loader2, Mail, Unplug, UserIcon } from 'lucide-react'
 
 import {
 	SidebarGroup,
@@ -43,6 +44,8 @@ const items = [
 export function NavExamples() {
 	const matches = useMatches()
 	const currentPath = matches[matches.length - 1]?.pathname
+	const isSyncing = useIsFetching({ queryKey: ['devices', 'syncPoller'] })
+	const isDeviceSyncLoading = isSyncing > 0
 
 	return (
 		<SidebarGroup>
@@ -59,6 +62,9 @@ export function NavExamples() {
 								<Link to={item.url}>
 									{item.icon && <item.icon className='h-4 w-4' />}
 									<span>{item.title}</span>
+									{item.title === 'Devices' && isDeviceSyncLoading && (
+										<Loader2 className='h-3 w-3 animate-spin ml-auto' />
+									)}
 								</Link>
 							</SidebarMenuButton>
 						</SidebarMenuItem>

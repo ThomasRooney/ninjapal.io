@@ -14,8 +14,9 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from '@/components/ui/tooltip.tsx'
+import { useZero } from '@/hooks/use-typed-zero'
 import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
-import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useQuery } from '@rocicorp/zero/react'
 import { BugIcon, CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 

@@ -14,9 +14,8 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table.tsx'
-import type { Schema } from '@/server/db/zero-schema.gen.ts'
-import type { SharedMutators } from '@/server/db/zero-shared-mutators.ts'
-import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useZero } from '@/hooks/use-typed-zero'
+import { useQuery } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { RefreshCw } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -41,7 +40,7 @@ interface Device {
 }
 
 function RouteComponent() {
-	const z = useZero<Schema, SharedMutators>()
+	const z = useZero()
 	const [devices] = useQuery(z.query.devices)
 	const [selectedDevice, setSelectedDevice] = useState<Record<
 		string,

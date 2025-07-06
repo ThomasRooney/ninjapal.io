@@ -214,377 +214,410 @@ export function createServerMutators(
 				}
 				const userId = authData.sub // TypeScript now knows this is not null
 
-				// Get the connection from the database
-				const connection = await tx.query.ninjaConnections
-					.where('userId', userId)
-					.one()
-					.run()
-
-				if (!connection) {
-					throw new Error('No connection found for user')
-				}
-
-				if (!connection.username || !connection.password) {
-					throw new Error('Credentials not set')
-				}
-
-				// Import the NinjaAuthManager and property mappings
-				const { NinjaAuthManager } = await import(
-					'@/ninjaAuth/ninja-auth-manager.ts'
-				)
-				const { DEVICE_PROPERTY_MAPPINGS } = await import(
-					'@/server/db/device-property-mappings.ts'
-				)
-
-				// Create auth manager instance with stored state if available
-				const initialState: EnhancedAuthState = {}
-
-				if (
-					connection.oauthAccessToken &&
-					connection.oauthRefreshToken &&
-					connection.oauthExpiresAt
-				) {
-					initialState.oauthTokens = {
-						accessToken: connection.oauthAccessToken,
-						idToken: '', // We don't store this, will be refreshed
-						refreshToken: connection.oauthRefreshToken,
-						expiresAt: connection.oauthExpiresAt,
-					}
-				}
-
-				if (connection.aylaAccessToken && connection.aylaExpiresAt) {
-					initialState.aylaToken = {
-						accessToken: connection.aylaAccessToken,
-						refreshToken: connection.aylaRefreshToken || undefined,
-						expiresAt: connection.aylaExpiresAt,
-					}
-				}
-
-				const authManager = NinjaAuthManager.create(
-					{
-						email: connection.username,
-						password: connection.password,
-					},
-					initialState,
-				)
-
-				// Get API token (will refresh if expired)
-				const apiToken = await authManager.getAPIToken()
-
-				// Check if state changed and update DB if needed
-				const newState = authManager.getState()
-				if (
-					newState.aylaToken?.accessToken !== connection.aylaAccessToken ||
-					newState.aylaToken?.expiresAt !== connection.aylaExpiresAt
-				) {
-					await sharedMutators.ninjaConnections.updateTokens(tx, {
-						userId: userId,
-						aylaAccessToken: newState.aylaToken?.accessToken || null,
-						aylaRefreshToken: newState.aylaToken?.refreshToken || null,
-						aylaExpiresAt: newState.aylaToken?.expiresAt || null,
-					})
-				}
-
-				// Prepare headers for API calls
-				const headers = {
-					authorization: `auth_token ${apiToken}`,
-					accept: 'application/json',
-					'user-agent':
-						'Dalvik/2.1.0 (Linux; U; Android 16; sdk_gphone64_arm64 Build/BP22.250325.006)',
-				}
-
-				// Fetch devices
-				const devicesResponse = await fetch(
-					'https://ads-eu.aylanetworks.com/apiv1/devices.json',
-					{ headers },
-				)
-
-				if (!devicesResponse.ok) {
-					throw new Error(
-						`Failed to fetch devices: ${devicesResponse.status} ${devicesResponse.statusText}`,
-					)
-				}
-
-				const devicesData = await devicesResponse.json()
-
-				// Fetch properties for each device concurrently
-				interface DeviceWrapper {
-					device: {
-						dsn: string
-						product_name?: string
-						model?: string
-						mac?: string
-						lan_ip?: string
-						connection_status?: string
-						[key: string]: unknown
-					}
-				}
-				const propertyPromises = devicesData.map(
-					async (deviceWrapper: DeviceWrapper) => {
-						const device = deviceWrapper.device
-						try {
-							const propsResponse = await fetch(
-								`https://ads-eu.aylanetworks.com/apiv1/dsns/${device.dsn}/properties.json`,
-								{ headers },
-							)
-							if (propsResponse.ok) {
-								const propsData = await propsResponse.json()
-								return { device, properties: propsData }
-							}
-							return { device, properties: null }
-						} catch (error) {
-							console.warn(
-								`Failed to fetch properties for device ${device.dsn}:`,
-								error,
-							)
-							return { device, properties: null }
-						}
-					},
-				)
-
-				const propertyResults = await Promise.allSettled(propertyPromises)
-
-				// Log any failures
-				const failedCount = propertyResults.filter(
-					(r) => r.status === 'rejected',
-				).length
-				if (failedCount > 0) {
-					console.warn(
-						`[Server] Failed to fetch properties for ${failedCount} devices`,
-					)
-				}
-
-				// Extract successful results
-				const devicesWithProperties = propertyResults
-					.filter(
-						(
-							result,
-						): result is PromiseFulfilledResult<{
-							device: DeviceWrapper['device']
-							properties: unknown
-						}> => result.status === 'fulfilled',
-					)
-					.map((result) => result.value)
-
-				// Insert new devices
-				for (const { device, properties } of devicesWithProperties) {
-					// Transform properties array into a more useful object format
-					const propertiesMap: Record<string, unknown> = {}
-					if (properties && Array.isArray(properties)) {
-						for (const propWrapper of properties) {
-							const prop = propWrapper.property
-							if (prop?.name) {
-								propertiesMap[prop.name] = {
-									value: prop.value,
-									type: prop.type,
-									base_type: prop.base_type,
-									updated_at: prop.data_updated_at,
-								}
-							}
-						}
-					}
-
-					// Create filtered properties map that excludes mapped properties
-					const filteredPropertiesMap = Object.fromEntries(
-						Object.entries(propertiesMap).filter(
-							([propName]) => !DEVICE_PROPERTY_MAPPINGS[propName],
-						),
-					)
-
-					// Define keys that are already handled as dedicated columns
-					const handledTopLevelKeys = new Set([
-						'dsn',
-						'product_name',
-						'model',
-						'mac',
-						'lan_ip',
-						'connection_status',
-						'properties', // Original properties array from API
-					])
-
-					// Extract only unmapped device fields
-					const unmappedApiFields = Object.fromEntries(
-						Object.entries(device).filter(
-							([key]) => !handledTopLevelKeys.has(key),
-						),
-					)
-
-					// Build clean additionalDeviceProperties without duplication
-					const additionalDeviceProperties = {
-						...unmappedApiFields,
-						properties: filteredPropertiesMap,
-						lastSyncedAt: new Date().toISOString(),
-					}
-
-					// Build device data with mapped properties
-					const deviceData: Record<string, unknown> = {
-						id: crypto.randomUUID(),
-						userId: userId,
-						dsn: device.dsn,
-						productName: device.product_name || null,
-						model: device.model || null,
-						mac: device.mac || null,
-						lanIp: device.lan_ip || null,
-						connectionStatus: device.connection_status || 'unknown',
-						additionalDeviceProperties,
-						createdAt: Date.now(),
-						updatedAt: Date.now(),
-					}
-
-					// Map each property to its corresponding column
-					for (const [propName, propData] of Object.entries(propertiesMap)) {
-						const mapping = DEVICE_PROPERTY_MAPPINGS[propName]
-						if (mapping) {
-							const { columnName, dataType } = mapping
-							const propValue = (propData as Record<string, unknown>).value
-
-							// Convert value based on data type
-							let convertedValue = null
-							if (propValue !== null && propValue !== undefined) {
-								switch (dataType) {
-									case 'integer':
-										convertedValue =
-											typeof propValue === 'number'
-												? propValue
-												: Number.parseInt(propValue as string)
-										break
-									case 'numeric':
-										convertedValue =
-											typeof propValue === 'number'
-												? propValue
-												: Number.parseFloat(propValue as string)
-										break
-									case 'boolean':
-										convertedValue =
-											typeof propValue === 'boolean'
-												? propValue
-												: propValue === 1 ||
-													propValue === '1' ||
-													propValue === 'true'
-										break
-									case 'timestamptz':
-										// Handle timestamp conversion - expected format may vary
-										if (propName === 'GET_Estimated_End_Time' && propValue) {
-											// Try to parse as Unix timestamp or ISO string
-											const parsed =
-												typeof propValue === 'number'
-													? new Date(propValue * 1000) // Unix timestamp
-													: new Date(propValue as string | number)
-											convertedValue = Number.isNaN(parsed.getTime())
-												? null
-												: parsed
-										}
-										break
-									default:
-										convertedValue = String(propValue)
-										break
-								}
-							}
-
-							// Set the value in deviceData only if column is enabled
-							deviceData[columnName] = convertedValue
-						}
-					}
-
-					// Check if device already exists
-					const existingDevice = await tx.query.devices
-						.where('dsn', device.dsn)
+				try {
+					// Get the connection from the database
+					const connection = await tx.query.ninjaConnections
 						.where('userId', userId)
 						.one()
 						.run()
 
-					if (existingDevice?.id) {
-						// Update existing device - history tracking happens in the update mutator
-						const { id, ...dataWithoutId } = deviceData
-						// Call the shared mutator to update the device
-						await sharedMutators.devices.update(tx, {
-							id: existingDevice.id,
-							data: dataWithoutId,
+					if (!connection) {
+						throw new Error('No connection found for user')
+					}
+
+					if (!connection.username || !connection.password) {
+						throw new Error('Credentials not set')
+					}
+
+					// Import the NinjaAuthManager and property mappings
+					const { NinjaAuthManager } = await import(
+						'@/ninjaAuth/ninja-auth-manager.ts'
+					)
+					const { DEVICE_PROPERTY_MAPPINGS } = await import(
+						'@/server/db/device-property-mappings.ts'
+					)
+
+					// Create auth manager instance with stored state if available
+					const initialState: EnhancedAuthState = {}
+
+					if (
+						connection.oauthAccessToken &&
+						connection.oauthRefreshToken &&
+						connection.oauthExpiresAt
+					) {
+						initialState.oauthTokens = {
+							accessToken: connection.oauthAccessToken,
+							idToken: '', // We don't store this, will be refreshed
+							refreshToken: connection.oauthRefreshToken,
+							expiresAt: connection.oauthExpiresAt,
+						}
+					}
+
+					if (connection.aylaAccessToken && connection.aylaExpiresAt) {
+						initialState.aylaToken = {
+							accessToken: connection.aylaAccessToken,
+							refreshToken: connection.aylaRefreshToken || undefined,
+							expiresAt: connection.aylaExpiresAt,
+						}
+					}
+
+					const authManager = NinjaAuthManager.create(
+						{
+							email: connection.username,
+							password: connection.password,
+						},
+						initialState,
+					)
+
+					// Get API token (will refresh if expired)
+					const apiToken = await authManager.getAPIToken()
+
+					// Check if state changed and update DB if needed
+					const newState = authManager.getState()
+					if (
+						newState.aylaToken?.accessToken !== connection.aylaAccessToken ||
+						newState.aylaToken?.expiresAt !== connection.aylaExpiresAt
+					) {
+						await sharedMutators.ninjaConnections.updateTokens(tx, {
+							userId: userId,
+							aylaAccessToken: newState.aylaToken?.accessToken || null,
+							aylaRefreshToken: newState.aylaToken?.refreshToken || null,
+							aylaExpiresAt: newState.aylaToken?.expiresAt || null,
 						})
+					}
 
-						// Track history for the update
-						const currentDevice = await tx.query.devices
-							.where('id', existingDevice.id)
-							.one()
-							.run()
+					// Prepare headers for API calls
+					const headers = {
+						authorization: `auth_token ${apiToken}`,
+						accept: 'application/json',
+						'user-agent':
+							'Dalvik/2.1.0 (Linux; U; Android 16; sdk_gphone64_arm64 Build/BP22.250325.006)',
+					}
 
-						if (currentDevice) {
-							// Check if we already have a snapshot for this hour
-							const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
-							const recentHistory = await tx.query.deviceHistory
-								.where('deviceId', existingDevice.id)
-								.orderBy('recordedAt', 'desc')
-								.limit(120)
-								.run()
+					// Fetch devices
+					const devicesResponse = await fetch(
+						'https://ads-eu.aylanetworks.com/apiv1/devices.json',
+						{ headers },
+					)
 
-							// Find if there's already a snapshot in the current hour
-							const currentHourSnapshot = recentHistory.find(
-								(h) =>
-									h.historyType === 'snapshot' &&
-									h.recordedAt &&
-									new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
-							)
+					if (!devicesResponse.ok) {
+						throw new Error(
+							`Failed to fetch devices: ${devicesResponse.status} ${devicesResponse.statusText}`,
+						)
+					}
 
-							// Merge current state with updates to get the new state
-							const newState = {
-								...currentDevice,
-								...dataWithoutId,
-								updatedAt: Date.now(),
-							}
+					const devicesData = await devicesResponse.json()
 
-							if (currentHourSnapshot) {
-								// We already have a snapshot for this hour, create a patch
-								const patch = createJsonMergePatch(
-									currentDevice as Record<string, unknown>,
-									newState as Record<string, unknown>,
+					// Fetch properties for each device concurrently
+					interface DeviceWrapper {
+						device: {
+							dsn: string
+							product_name?: string
+							model?: string
+							mac?: string
+							lan_ip?: string
+							connection_status?: string
+							[key: string]: unknown
+						}
+					}
+					const propertyPromises = devicesData.map(
+						async (deviceWrapper: DeviceWrapper) => {
+							const device = deviceWrapper.device
+							try {
+								const propsResponse = await fetch(
+									`https://ads-eu.aylanetworks.com/apiv1/dsns/${device.dsn}/properties.json`,
+									{ headers },
 								)
-
-								// Only insert if there are actual changes
-								if (Object.keys(patch).length > 0) {
-									await tx.mutate.deviceHistory.insert({
-										deviceId: existingDevice.id,
-										historyType: 'patch',
-										changes: JSON.stringify(patch),
-										changedBy: userId,
-									})
+								if (propsResponse.ok) {
+									const propsData = await propsResponse.json()
+									return { device, properties: propsData }
 								}
-							} else {
-								// First update of the hour, create a snapshot
-								await tx.mutate.deviceHistory.insert({
-									deviceId: existingDevice.id,
-									historyType: 'snapshot',
-									changes: JSON.stringify(newState),
-									changedBy: userId,
-								})
+								return { device, properties: null }
+							} catch (error) {
+								console.warn(
+									`Failed to fetch properties for device ${device.dsn}:`,
+									error,
+								)
+								return { device, properties: null }
+							}
+						},
+					)
+
+					const propertyResults = await Promise.allSettled(propertyPromises)
+
+					// Log any failures
+					const failedCount = propertyResults.filter(
+						(r) => r.status === 'rejected',
+					).length
+					if (failedCount > 0) {
+						console.warn(
+							`[Server] Failed to fetch properties for ${failedCount} devices`,
+						)
+					}
+
+					// Extract successful results
+					const devicesWithProperties = propertyResults
+						.filter(
+							(
+								result,
+							): result is PromiseFulfilledResult<{
+								device: DeviceWrapper['device']
+								properties: unknown
+							}> => result.status === 'fulfilled',
+						)
+						.map((result) => result.value)
+
+					// Insert new devices
+					for (const { device, properties } of devicesWithProperties) {
+						// Transform properties array into a more useful object format
+						const propertiesMap: Record<string, unknown> = {}
+						if (properties && Array.isArray(properties)) {
+							for (const propWrapper of properties) {
+								const prop = propWrapper.property
+								if (prop?.name) {
+									propertiesMap[prop.name] = {
+										value: prop.value,
+										type: prop.type,
+										base_type: prop.base_type,
+										updated_at: prop.data_updated_at,
+									}
+								}
 							}
 						}
-					} else {
-						// Insert new device
-						await tx.mutate.devices.insert(
-							deviceData as Parameters<typeof tx.mutate.devices.insert>[0],
+
+						// Create filtered properties map that excludes mapped properties
+						const filteredPropertiesMap = Object.fromEntries(
+							Object.entries(propertiesMap).filter(
+								([propName]) => !DEVICE_PROPERTY_MAPPINGS[propName],
+							),
 						)
 
-						// For new devices, create an initial snapshot
-						const newDevice = await tx.query.devices
+						// Define keys that are already handled as dedicated columns
+						const handledTopLevelKeys = new Set([
+							'dsn',
+							'product_name',
+							'model',
+							'mac',
+							'lan_ip',
+							'connection_status',
+							'properties', // Original properties array from API
+						])
+
+						// Extract only unmapped device fields
+						const unmappedApiFields = Object.fromEntries(
+							Object.entries(device).filter(
+								([key]) => !handledTopLevelKeys.has(key),
+							),
+						)
+
+						// Build clean additionalDeviceProperties without duplication
+						const additionalDeviceProperties = {
+							...unmappedApiFields,
+							properties: filteredPropertiesMap,
+							lastSyncedAt: new Date().toISOString(),
+						}
+
+						// Build device data with mapped properties
+						const deviceData: Record<string, unknown> = {
+							id: crypto.randomUUID(),
+							userId: userId,
+							dsn: device.dsn,
+							productName: device.product_name || null,
+							model: device.model || null,
+							mac: device.mac || null,
+							lanIp: device.lan_ip || null,
+							connectionStatus: device.connection_status || 'unknown',
+							additionalDeviceProperties,
+							createdAt: Date.now(),
+							updatedAt: Date.now(),
+						}
+
+						// Map each property to its corresponding column
+						for (const [propName, propData] of Object.entries(propertiesMap)) {
+							const mapping = DEVICE_PROPERTY_MAPPINGS[propName]
+							if (mapping) {
+								const { columnName, dataType } = mapping
+								const propValue = (propData as Record<string, unknown>).value
+
+								// Convert value based on data type
+								let convertedValue = null
+								if (propValue !== null && propValue !== undefined) {
+									switch (dataType) {
+										case 'integer':
+											convertedValue =
+												typeof propValue === 'number'
+													? propValue
+													: Number.parseInt(propValue as string)
+											break
+										case 'numeric':
+											convertedValue =
+												typeof propValue === 'number'
+													? propValue
+													: Number.parseFloat(propValue as string)
+											break
+										case 'boolean':
+											convertedValue =
+												typeof propValue === 'boolean'
+													? propValue
+													: propValue === 1 ||
+														propValue === '1' ||
+														propValue === 'true'
+											break
+										case 'timestamptz':
+											// Handle timestamp conversion - expected format may vary
+											if (propName === 'GET_Estimated_End_Time' && propValue) {
+												// Try to parse as Unix timestamp or ISO string
+												const parsed =
+													typeof propValue === 'number'
+														? new Date(propValue * 1000) // Unix timestamp
+														: new Date(propValue as string | number)
+												convertedValue = Number.isNaN(parsed.getTime())
+													? null
+													: parsed
+											}
+											break
+										default:
+											convertedValue = String(propValue)
+											break
+									}
+								}
+
+								// Set the value in deviceData only if column is enabled
+								deviceData[columnName] = convertedValue
+							}
+						}
+
+						// Check if device already exists
+						const existingDevice = await tx.query.devices
 							.where('dsn', device.dsn)
 							.where('userId', userId)
 							.one()
 							.run()
 
-						if (newDevice?.id) {
-							await tx.mutate.deviceHistory.insert({
-								deviceId: newDevice.id,
-								historyType: 'snapshot',
-								changes: JSON.stringify(deviceData),
-								changedBy: userId,
+						if (existingDevice?.id) {
+							// Update existing device - history tracking happens in the update mutator
+							const { id, ...dataWithoutId } = deviceData
+							// Call the shared mutator to update the device
+							await sharedMutators.devices.update(tx, {
+								id: existingDevice.id,
+								data: dataWithoutId,
 							})
+
+							// Track history for the update
+							const currentDevice = await tx.query.devices
+								.where('id', existingDevice.id)
+								.one()
+								.run()
+
+							if (currentDevice) {
+								// Check if we already have a snapshot for this hour
+								const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+								const recentHistory = await tx.query.deviceHistory
+									.where('deviceId', existingDevice.id)
+									.orderBy('recordedAt', 'desc')
+									.limit(120)
+									.run()
+
+								// Find if there's already a snapshot in the current hour
+								const currentHourSnapshot = recentHistory.find(
+									(h) =>
+										h.historyType === 'snapshot' &&
+										h.recordedAt &&
+										new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
+								)
+
+								// Merge current state with updates to get the new state
+								const newState = {
+									...currentDevice,
+									...dataWithoutId,
+									updatedAt: Date.now(),
+								}
+
+								if (currentHourSnapshot) {
+									// We already have a snapshot for this hour, create a patch
+									const patch = createJsonMergePatch(
+										currentDevice as Record<string, unknown>,
+										newState as Record<string, unknown>,
+									)
+
+									// Only insert if there are actual changes
+									if (Object.keys(patch).length > 0) {
+										await tx.mutate.deviceHistory.insert({
+											deviceId: existingDevice.id,
+											historyType: 'patch',
+											changes: JSON.stringify(patch),
+											changedBy: userId,
+										})
+									}
+								} else {
+									// First update of the hour, create a snapshot
+									await tx.mutate.deviceHistory.insert({
+										deviceId: existingDevice.id,
+										historyType: 'snapshot',
+										changes: JSON.stringify(newState),
+										changedBy: userId,
+									})
+								}
+							}
+						} else {
+							// Insert new device
+							await tx.mutate.devices.insert(
+								deviceData as Parameters<typeof tx.mutate.devices.insert>[0],
+							)
+
+							// For new devices, create an initial snapshot
+							const newDevice = await tx.query.devices
+								.where('dsn', device.dsn)
+								.where('userId', userId)
+								.one()
+								.run()
+
+							if (newDevice?.id) {
+								await tx.mutate.deviceHistory.insert({
+									deviceId: newDevice.id,
+									historyType: 'snapshot',
+									changes: JSON.stringify(deviceData),
+									changedBy: userId,
+								})
+							}
 						}
 					}
-				}
 
-				console.log(
-					`[Server] Synced ${devicesWithProperties.length} real devices for user: ${userId}`,
-				)
+					console.log(
+						`[Server] Synced ${devicesWithProperties.length} real devices for user: ${userId}`,
+					)
+				} catch (error) {
+					console.error('[Server] syncRealDevices error:', error)
+
+					// Check if this is a permanent auth error
+					const errorMessage =
+						error instanceof Error ? error.message : String(error)
+					const isPermanentAuthError =
+						errorMessage.includes('OAuth token exchange failed') ||
+						errorMessage.includes('Invalid credentials') ||
+						errorMessage.includes('Authentication failed') ||
+						errorMessage.includes('Refresh token expired') ||
+						errorMessage.includes('Invalid refresh token')
+
+					if (isPermanentAuthError) {
+						console.log(
+							'[Server] Permanent auth error detected, clearing tokens',
+						)
+						// Clear the tokens to stop future polling attempts
+						await sharedMutators.ninjaConnections.updateTokens(tx, {
+							userId: userId,
+							aylaAccessToken: null,
+							aylaRefreshToken: null,
+							aylaExpiresAt: null,
+							oauthAccessToken: null,
+							oauthRefreshToken: null,
+							oauthExpiresAt: null,
+						})
+					}
+
+					// Re-throw the error so the client knows the sync failed
+					throw error
+				}
 			},
 			async update(
 				tx: Transaction<Schema>,

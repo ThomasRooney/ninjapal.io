@@ -11,10 +11,9 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { Schema } from '@/server/db/zero-schema.gen.ts'
-import type { SharedMutators } from '@/server/db/zero-shared-mutators.ts'
+import { useZero } from '@/hooks/use-typed-zero'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useQuery } from '@rocicorp/zero/react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate, useRouterState, useSearch } from '@tanstack/react-router'
 import { formatDistanceToNow } from 'date-fns'
@@ -39,7 +38,7 @@ export function NinjaConnectionForm() {
 	const search = useSearch({
 		from: '/_authed/app/_layout/ninja-connection',
 	}) as { mode?: string }
-	const z = useZero<Schema, SharedMutators>()
+	const z = useZero()
 
 	const [connections] = useQuery(z.query.ninjaConnections)
 

@@ -1,5 +1,5 @@
 import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
-import { useZero } from '@rocicorp/zero/react'
+import { useZero } from '@/hooks/use-typed-zero'
 
 export function useSyncUserZero() {
 	const z = useZero()

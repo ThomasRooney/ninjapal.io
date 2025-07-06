@@ -6,7 +6,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from '@/components/ui/card'
-import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useZero } from '@/hooks/use-typed-zero'
+import { useQuery } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Link } from '@tanstack/react-router'
 import { Cpu, Loader2 } from 'lucide-react'

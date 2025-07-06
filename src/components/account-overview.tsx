@@ -1,6 +1,6 @@
+import { useZero } from '@/hooks/use-typed-zero'
 import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
-import type { ZeroSchema } from '@/server/db/zero-permissions.ts'
-import { useQuery, useZero } from '@rocicorp/zero/react'
+import { useQuery } from '@rocicorp/zero/react'
 import type { Session } from '@supabase/supabase-js'
 import { Loader2, Thermometer } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -18,7 +18,7 @@ const AccountOverview = () => {
 	// Placeholder state for subscription loading, adapt as needed
 	const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false)
 	const [savingPreference, setSavingPreference] = useState(false)
-	const z = useZero<ZeroSchema>()
+	const z = useZero()
 
 	// Fetch Supabase session
 	useEffect(() => {
