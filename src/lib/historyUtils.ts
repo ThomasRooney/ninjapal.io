@@ -18,6 +18,24 @@ export type ReconstructedState = {
 	state: Record<string, unknown>
 }
 
+export type FieldChange = {
+	status: 'added' | 'removed' | 'changed'
+	from?: unknown // The old value
+	to?: unknown // The new value
+}
+
+export type HistoryChange = {
+	id: number | null
+	recordedAt: number | null
+	changedBy: string | null
+	historyType: string
+	/**
+	 * For the oldest entry, this contains all fields.
+	 * For subsequent entries, only what changed.
+	 */
+	fields: Record<string, FieldChange>
+}
+
 /**
  * Reconstructs a time-series of full device snapshots from a mix of
  * snapshots and patches.
@@ -87,4 +105,122 @@ export function reconstructHistorySnapshots(
 
 	// Reverse again to return to the original descending order for the UI.
 	return reconstructed.reverse()
+}
+
+/**
+ * Deep equality check that works in both server and browser environments.
+ * Handles objects, arrays, primitives, null/undefined, and circular references.
+ */
+const isEqual = (a: unknown, b: unknown): boolean => {
+	// Handle primitives and same reference
+	if (a === b) return true
+
+	// Handle null/undefined
+	if (a == null || b == null) return false
+
+	// Must be same type
+	if (typeof a !== typeof b) return false
+
+	// Handle arrays
+	if (Array.isArray(a)) {
+		if (!Array.isArray(b) || a.length !== b.length) return false
+		for (let i = 0; i < a.length; i++) {
+			if (!isEqual(a[i], b[i])) return false
+		}
+		return true
+	}
+
+	// Handle objects
+	if (typeof a === 'object') {
+		const keysA = Object.keys(a as object)
+		const keysB = Object.keys(b as object)
+
+		if (keysA.length !== keysB.length) return false
+
+		for (const key of keysA) {
+			if (!Object.prototype.hasOwnProperty.call(b, key)) return false
+			if (!isEqual((a as any)[key], (b as any)[key])) return false
+		}
+
+		return true
+	}
+
+	// All other types (functions, symbols, etc.)
+	return false
+}
+
+/**
+ * Calculates the differences between consecutive history entries.
+ * For each entry, returns only the fields that changed from the previous state.
+ * The oldest entry (last in chronological order) shows all fields as the baseline.
+ */
+export function calculateHistoryDiffs(
+	snapshots: ReconstructedState[],
+): HistoryChange[] {
+	if (!snapshots || snapshots.length === 0) {
+		return []
+	}
+
+	// The query is ordered 'desc', so snapshots[0] is the newest.
+	const diffs: HistoryChange[] = []
+
+	for (let i = 0; i < snapshots.length; i++) {
+		const current = snapshots[i]
+		// The "previous" state is the next item in the array (chronologically older)
+		const previous = snapshots[i + 1]
+
+		const changedFields: Record<string, FieldChange> = {}
+
+		if (!previous) {
+			// This is the oldest record. Treat all its fields as 'added'.
+			for (const key in current.state) {
+				if (Object.prototype.hasOwnProperty.call(current.state, key)) {
+					changedFields[key] = {
+						status: 'added',
+						to: current.state[key],
+					}
+				}
+			}
+		} else {
+			const currentState = current.state
+			const previousState = previous.state
+			const allKeys = new Set([
+				...Object.keys(currentState),
+				...Object.keys(previousState),
+			])
+
+			for (const key of allKeys) {
+				const valueCurrent = currentState[key]
+				const valuePrevious = previousState[key]
+
+				const inCurrent = key in currentState
+				const inPrevious = key in previousState
+
+				if (inCurrent && !inPrevious) {
+					changedFields[key] = { status: 'added', to: valueCurrent }
+				} else if (!inCurrent && inPrevious) {
+					changedFields[key] = { status: 'removed', from: valuePrevious }
+				} else if (!isEqual(valueCurrent, valuePrevious)) {
+					changedFields[key] = {
+						status: 'changed',
+						from: valuePrevious,
+						to: valueCurrent,
+					}
+				}
+			}
+		}
+
+		// Only push entries that have changes
+		if (Object.keys(changedFields).length > 0) {
+			diffs.push({
+				id: current.id,
+				recordedAt: current.recordedAt,
+				changedBy: current.changedBy,
+				historyType: current.historyType,
+				fields: changedFields,
+			})
+		}
+	}
+
+	return diffs
 }
