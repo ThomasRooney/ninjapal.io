@@ -56,9 +56,11 @@ export default drizzleZeroConfig(drizzleSchema, {
       temp_grill: true,
       temp_uipcb: true,
       temp_mainpcb: true,
-      probe1_temp: true,
-      probe2_temp: true,
-      temp_smoke: false, // New column - disabled for migration
+      probe1_temp_a: false, // Renamed from probe1_temp - disabled for migration
+      probe1_temp_b: false, // NEW - disabled for migration
+      probe2_temp_a: false, // Renamed from probe2_temp - disabled for migration
+      probe2_temp_b: false, // NEW - disabled for migration
+      temp_smoke: true, // New column - enabled after migration complete
       
       // Cooking State
       cook_state_raw: true,
@@ -72,11 +74,11 @@ export default drizzleZeroConfig(drizzleSchema, {
       power_state: true,
       error_code: true,
       
-      // Grill State flattened fields - disabled for migration
-      gs_state: false, // New column from grill_state_raw.state
-      gs_message: false, // New column from grill_state_raw.message
-      gs_eventmask: false, // New column from grill_state_raw.eventmask
-      gs_sim: false, // New column from grill_state_raw.sim
+      // Grill State flattened fields - enabled after migration complete
+      gs_state: true, // New column from grill_state_raw.state
+      gs_message: true, // New column from grill_state_raw.message
+      gs_eventmask: true, // New column from grill_state_raw.eventmask
+      gs_sim: true, // New column from grill_state_raw.sim
       
       // RAW JSON fields (to be deprecated)
       grill_state_raw: true,

@@ -134,14 +134,18 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 	const probeState = device
 		? (parseJsonSafely(device.probe_state_raw) as ProbeState | null)
 		: null
-	const viewModel = useGrillViewModel(grillState, probeState)
+	const viewModel = useGrillViewModel(
+		grillState,
+		probeState,
+		device.connectionStatus,
+	)
 
 	if (!device) {
 		return null
 	}
 
 	return (
-		<div className='space-y-4'>
+		<div className='space-y-4 pb-8'>
 			{/* Primary cards row */}
 			<div className='grid gap-4 md:grid-cols-2'>
 				{/* Cook Status Card - Enhanced */}
@@ -246,13 +250,23 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 					</CardHeader>
 					<CardContent>
 						<div className='space-y-3'>
-							{/* Error Status */}
-							{viewModel?.errorStatus.hasError ? (
+							{/* System Status */}
+							{viewModel?.deviceStatus === 'Offline' ? (
+								<div className='flex items-center justify-between'>
+									<div className='flex items-center gap-2'>
+										<WifiOff className='h-4 w-4 text-muted-foreground' />
+										<span className='text-sm font-medium'>Status</span>
+									</div>
+									<span className='text-sm text-muted-foreground font-medium'>
+										Offline
+									</span>
+								</div>
+							) : viewModel?.errorStatus.hasError ? (
 								<Alert variant='destructive'>
 									<AlertCircle className='h-4 w-4' />
 									<AlertTitle>Error</AlertTitle>
 									<AlertDescription>
-										{viewModel.errorStatus.message || 'Unknown error'}
+										{viewModel.errorStatus.message}
 									</AlertDescription>
 								</Alert>
 							) : (
@@ -273,12 +287,18 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 								</div>
 								<span
 									className={`text-sm font-medium ${
-										viewModel?.lidIsOpen
-											? 'text-yellow-600'
-											: 'text-muted-foreground'
+										viewModel?.deviceStatus === 'Offline'
+											? 'text-muted-foreground'
+											: viewModel?.lidIsOpen
+												? 'text-yellow-600'
+												: 'text-muted-foreground'
 									}`}
 								>
-									{viewModel?.lidIsOpen ? 'Open' : 'Closed'}
+									{viewModel?.deviceStatus === 'Offline'
+										? '—'
+										: viewModel?.lidIsOpen
+											? 'Open'
+											: 'Closed'}
 								</span>
 							</div>
 
@@ -289,7 +309,11 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 									<span className='text-sm font-medium'>Smoke</span>
 								</div>
 								<span className='text-sm font-medium'>
-									{viewModel?.smokeIsOn ? 'On' : 'Off'}
+									{viewModel?.deviceStatus === 'Offline'
+										? '—'
+										: viewModel?.smokeIsOn
+											? 'On'
+											: 'Off'}
 								</span>
 							</div>
 
@@ -300,7 +324,9 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 									<span className='text-sm font-medium'>Active Probes</span>
 								</div>
 								<span className='text-sm font-medium'>
-									{viewModel?.activeProbeCount || 0}
+									{viewModel?.deviceStatus === 'Offline'
+										? '—'
+										: (viewModel?.activeProbeCount ?? 0)}
 								</span>
 							</div>
 						</div>
@@ -360,7 +386,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
 					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
 				]}
-				className='mt-4'
+				className='mt-4 mb-8'
 			/>
 		</div>
 	)

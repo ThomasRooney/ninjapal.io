@@ -108,6 +108,39 @@ export function reconstructHistorySnapshots(
 }
 
 /**
+ * Flattens a nested object into a single-level object with dot-notation keys.
+ * It does not flatten arrays; they are treated as final values.
+ * @param obj The object to flatten.
+ * @param parentKey The base key for recursive calls.
+ * @param result The object to accumulate results into.
+ * @returns A flattened object.
+ */
+function flattenObject(
+	obj: Record<string, unknown>,
+	parentKey = '',
+	result: Record<string, unknown> = {},
+): Record<string, unknown> {
+	for (const key in obj) {
+		if (Object.prototype.hasOwnProperty.call(obj, key)) {
+			const propName = parentKey ? `${parentKey}.${key}` : key
+			const value = obj[key]
+
+			// We only recurse into plain objects, not arrays or null.
+			if (
+				typeof value === 'object' &&
+				value !== null &&
+				!Array.isArray(value)
+			) {
+				flattenObject(value as Record<string, unknown>, propName, result)
+			} else {
+				result[propName] = value
+			}
+		}
+	}
+	return result
+}
+
+/**
  * Deep equality check that works in both server and browser environments.
  * Handles objects, arrays, primitives, null/undefined, and circular references.
  */
@@ -139,7 +172,13 @@ const isEqual = (a: unknown, b: unknown): boolean => {
 
 		for (const key of keysA) {
 			if (!Object.prototype.hasOwnProperty.call(b, key)) return false
-			if (!isEqual((a as any)[key], (b as any)[key])) return false
+			if (
+				!isEqual(
+					(a as Record<string, unknown>)[key],
+					(b as Record<string, unknown>)[key],
+				)
+			)
+				return false
 		}
 
 		return true
@@ -172,18 +211,20 @@ export function calculateHistoryDiffs(
 		const changedFields: Record<string, FieldChange> = {}
 
 		if (!previous) {
-			// This is the oldest record. Treat all its fields as 'added'.
-			for (const key in current.state) {
-				if (Object.prototype.hasOwnProperty.call(current.state, key)) {
+			// This is the oldest record. Flatten and treat all its fields as 'added'.
+			const flattenedState = flattenObject(current.state)
+			for (const key in flattenedState) {
+				if (Object.prototype.hasOwnProperty.call(flattenedState, key)) {
 					changedFields[key] = {
 						status: 'added',
-						to: current.state[key],
+						to: flattenedState[key],
 					}
 				}
 			}
 		} else {
-			const currentState = current.state
-			const previousState = previous.state
+			// Flatten both states before comparing.
+			const currentState = flattenObject(current.state)
+			const previousState = flattenObject(previous.state)
 			const allKeys = new Set([
 				...Object.keys(currentState),
 				...Object.keys(previousState),

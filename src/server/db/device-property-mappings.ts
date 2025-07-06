@@ -50,12 +50,12 @@ export const DEVICE_PROPERTY_MAPPINGS: Record<string, PropertyMapping> = {
 		pgType: 'NUMERIC(5,1)',
 	},
 	GET_Probe1_Temp: {
-		columnName: 'probe1_temp',
+		columnName: 'probe1_temp_a',
 		dataType: 'numeric',
 		pgType: 'NUMERIC(5,1)',
 	},
 	GET_Probe2_Temp: {
-		columnName: 'probe2_temp',
+		columnName: 'probe2_temp_a',
 		dataType: 'numeric',
 		pgType: 'NUMERIC(5,1)',
 	},

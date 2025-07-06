@@ -44,8 +44,10 @@ export const devices = pgTable(
 		temp_grill: numeric('temp_grill', { precision: 5, scale: 1 }),
 		temp_uipcb: numeric('temp_uipcb', { precision: 5, scale: 1 }),
 		temp_mainpcb: numeric('temp_mainpcb', { precision: 5, scale: 1 }),
-		probe1_temp: numeric('probe1_temp', { precision: 5, scale: 1 }),
-		probe2_temp: numeric('probe2_temp', { precision: 5, scale: 1 }),
+		probe1_temp_a: numeric('probe1_temp_a', { precision: 5, scale: 1 }), // Renamed from probe1_temp
+		probe1_temp_b: numeric('probe1_temp_b', { precision: 5, scale: 1 }), // NEW
+		probe2_temp_a: numeric('probe2_temp_a', { precision: 5, scale: 1 }), // Renamed from probe2_temp
+		probe2_temp_b: numeric('probe2_temp_b', { precision: 5, scale: 1 }), // NEW
 
 		// Cooking State
 		cook_state_raw: text('cook_state_raw'), // JSON string

@@ -24,6 +24,7 @@ export interface GrillViewModel {
 	displayTemperatures: Array<{ name: string; temp: number }>
 	lidIsOpen: boolean
 	smokeIsOn: boolean
+	deviceStatus: 'Online' | 'Offline' | 'Unknown'
 	errorStatus: {
 		hasError: boolean
 		message: string
@@ -35,6 +36,7 @@ export interface GrillViewModel {
 export function useGrillViewModel(
 	grillState: GrillState | null,
 	probeState: ProbeState | null,
+	connectionStatus: string | null | undefined,
 ): GrillViewModel | null {
 	return useMemo(() => {
 		if (!grillState || !probeState) {
@@ -54,10 +56,22 @@ export function useGrillViewModel(
 		// 2. Process Grill Status
 		const lidIsOpen = grillState.inputs.io['lid open'] === 1
 		const smokeIsOn = grillState.smoke === 1
+
+		const isOffline =
+			connectionStatus === 'Offline' || grillState.state?.state === 'zc loss'
+		const hasDeviceError = grillState.error != null && grillState.error !== 0
+
 		const errorStatus = {
-			hasError: grillState.error !== 0,
-			message: grillState.message,
+			hasError: !isOffline && hasDeviceError,
+			message: hasDeviceError ? grillState.message || 'Unknown error' : '',
 		}
+
+		const deviceStatus =
+			connectionStatus === 'Online'
+				? 'Online'
+				: connectionStatus === 'Offline'
+					? 'Offline'
+					: 'Unknown'
 
 		// 3. Process Probe Data
 		// We only care about probes that are physically plugged in
@@ -69,9 +83,10 @@ export function useGrillViewModel(
 			displayTemperatures,
 			lidIsOpen,
 			smokeIsOn,
+			deviceStatus,
 			errorStatus,
 			connectedProbes,
 			activeProbeCount: connectedProbes.filter((p) => p.active === 1).length,
 		}
-	}, [grillState, probeState])
+	}, [grillState, probeState, connectionStatus])
 }

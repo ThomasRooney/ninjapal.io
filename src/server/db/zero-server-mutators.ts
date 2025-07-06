@@ -518,9 +518,13 @@ export function createServerMutators(
 											if (temps.smoke !== undefined)
 												deviceData.temp_smoke = temps.smoke
 											if (temps.probe0_a !== undefined)
-												deviceData.probe1_temp = temps.probe0_a
+												deviceData.probe1_temp_a = temps.probe0_a
+											if (temps.probe0_b !== undefined)
+												deviceData.probe1_temp_b = temps.probe0_b
 											if (temps.probe1_a !== undefined)
-												deviceData.probe2_temp = temps.probe1_a
+												deviceData.probe2_temp_a = temps.probe1_a
+											if (temps.probe1_b !== undefined)
+												deviceData.probe2_temp_b = temps.probe1_b
 											if (temps.main !== undefined)
 												deviceData.temp_mainpcb = temps.main
 											if (temps.ui !== undefined)

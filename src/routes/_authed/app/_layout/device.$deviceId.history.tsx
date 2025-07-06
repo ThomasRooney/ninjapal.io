@@ -40,6 +40,14 @@ const FIELD_NAME_MAP: Record<string, string> = {
 	ota_fw_version: 'Firmware Version',
 	wifi_fw_version: 'WiFi Firmware',
 	main_pcb_fw_version: 'Main PCB Firmware',
+	// Mappings for common nested properties
+	'additional_device_properties.firmwareVersion': 'Additional Firmware Version',
+	'additional_device_properties.hardwareVersion': 'Hardware Version',
+	'grill_state.mode': 'Grill Mode',
+	'grill_state.state': 'Grill State',
+	'grill_state.setpoint': 'Temperature Setpoint',
+	'probe_state.probe1.temp': 'Probe 1 Temperature',
+	'probe_state.probe2.temp': 'Probe 2 Temperature',
 }
 
 function DeviceHistoryPage() {
@@ -91,10 +99,18 @@ function DeviceHistoryPage() {
 	}
 
 	const getFieldDisplayName = (field: string): string => {
-		return (
-			FIELD_NAME_MAP[field] ||
-			field.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
-		)
+		// First, check for an exact match for full control
+		if (FIELD_NAME_MAP[field]) {
+			return FIELD_NAME_MAP[field]
+		}
+
+		// Fallback for unmapped fields: split by dots, capitalize, and join
+		return field
+			.split('.')
+			.map((part) =>
+				part.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+			)
+			.join(' → ')
 	}
 
 	return (
