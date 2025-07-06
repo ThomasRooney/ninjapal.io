@@ -307,15 +307,6 @@ export function createServerMutators(
 
 				const devicesData = await devicesResponse.json()
 
-				// Delete existing devices for this user
-				const existingDevices = await tx.query.devices
-					.where('userId', userId)
-					.run()
-
-				for (const device of existingDevices) {
-					await tx.mutate.devices.delete({ id: device.id })
-				}
-
 				// Fetch properties for each device concurrently
 				interface DeviceWrapper {
 					device: {
@@ -523,7 +514,7 @@ export function createServerMutators(
 							const recentHistory = await tx.query.deviceHistory
 								.where('deviceId', existingDevice.id)
 								.orderBy('recordedAt', 'desc')
-								.limit(10)
+								.limit(120)
 								.run()
 
 							// Find if there's already a snapshot in the current hour
