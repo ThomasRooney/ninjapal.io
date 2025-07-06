@@ -45,10 +45,26 @@ export function reconstructHistorySnapshots(
 		}
 
 		// Parse changes if it's a string (from JSONB column)
-		const changes =
-			typeof record.changes === 'string'
-				? JSON.parse(record.changes)
-				: (record.changes as Record<string, unknown>)
+		let changes: Record<string, unknown> | null = null
+		try {
+			changes =
+				typeof record.changes === 'string'
+					? JSON.parse(record.changes)
+					: (record.changes as Record<string, unknown>)
+		} catch (e) {
+			console.error(
+				'Failed to parse device history changes, skipping record:',
+				{
+					historyId: record.id,
+					error: e,
+				},
+			)
+			continue // Skip this corrupted record
+		}
+
+		if (!changes) {
+			continue
+		}
 
 		if (record.historyType === 'snapshot') {
 			// Snapshot resets the state. The 'changes' field contains the full object.

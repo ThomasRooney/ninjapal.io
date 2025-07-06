@@ -545,7 +545,7 @@ export function createServerMutators(
 										await tx.mutate.deviceHistory.insert({
 											deviceId: existingDevice.id,
 											historyType: 'patch',
-											changes: JSON.stringify(patch),
+											changes: patch,
 											changedBy: userId,
 										})
 									}
@@ -554,7 +554,7 @@ export function createServerMutators(
 									await tx.mutate.deviceHistory.insert({
 										deviceId: existingDevice.id,
 										historyType: 'snapshot',
-										changes: JSON.stringify(newState),
+										changes: newState,
 										changedBy: userId,
 									})
 								}
@@ -576,7 +576,7 @@ export function createServerMutators(
 								await tx.mutate.deviceHistory.insert({
 									deviceId: newDevice.id,
 									historyType: 'snapshot',
-									changes: JSON.stringify(deviceData),
+									changes: deviceData,
 									changedBy: userId,
 								})
 							}
@@ -671,7 +671,7 @@ export function createServerMutators(
 						await tx.mutate.deviceHistory.insert({
 							deviceId: args.id,
 							historyType: 'patch',
-							changes: JSON.stringify(patch),
+							changes: patch,
 							changedBy: authData.sub,
 						})
 					}
@@ -680,7 +680,7 @@ export function createServerMutators(
 					await tx.mutate.deviceHistory.insert({
 						deviceId: args.id,
 						historyType: 'snapshot',
-						changes: JSON.stringify(newState),
+						changes: newState,
 						changedBy: authData.sub,
 					})
 				}
