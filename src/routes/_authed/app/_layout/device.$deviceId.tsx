@@ -37,7 +37,6 @@ type ChangeRecord = {
 	new?: any
 }
 
-
 export const Route = createFileRoute('/_authed/app/_layout/device/$deviceId')({
 	component: DeviceDetailPage,
 	ssr: false,
@@ -115,6 +114,23 @@ function DeviceDetailPage() {
 
 	const device = devices?.[0]
 
+	const parseJsonSafely = (jsonString: string | null) => {
+		if (!jsonString) return null
+		try {
+			return JSON.parse(jsonString)
+		} catch {
+			return null
+		}
+	}
+
+	const grillState = device
+		? (parseJsonSafely(device.grill_state_raw) as GrillState | null)
+		: null
+	const probeState = device
+		? (parseJsonSafely(device.probe_state_raw) as ProbeState | null)
+		: null
+	const viewModel = useGrillViewModel(grillState, probeState)
+
 	if (devices && !device) {
 		return null
 	}
@@ -126,23 +142,6 @@ function DeviceDetailPage() {
 			</div>
 		)
 	}
-
-	const parseJsonSafely = (jsonString: string | null) => {
-		if (!jsonString) return null
-		try {
-			return JSON.parse(jsonString)
-		} catch {
-			return null
-		}
-	}
-
-	const grillState = parseJsonSafely(
-		device.grill_state_raw,
-	) as GrillState | null
-	const probeState = parseJsonSafely(
-		device.probe_state_raw,
-	) as ProbeState | null
-	const viewModel = useGrillViewModel(grillState, probeState)
 
 	return (
 		<div className='container mx-auto p-6 max-w-6xl'>
