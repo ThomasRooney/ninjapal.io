@@ -5,6 +5,7 @@ import { useZero } from '@/hooks/use-typed-zero'
 import { useQuery as useZeroQuery } from '@rocicorp/zero/react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, RefreshCw } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function DeviceSyncPoller() {
 	const z = useZero()
@@ -21,7 +22,19 @@ export function DeviceSyncPoller() {
 		// This key is unique to the polling action.
 		queryKey: ['devices', 'syncPoller'],
 		// The "query" is actually our mutation. TanStack Query handles it.
-		queryFn: () => z.mutate.devices.syncRealDevices().server(),
+		queryFn: async () => {
+			try {
+				return await z.mutate.devices.syncRealDevices().server
+			} catch (error) {
+				// Only show error toast for manual refetch, not automatic polling
+				if (error instanceof Error) {
+					console.error('Device sync failed:', error)
+					// Don't show toasts for automatic polling errors to avoid spam
+					// The error will be shown if user manually clicks sync
+				}
+				throw error
+			}
+		},
 
 		// --- Critical Configuration ---
 		enabled: isPollingEnabled,
@@ -48,7 +61,38 @@ export function DeviceSyncPoller() {
 			variant='ghost'
 			size='icon'
 			className='h-6 w-6'
-			onClick={() => refetch()}
+			onClick={async () => {
+				try {
+					await refetch()
+				} catch (error) {
+					if (error instanceof Error) {
+						if (error.message === 'No connection found for user') {
+							toast.error(
+								'Please set up your Ninja account credentials first',
+								{
+									action: {
+										label: 'Set up now',
+										onClick: () => {
+											window.location.href = '/app/ninja-connection'
+										},
+									},
+								},
+							)
+						} else if (error.message === 'Credentials not set') {
+							toast.error('Please complete your Ninja account setup', {
+								action: {
+									label: 'Complete setup',
+									onClick: () => {
+										window.location.href = '/app/ninja-connection'
+									},
+								},
+							})
+						} else {
+							toast.error(`Failed to sync devices: ${error.message}`)
+						}
+					}
+				}
+			}}
 			disabled={!isPollingEnabled || isFetching}
 			title={
 				isFetching

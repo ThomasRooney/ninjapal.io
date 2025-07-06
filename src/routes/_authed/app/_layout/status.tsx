@@ -19,6 +19,7 @@ import { useQuery } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { RefreshCw } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { toast } from 'sonner'
 
 export const Route = createFileRoute('/_authed/app/_layout/status')({
 	component: RouteComponent,
@@ -52,9 +53,32 @@ function RouteComponent() {
 		setIsRefreshing(true)
 		try {
 			await z.mutate.devices.syncRealDevices().server
+			toast.success('Devices synced successfully')
 		} catch (error) {
 			console.error('Failed to sync devices:', error)
-			// Optionally show an error toast/notification here
+			if (error instanceof Error) {
+				if (error.message === 'No connection found for user') {
+					toast.error('Please set up your Ninja account credentials first', {
+						action: {
+							label: 'Set up now',
+							onClick: () => {
+								window.location.href = '/app/ninja-connection'
+							},
+						},
+					})
+				} else if (error.message === 'Credentials not set') {
+					toast.error('Please complete your Ninja account setup', {
+						action: {
+							label: 'Complete setup',
+							onClick: () => {
+								window.location.href = '/app/ninja-connection'
+							},
+						},
+					})
+				} else {
+					toast.error(`Failed to sync devices: ${error.message}`)
+				}
+			}
 		} finally {
 			setIsRefreshing(false)
 		}

@@ -1,6 +1,7 @@
 import { AppSidebar } from '@/components/app-sidebar.tsx'
 import { DeviceSyncPoller } from '@/components/features/DeviceSyncPoller'
 import { SidebarProvider } from '@/components/ui/sidebar.tsx'
+import { Toaster } from '@/components/ui/sonner.tsx'
 import { useSyncUserZero } from '@/hooks/use-sync-user-zero.ts'
 import { initializeZero, zeroAtom } from '@/lib/zero-setup.ts'
 import { ZeroProvider } from '@rocicorp/zero/react'
@@ -58,11 +59,12 @@ function RouteComponent() {
 	return (
 		<Suspense fallback={null}>
 			<QueryClientProvider client={queryClient}>
-				<ZeroProvider zero={zeroAtom.value!}>
+				<ZeroProvider zero={zeroAtom.value as any}>
 					<DeviceSyncPoller />
 					<SidebarProvider className='flex h-screen'>
 						<AppContent />
 					</SidebarProvider>
+					<Toaster />
 				</ZeroProvider>
 			</QueryClientProvider>
 		</Suspense>
