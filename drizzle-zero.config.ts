@@ -17,7 +17,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       id: true,
       email: true,
       name: true,
-      prefers_celsius: false, // Initially false during expand phase
+      prefers_celsius: true, // Enable for Zero sync
     },
     ninjaConnections: {
       userId: true, // Enable for Zero sync
@@ -123,6 +123,8 @@ export default drizzleZeroConfig(drizzleSchema, {
       createdAt: true, // Enable for timestamps
       updatedAt: true, // Enable for timestamps
     },
+    // Device history is excluded from Zero sync - it's for on-demand viewing only
+    deviceHistory: false,
   },
 
   // Specify the casing style to use for the schema.

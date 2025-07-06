@@ -35,6 +35,18 @@ export function createSharedMutators(authData: AuthData) {
 				if (!authData.sub) throw new Error('Not authenticated')
 				await tx.mutate.users.upsert(args)
 			},
+			async updateTemperaturePreference(
+				tx: Transaction<Schema>,
+				args: { prefersCelsius: boolean },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Update the user's temperature preference
+				await tx.mutate.users.update({
+					id: authData.sub,
+					prefers_celsius: args.prefersCelsius,
+				})
+			},
 		},
 		ninjaConnections: {
 			async upsert(
