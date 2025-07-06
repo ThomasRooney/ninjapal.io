@@ -2,7 +2,6 @@ import { schema as zeroSchema } from '@/server/db/zero-schema.gen'
 import type { Schema } from '@/server/db/zero-schema.gen'
 // https://github.com/BriefHQ/drizzle-zero
 import {
-	ANYONE_CAN,
 	type ExpressionBuilder,
 	type InsertValue,
 	type PermissionsConfig,
@@ -52,8 +51,8 @@ export const permissions = definePermissions<AuthData, Schema>(
 		return {
 			users: {
 				row: {
-					select: ANYONE_CAN,
-					insert: ANYONE_CAN,
+					select: [allowIfSelf],
+					insert: [allowIfSelf],
 					delete: [allowIfSelf],
 				},
 			},

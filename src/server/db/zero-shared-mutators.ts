@@ -30,22 +30,29 @@ export function createSharedMutators(authData: AuthData) {
 			},
 			async upsert(
 				tx: Transaction<Schema>,
-				args: { id: string; email: string; name: string },
-			) {
-				if (!authData.sub) throw new Error('Not authenticated')
-				await tx.mutate.users.upsert(args)
-			},
-			async updateTemperaturePreference(
-				tx: Transaction<Schema>,
-				args: { prefersCelsius: boolean },
+				args: { email: string; name: string; prefers_celsius?: boolean },
 			) {
 				if (!authData.sub) throw new Error('Not authenticated')
 
-				// Update the user's temperature preference
-				await tx.mutate.users.update({
+				// The user's ID is ALWAYS taken from the authenticated session
+				await tx.mutate.users.upsert({
 					id: authData.sub,
-					prefers_celsius: args.prefersCelsius,
+					email: args.email,
+					name: args.name,
+					prefers_celsius: args.prefers_celsius,
 				})
+			},
+			async update(
+				tx: Transaction<Schema>,
+				args: { id: string; name?: string; prefers_celsius?: boolean },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// Ensure users can only update their own record
+				if (args.id !== authData.sub)
+					throw new Error("Cannot update another user's account")
+
+				await tx.mutate.users.update(args)
 			},
 		},
 		ninjaConnections: {
@@ -196,6 +203,15 @@ export function createSharedMutators(authData: AuthData) {
 				if (!authData.sub) throw new Error('Not authenticated')
 
 				// The actual sync logic is handled in the server mutator
+				// This shared mutator just handles permission checks
+			},
+			async update(
+				_tx: Transaction<Schema>,
+				_args: { id: string; data: Record<string, unknown> },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				// The actual update logic is handled in the server mutator
 				// This shared mutator just handles permission checks
 			},
 		},

@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { request } from '@playwright/test'
 import { PlaywrightBrowserAutomator } from './browser-automator.ts'
-import { AYLA_PUBLIC_CONFIG, config, getAylaServerConfig } from './config.ts'
+import { config, getAylaServerConfig } from './config.ts'
 import type {
 	AuthEvent,
 	AuthMetrics,

@@ -128,7 +128,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       id: true,
       deviceId: true,
       recordedAt: true,
-      operation: true,
+      historyType: true,
       changedBy: true,
       changes: true,
     },

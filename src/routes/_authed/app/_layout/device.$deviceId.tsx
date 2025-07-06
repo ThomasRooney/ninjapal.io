@@ -29,10 +29,10 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-type ChangeRecord = { field: string; old?: any; new?: any }
+type ChangeRecord = { field: string; old?: unknown; new?: unknown }
 type HistoryEntry = {
 	id: number
-	operation: string
+	historyType: 'snapshot' | 'patch'
 	recordedAt: string | Date
 	changedBy: string | null
 	changes: ChangeRecord[]
@@ -65,15 +65,17 @@ const getDeviceHistory = createServerFn({
 			const changes = record.changes as Record<string, unknown>
 			let changesList: ChangeRecord[] = []
 
-			if (record.operation === 'UPDATE' && typeof changes === 'object') {
-				// For UPDATE, changes should be in format { field: { old: x, new: y } }
-				changesList = Object.entries(changes).map(([field, change]) => ({
+			if (record.historyType === 'patch' && typeof changes === 'object') {
+				// For patches, changes are in RFC 7396 format (direct field: value)
+				changesList = Object.entries(changes).map(([field, value]) => ({
 					field,
-					old: (change as { old?: unknown; new?: unknown })?.old,
-					new: (change as { old?: unknown; new?: unknown })?.new,
+					new: value,
 				}))
-			} else if (record.operation === 'INSERT' && typeof changes === 'object') {
-				// For INSERT, changes contains the full initial record
+			} else if (
+				record.historyType === 'snapshot' &&
+				typeof changes === 'object'
+			) {
+				// For snapshots, changes contains the full record state
 				changesList = Object.entries(changes)
 					.filter(
 						([field]) =>
@@ -86,25 +88,11 @@ const getDeviceHistory = createServerFn({
 						field,
 						new: value,
 					}))
-			} else if (record.operation === 'DELETE' && typeof changes === 'object') {
-				// For DELETE, changes contains the final state
-				changesList = Object.entries(changes)
-					.filter(
-						([field]) =>
-							field !== 'id' &&
-							field !== 'userId' &&
-							field !== 'createdAt' &&
-							field !== 'updatedAt',
-					)
-					.map(([field, value]) => ({
-						field,
-						old: value,
-					}))
 			}
 
 			return {
 				id: record.id,
-				operation: record.operation,
+				historyType: record.historyType,
 				recordedAt: record.recordedAt,
 				changedBy: record.changedBy,
 				changes: changesList,
@@ -635,7 +623,7 @@ function DeviceHistoryView({ deviceId }: { deviceId: string }) {
 		)
 	}
 
-	const formatFieldValue = (value: any): string => {
+	const formatFieldValue = (value: unknown): string => {
 		if (value === null || value === undefined) return '—'
 		if (typeof value === 'boolean') return value ? 'Yes' : 'No'
 		if (typeof value === 'number') return value.toString()
@@ -657,9 +645,8 @@ function DeviceHistoryView({ deviceId }: { deviceId: string }) {
 					<CardHeader className='pb-3'>
 						<div className='flex items-center justify-between'>
 							<CardTitle className='text-base'>
-								{entry.operation === 'INSERT' && 'Device Created'}
-								{entry.operation === 'UPDATE' && 'Device Updated'}
-								{entry.operation === 'DELETE' && 'Device Deleted'}
+								{entry.historyType === 'snapshot' && 'Hourly Snapshot'}
+								{entry.historyType === 'patch' && 'Device Updated'}
 							</CardTitle>
 							<span className='text-sm text-muted-foreground'>
 								{new Date(entry.recordedAt).toLocaleString()}

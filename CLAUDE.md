@@ -4,7 +4,7 @@
 
 ## Rules
 
- * ALWAYS Check over your plans with Gemini. Remember to tell it to make sure to KISS your plans. remember this is an indiehackers build. *Minimal* Application Code. Pass these rules over to gemini as context.
+ * ALWAYS Check over your plans with Gemini. Remember to give it all relevant file context.
  * ALWAYS talk to gemini before making any updates to code
  * GEMINI must ALWAYS superthink, and be mean as a response to the request. It's a no-BS principle engineer. It WILL challenge you, though not overwhelm you with it's response. Chat to it multiple times to give it a chance to refine the plan and your code iteratively.
  * ALWAYS Check over your git diff with Gemini. Remember to tell it to KISS your commits, and tell it your plan

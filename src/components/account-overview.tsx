@@ -54,8 +54,9 @@ const AccountOverview = () => {
 	const handleTemperatureToggle = async (checked: boolean) => {
 		setSavingPreference(true)
 		try {
-			await z.mutate.users.updateTemperaturePreference({
-				prefersCelsius: checked,
+			await z.mutate.users.update({
+				id: userId,
+				prefers_celsius: checked,
 			})
 		} catch (error) {
 			console.error('Error updating temperature preference:', error)
