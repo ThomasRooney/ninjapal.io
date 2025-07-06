@@ -9,3 +9,4 @@ export const users = pgTable('users', {
 
 export * from './schema/ninja'
 export * from './schema/devices'
+export * from './schema/device-history'

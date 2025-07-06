@@ -26,7 +26,8 @@
       "Bash(timeout 10 bun:*)",
       "Bash(true)",
       "Bash(npx biome check:*)",
-      "Bash(biome check:*)"
+      "Bash(biome check:*)",
+      "Bash(git diff:*)"
     ],
     "deny": []
   }

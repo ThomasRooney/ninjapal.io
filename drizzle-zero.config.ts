@@ -123,8 +123,15 @@ export default drizzleZeroConfig(drizzleSchema, {
       createdAt: true, // Enable for timestamps
       updatedAt: true, // Enable for timestamps
     },
-    // Device history is excluded from Zero sync - it's for on-demand viewing only
-    deviceHistory: false,
+    // Device history is read-only through Zero - no client mutations allowed
+    deviceHistory: {
+      id: true,
+      deviceId: true,
+      recordedAt: true,
+      operation: true,
+      changedBy: true,
+      changes: true,
+    },
   },
 
   // Specify the casing style to use for the schema.
