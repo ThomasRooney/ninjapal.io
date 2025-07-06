@@ -1,15 +1,7 @@
 'use client'
 
 import { Link, useMatches } from '@tanstack/react-router'
-import {
-	Activity,
-	Cpu,
-	DatabaseZap,
-	Mail,
-	Unplug,
-	UserIcon,
-	Users,
-} from 'lucide-react'
+import { Activity, Cpu, Mail, Unplug, UserIcon } from 'lucide-react'
 
 import {
 	SidebarGroup,
@@ -21,16 +13,6 @@ import {
 } from '@/components/ui/sidebar.tsx'
 
 const items = [
-	{
-		title: 'Zero Mutations',
-		url: '/app/zero-mutations',
-		icon: DatabaseZap,
-	},
-	{
-		title: 'Zero Users',
-		url: '/app/users',
-		icon: Users,
-	},
 	{
 		title: 'Emails',
 		url: '/app/email-preview',

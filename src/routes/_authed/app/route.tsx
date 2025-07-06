@@ -4,14 +4,30 @@ import { useSyncUserZero } from '@/hooks/use-sync-user-zero.ts'
 import { initializeZero, zeroAtom } from '@/lib/zero-setup.ts'
 import { ZeroProvider } from '@rocicorp/zero/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Outlet, createFileRoute } from '@tanstack/react-router'
-import { useSyncExternalStore } from 'react'
-import { useEffect, useMemo } from 'react'
+import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { Suspense } from 'react'
 
 const queryClient = new QueryClient()
 
 export const Route = createFileRoute('/_authed/app')({
+	loader: async ({ context }) => {
+		// Get user from parent _authed route context
+		const user = context.user
+
+		if (!user) {
+			// This should be handled by the _authed route, but it's a good safeguard
+			throw redirect({ to: '/auth/login' })
+		}
+
+		// Initialize Zero here if it hasn't been already
+		// This ensures zeroAtom.value is set before any child loaders run
+		if (!zeroAtom.value) {
+			initializeZero(user)
+		}
+
+		return { zero: zeroAtom.value }
+	},
 	component: RouteComponent,
 	ssr: false,
 })
@@ -37,20 +53,11 @@ function AppContent() {
 }
 
 function RouteComponent() {
-	const zero = useSyncExternalStore(zeroAtom.onChange, () => zeroAtom.value)
-	const { user } = Route.useRouteContext()
-	console.log('🔐 App route context:', { user })
+	// Get the initialized zero instance from the loader data
+	const { zero } = Route.useLoaderData()
 
-	// Create stable dependency based on user ID only
-	const userId = useMemo(() => user?.id, [user?.id])
-
-	// Initialize Zero with user data - only when user ID changes
-	useEffect(() => {
-		if (!userId) return
-		initializeZero(user)
-	}, [userId, user])
-
-	if (!zero) return null
+	// The component is now much simpler and more reliable
+	if (!zero) return null // Or a loading spinner
 
 	return (
 		<Suspense fallback={null}>

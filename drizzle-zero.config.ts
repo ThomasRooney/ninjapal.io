@@ -123,7 +123,7 @@ export default drizzleZeroConfig(drizzleSchema, {
       createdAt: true, // Enable for timestamps
       updatedAt: true, // Enable for timestamps
     },
-    // Device history is read-only through Zero - no client mutations allowed
+    // Device history - server-side mutations only (permissions restrict client access)
     deviceHistory: {
       id: true,
       deviceId: true,

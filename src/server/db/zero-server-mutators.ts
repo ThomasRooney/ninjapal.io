@@ -6,104 +6,6 @@ import { createSharedMutators } from '@/server/db/zero-shared-mutators.ts'
 import type { CustomMutatorDefs, Transaction } from '@rocicorp/zero'
 
 /**
- * Helper function to upsert a device with proper history tracking
- * Implements the hourly snapshot/patch pattern
- */
-async function upsertDeviceWithHistory(
-	tx: Transaction<Schema>,
-	deviceData: Parameters<typeof tx.mutate.devices.insert>[0],
-	userId: string,
-) {
-	// Import Drizzle client for direct DB access
-	const { drizzle } = await import('@/server/db/drizzle/client')
-	const { devices, deviceHistory } = await import('@/server/db/schema')
-	const { eq, and, sql } = await import('drizzle-orm')
-
-	// Use a Drizzle transaction for atomicity
-	await drizzle.transaction(async (trx) => {
-		// Check if device already exists
-		const [existingDevice] = await trx
-			.select()
-			.from(devices)
-			.where(and(eq(devices.dsn, deviceData.dsn), eq(devices.userId, userId)))
-			.limit(1)
-
-		// Check if we already have a snapshot for this hour
-		const currentHour = sql`date_trunc('hour', NOW())`
-		const [existingSnapshot] = await trx
-			.select()
-			.from(deviceHistory)
-			.where(
-				and(
-					existingDevice
-						? eq(deviceHistory.deviceId, existingDevice.id)
-						: sql`false`,
-					eq(deviceHistory.historyType, 'snapshot'),
-					sql`${deviceHistory.recordedAt} >= ${currentHour}`,
-				),
-			)
-			.limit(1)
-
-		if (existingDevice) {
-			// Update existing device
-			const { id, ...dataWithoutId } = deviceData
-			await tx.mutate.devices.update({
-				id: existingDevice.id,
-				...dataWithoutId,
-				updatedAt: Date.now(),
-			})
-
-			// Create history entry
-			if (existingSnapshot) {
-				// We already have a snapshot for this hour, create a patch
-				const patch = createJsonMergePatch(
-					existingDevice as Record<string, unknown>,
-					deviceData as Record<string, unknown>,
-				)
-
-				// Only insert if there are actual changes
-				if (Object.keys(patch).length > 0) {
-					await trx.insert(deviceHistory).values({
-						deviceId: existingDevice.id,
-						historyType: 'patch',
-						changes: patch,
-						changedBy: userId,
-					})
-				}
-			} else {
-				// First sync of the hour, create a snapshot
-				await trx.insert(deviceHistory).values({
-					deviceId: existingDevice.id,
-					historyType: 'snapshot',
-					changes: deviceData,
-					changedBy: userId,
-				})
-			}
-		} else {
-			// Insert new device
-			await tx.mutate.devices.insert(deviceData)
-
-			// Get the newly created device to get its ID
-			const [newDevice] = await trx
-				.select()
-				.from(devices)
-				.where(and(eq(devices.dsn, deviceData.dsn), eq(devices.userId, userId)))
-				.limit(1)
-
-			if (newDevice) {
-				// Create initial snapshot for new device
-				await trx.insert(deviceHistory).values({
-					deviceId: newDevice.id,
-					historyType: 'snapshot',
-					changes: deviceData,
-					changedBy: userId,
-				})
-			}
-		}
-	})
-}
-
-/**
  * Server mutators that extend shared mutators with server-specific logic
  * Following the zbugs pattern of delegation + additional server operations
  */
@@ -592,12 +494,30 @@ export function createServerMutators(
 						}
 					}
 
-					// Use upsert to handle the hourly snapshot logic
-					await upsertDeviceWithHistory(
-						tx,
-						deviceData as Parameters<typeof tx.mutate.devices.insert>[0],
-						authData.sub,
-					)
+					// Check if device already exists
+					const existingDevice = await tx.query.devices
+						.where('dsn', device.dsn)
+						.where('userId', authData.sub)
+						.one()
+						.run()
+
+					if (existingDevice) {
+						// Update existing device
+						const { id, ...dataWithoutId } = deviceData
+						await tx.mutate.devices.update({
+							...dataWithoutId as Parameters<typeof tx.mutate.devices.update>[0],
+							id: existingDevice.id,
+							updatedAt: Date.now(),
+						})
+					} else {
+						// Insert new device
+						await tx.mutate.devices.insert(
+							deviceData as Parameters<typeof tx.mutate.devices.insert>[0],
+						)
+					}
+
+					// Note: History tracking happens in the devices.update mutator
+					// which has access to Drizzle for direct SQL operations
 				}
 
 				console.log(
