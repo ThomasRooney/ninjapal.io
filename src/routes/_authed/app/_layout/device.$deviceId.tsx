@@ -9,25 +9,25 @@ import {
 } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useCountdown } from '@/hooks/useCountdown'
+import { useGrillViewModel } from '@/hooks/useGrillViewModel'
 import { formatTemperature } from '@/lib/temperature-utils'
-import { createDb } from '@/server/db/db'
-import * as schema from '@/server/db/schema'
-import { deviceHistory } from '@/server/db/schema'
+import type { GrillState, ProbeState } from '@/types/grill'
 import { useQuery, useZero } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
-import { createServerFn } from '@tanstack/react-start'
-import { desc, eq } from 'drizzle-orm'
 import {
-	Activity,
 	AlertCircle,
+	CheckCircle2,
 	Clock,
+	CloudSnow,
+	DoorOpen,
+	Flame,
 	History,
 	Loader2,
 	Thermometer,
 	Wifi,
 	WifiOff,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 type ChangeRecord = {
 	field: string
@@ -36,75 +36,7 @@ type ChangeRecord = {
 	// biome-ignore lint/suspicious/noExplicitAny: Database JSON can contain any value type
 	new?: any
 }
-type HistoryEntry = {
-	id: number
-	historyType: 'snapshot' | 'patch'
-	recordedAt: string | Date
-	changedBy: string | null
-	changes: ChangeRecord[]
-}
 
-const getDeviceHistory = createServerFn({
-	method: 'GET',
-})
-	.validator((input: { deviceId: string }) => input)
-	.handler(async ({ data }) => {
-		const { deviceId } = data
-		const databaseUrl =
-			process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL
-		if (!databaseUrl) {
-			throw new Error('Database URL not configured')
-		}
-
-		const db = await createDb(databaseUrl, schema)
-
-		// Fetch device history records
-		const historyRecords = await db
-			.select()
-			.from(deviceHistory)
-			.where(eq(deviceHistory.deviceId, deviceId))
-			.orderBy(desc(deviceHistory.recordedAt))
-			.limit(50)
-
-		// Process records to extract changes in a UI-friendly format
-		return historyRecords.map((record) => {
-			const changes = record.changes as Record<string, unknown>
-			let changesList: ChangeRecord[] = []
-
-			if (record.historyType === 'patch' && typeof changes === 'object') {
-				// For patches, changes are in RFC 7396 format (direct field: value)
-				changesList = Object.entries(changes).map(([field, value]) => ({
-					field,
-					new: value,
-				}))
-			} else if (
-				record.historyType === 'snapshot' &&
-				typeof changes === 'object'
-			) {
-				// For snapshots, changes contains the full record state
-				changesList = Object.entries(changes)
-					.filter(
-						([field]) =>
-							field !== 'id' &&
-							field !== 'userId' &&
-							field !== 'createdAt' &&
-							field !== 'updatedAt',
-					)
-					.map(([field, value]) => ({
-						field,
-						new: value,
-					}))
-			}
-
-			return {
-				id: record.id,
-				historyType: record.historyType,
-				recordedAt: record.recordedAt,
-				changedBy: record.changedBy,
-				changes: changesList,
-			}
-		})
-	})
 
 export const Route = createFileRoute('/_authed/app/_layout/device/$deviceId')({
 	component: DeviceDetailPage,
@@ -204,16 +136,13 @@ function DeviceDetailPage() {
 		}
 	}
 
-	interface Probe {
-		name: string
-		'plugged in': number
-		active: number
-		temp: number
-		progress: number
-	}
-
-	const grillState = parseJsonSafely(device.grill_state_raw)
-	const probeState = parseJsonSafely(device.probe_state_raw)
+	const grillState = parseJsonSafely(
+		device.grill_state_raw,
+	) as GrillState | null
+	const probeState = parseJsonSafely(
+		device.probe_state_raw,
+	) as ProbeState | null
+	const viewModel = useGrillViewModel(grillState, probeState)
 
 	return (
 		<div className='container mx-auto p-6 max-w-6xl'>
@@ -251,117 +180,221 @@ function DeviceDetailPage() {
 				</TabsList>
 
 				<TabsContent value='overview' className='space-y-4'>
-					<div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
+					{/* Primary cards row */}
+					<div className='grid gap-4 md:grid-cols-2'>
+						{/* Cook Status Card - Enhanced */}
 						<Card>
-							<CardHeader className='pb-3'>
-								<CardTitle className='text-base font-medium'>
-									Temperature
-								</CardTitle>
+							<CardHeader>
+								<CardTitle>Cook Status</CardTitle>
 							</CardHeader>
-							<CardContent>
+							<CardContent className='space-y-4'>
 								<div className='flex items-center justify-between'>
-									<Thermometer className='h-5 w-5 text-muted-foreground' />
-									<div className='text-right'>
-										<p
-											className='text-2xl font-bold'
-											data-testid='temperature-display'
-										>
-											{grillState?.inputs?.temps?.grill
-												? formatTemperature(
-														grillState.inputs.temps.grill,
-														zeroUser?.prefers_celsius ?? false,
-													)
-												: '—'}
-										</p>
-										{device.temperature_setpoint && (
-											<p className='text-sm text-muted-foreground'>
-												Target:{' '}
-												{formatTemperature(
-													device.temperature_setpoint,
-													zeroUser?.prefers_celsius ?? false,
-												)}
-											</p>
-										)}
-									</div>
-								</div>
-							</CardContent>
-						</Card>
-
-						<Card>
-							<CardHeader className='pb-3'>
-								<CardTitle className='text-base font-medium'>
-									Cook Mode
-								</CardTitle>
-							</CardHeader>
-							<CardContent>
-								<div className='flex items-center justify-between'>
-									<Activity className='h-5 w-5 text-muted-foreground' />
-									<div className='text-right'>
-										<p className='text-xl font-semibold capitalize'>
+									<div>
+										<p className='text-sm text-muted-foreground'>Mode</p>
+										<p className='text-lg font-semibold capitalize'>
 											{grillState?.mode || device.cooking_mode || '—'}
 										</p>
-										<p className='text-sm text-muted-foreground capitalize'>
+									</div>
+									<div className='text-right'>
+										<p className='text-sm text-muted-foreground'>State</p>
+										<p className='text-lg font-semibold capitalize'>
 											{grillState?.state || device.cooking_state || 'Idle'}
 										</p>
 									</div>
 								</div>
+
+								<div className='space-y-2'>
+									<div className='flex items-center justify-between'>
+										<span className='text-sm text-muted-foreground'>
+											Grill Temperature
+										</span>
+										<div className='flex items-center gap-2'>
+											<span
+												className='text-2xl font-bold'
+												data-testid='temperature-display'
+											>
+												{grillState?.inputs?.temps?.grill
+													? formatTemperature(
+															grillState.inputs.temps.grill,
+															zeroUser?.prefers_celsius ?? false,
+														)
+													: '—'}
+											</span>
+											{grillState?.setpoint && (
+												<span className='text-sm text-muted-foreground'>
+													/{' '}
+													{formatTemperature(
+														grillState.setpoint,
+														zeroUser?.prefers_celsius ?? false,
+													)}
+												</span>
+											)}
+										</div>
+									</div>
+
+									<CookTimeDisplay device={device} grillState={grillState} />
+								</div>
 							</CardContent>
 						</Card>
 
-						<Card>
-							<CardHeader className='pb-3'>
-								<CardTitle className='text-base font-medium'>
-									Cook Time
-								</CardTitle>
-							</CardHeader>
-							<CardContent>
-								<CookTimeDisplay device={device} grillState={grillState} />
-							</CardContent>
-						</Card>
-					</div>
-
-					{probeState?.probes && probeState.probes.length > 0 && (
+						{/* Grill Environment Card */}
 						<Card>
 							<CardHeader>
-								<CardTitle>Probes</CardTitle>
-								<CardDescription>Temperature probe readings</CardDescription>
+								<CardTitle>Grill Environment</CardTitle>
+								<CardDescription>Temperature readings</CardDescription>
 							</CardHeader>
 							<CardContent>
 								<div className='space-y-3'>
-									{probeState.probes.map((probe: Probe) => (
+									{viewModel?.displayTemperatures.map((temp) => (
 										<div
-											key={probe.name}
-											className='flex items-center justify-between p-3 rounded-lg bg-muted/50'
+											key={temp.name}
+											className='flex items-center justify-between'
 										>
-											<div>
-												<p className='font-medium capitalize'>
-													{probe.name.replace('probe', 'Probe ')}
-												</p>
-												<p className='text-sm text-muted-foreground'>
-													{probe['plugged in'] ? 'Connected' : 'Not connected'}
-												</p>
+											<div className='flex items-center gap-2'>
+												{temp.name === 'Chamber' && (
+													<Thermometer className='h-4 w-4 text-muted-foreground' />
+												)}
+												{temp.name === 'Exhaust' && (
+													<CloudSnow className='h-4 w-4 text-muted-foreground' />
+												)}
+												{temp.name === 'Grill' && (
+													<Flame className='h-4 w-4 text-muted-foreground' />
+												)}
+												<span className='text-sm font-medium'>{temp.name}</span>
 											</div>
-											{probe['plugged in'] && (
-												<div className='text-right'>
-													<p className='text-xl font-semibold'>
-														{formatTemperature(
-															probe.temp,
-															zeroUser?.prefers_celsius ?? false,
-														)}
-													</p>
-													{probe.progress < 100 && (
-														<p className='text-sm text-muted-foreground'>
-															{probe.progress}% done
-														</p>
-													)}
-												</div>
-											)}
+											<span className='text-lg font-semibold'>
+												{formatTemperature(
+													temp.temp,
+													zeroUser?.prefers_celsius ?? false,
+												)}
+											</span>
 										</div>
 									))}
 								</div>
 							</CardContent>
 						</Card>
-					)}
+					</div>
+
+					{/* Secondary cards row */}
+					<div className='grid gap-4 md:grid-cols-2'>
+						{/* System Vitals Card */}
+						<Card>
+							<CardHeader>
+								<CardTitle>System Vitals</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<div className='space-y-3'>
+									{/* Error Status */}
+									{viewModel?.errorStatus.hasError ? (
+										<Alert variant='destructive'>
+											<AlertCircle className='h-4 w-4' />
+											<AlertTitle>Error</AlertTitle>
+											<AlertDescription>
+												{viewModel.errorStatus.message || 'Unknown error'}
+											</AlertDescription>
+										</Alert>
+									) : (
+										<div className='flex items-center justify-between'>
+											<div className='flex items-center gap-2'>
+												<CheckCircle2 className='h-4 w-4 text-green-600' />
+												<span className='text-sm font-medium'>Status</span>
+											</div>
+											<span className='text-sm text-green-600 font-medium'>
+												OK
+											</span>
+										</div>
+									)}
+
+									{/* Lid Status */}
+									<div className='flex items-center justify-between'>
+										<div className='flex items-center gap-2'>
+											<DoorOpen className='h-4 w-4 text-muted-foreground' />
+											<span className='text-sm font-medium'>Lid</span>
+										</div>
+										<span
+											className={`text-sm font-medium ${
+												viewModel?.lidIsOpen
+													? 'text-yellow-600'
+													: 'text-muted-foreground'
+											}`}
+										>
+											{viewModel?.lidIsOpen ? 'Open' : 'Closed'}
+										</span>
+									</div>
+
+									{/* Smoke Status */}
+									<div className='flex items-center justify-between'>
+										<div className='flex items-center gap-2'>
+											<CloudSnow className='h-4 w-4 text-muted-foreground' />
+											<span className='text-sm font-medium'>Smoke</span>
+										</div>
+										<span className='text-sm font-medium'>
+											{viewModel?.smokeIsOn ? 'On' : 'Off'}
+										</span>
+									</div>
+
+									{/* Active Probes Count */}
+									<div className='flex items-center justify-between'>
+										<div className='flex items-center gap-2'>
+											<Thermometer className='h-4 w-4 text-muted-foreground' />
+											<span className='text-sm font-medium'>Active Probes</span>
+										</div>
+										<span className='text-sm font-medium'>
+											{viewModel?.activeProbeCount || 0}
+										</span>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+
+						{/* Food Probes Card - Conditional */}
+						{viewModel?.connectedProbes &&
+							viewModel.connectedProbes.length > 0 && (
+								<Card>
+									<CardHeader>
+										<CardTitle>Food Probes</CardTitle>
+										<CardDescription>
+											Temperature probe readings
+										</CardDescription>
+									</CardHeader>
+									<CardContent>
+										<div className='space-y-3'>
+											{viewModel.connectedProbes.map((probe) => (
+												<div
+													key={probe.name}
+													className={`flex items-center justify-between p-3 rounded-lg ${
+														probe.active ? 'bg-primary/10' : 'bg-muted/50'
+													}`}
+												>
+													<div>
+														<p className='font-medium capitalize'>
+															{probe.name.replace('probe', 'Probe ')}
+														</p>
+														<p className='text-sm text-muted-foreground'>
+															{probe.active ? 'Active' : 'Monitoring'}
+														</p>
+													</div>
+													<div className='text-right'>
+														<p className='text-xl font-semibold'>
+															{formatTemperature(
+																probe.temp,
+																zeroUser?.prefers_celsius ?? false,
+																'celsius',
+															)}
+														</p>
+														{probe.progress < 100 && (
+															<p className='text-sm text-muted-foreground'>
+																{probe.progress}% done
+															</p>
+														)}
+													</div>
+												</div>
+											))}
+										</div>
+									</CardContent>
+								</Card>
+							)}
+					</div>
 				</TabsContent>
 
 				<TabsContent value='status' className='space-y-4'>
@@ -420,8 +453,14 @@ function DeviceDetailPage() {
 										</p>
 									</div>
 									<div>
-										<p className='text-sm text-muted-foreground'>Smoke Level</p>
-										<p>{grillState.smoke || device.cook_smoke_level || '—'}</p>
+										<p className='text-sm text-muted-foreground'>Smoke</p>
+										<p>{grillState.smoke ? 'On' : 'Off'}</p>
+									</div>
+									<div>
+										<p className='text-sm text-muted-foreground'>Lid</p>
+										<p>
+											{grillState.inputs?.io?.['lid open'] ? 'Open' : 'Closed'}
+										</p>
 									</div>
 								</div>
 								{grillState.message && (
@@ -577,41 +616,62 @@ const FIELD_NAME_MAP: Record<string, string> = {
 }
 
 function DeviceHistoryView({ deviceId }: { deviceId: string }) {
-	const [history, setHistory] = useState<HistoryEntry[]>([])
-	const [loading, setLoading] = useState(true)
-	const [error, setError] = useState<string | null>(null)
+	const z = useZero()
+	const [historyRecords] = useQuery(
+		z.query.deviceHistory
+			.where('deviceId', deviceId)
+			.orderBy('recordedAt', 'desc')
+			.limit(50),
+	)
 
-	useEffect(() => {
-		async function fetchHistory() {
-			try {
-				setLoading(true)
-				const data = await getDeviceHistory({ data: { deviceId } })
-				setHistory(data as HistoryEntry[])
-			} catch (err) {
-				setError(err instanceof Error ? err.message : 'Failed to load history')
-			} finally {
-				setLoading(false)
+	// Process the records to extract changes in a UI-friendly format
+	const history = useMemo(() => {
+		if (!historyRecords) return []
+
+		return historyRecords.map((record) => {
+			const changes = record.changes as Record<string, unknown>
+			let changesList: ChangeRecord[] = []
+
+			if (record.historyType === 'patch' && typeof changes === 'object') {
+				// For patches, changes are in RFC 7396 format (direct field: value)
+				changesList = Object.entries(changes).map(([field, value]) => ({
+					field,
+					new: value,
+				}))
+			} else if (
+				record.historyType === 'snapshot' &&
+				typeof changes === 'object'
+			) {
+				// For snapshots, changes contains the full record state
+				changesList = Object.entries(changes)
+					.filter(
+						([field]) =>
+							field !== 'id' &&
+							field !== 'userId' &&
+							field !== 'createdAt' &&
+							field !== 'updatedAt',
+					)
+					.map(([field, value]) => ({
+						field,
+						new: value,
+					}))
 			}
-		}
 
-		fetchHistory()
-	}, [deviceId])
+			return {
+				id: record.id,
+				historyType: record.historyType,
+				recordedAt: record.recordedAt,
+				changedBy: record.changedBy,
+				changes: changesList,
+			}
+		})
+	}, [historyRecords])
 
-	if (loading) {
+	if (!historyRecords) {
 		return (
 			<div className='flex items-center justify-center p-8'>
 				<Loader2 className='h-6 w-6 animate-spin' />
 			</div>
-		)
-	}
-
-	if (error) {
-		return (
-			<Alert variant='destructive'>
-				<AlertCircle className='h-4 w-4' />
-				<AlertTitle>Error</AlertTitle>
-				<AlertDescription>{error}</AlertDescription>
-			</Alert>
 		)
 	}
 

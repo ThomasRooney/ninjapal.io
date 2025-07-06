@@ -551,7 +551,6 @@ export function createServerMutators(
 								// Only insert if there are actual changes
 								if (Object.keys(patch).length > 0) {
 									await tx.mutate.deviceHistory.insert({
-										id: null,
 										deviceId: existingDevice.id,
 										historyType: 'patch',
 										changes: JSON.stringify(patch),
@@ -561,7 +560,6 @@ export function createServerMutators(
 							} else {
 								// First update of the hour, create a snapshot
 								await tx.mutate.deviceHistory.insert({
-									id: null,
 									deviceId: existingDevice.id,
 									historyType: 'snapshot',
 									changes: JSON.stringify(newState),
@@ -584,7 +582,6 @@ export function createServerMutators(
 
 						if (newDevice?.id) {
 							await tx.mutate.deviceHistory.insert({
-								id: null,
 								deviceId: newDevice.id,
 								historyType: 'snapshot',
 								changes: JSON.stringify(deviceData),
@@ -648,7 +645,6 @@ export function createServerMutators(
 					// Only insert if there are actual changes
 					if (Object.keys(patch).length > 0) {
 						await tx.mutate.deviceHistory.insert({
-							id: null,
 							deviceId: args.id,
 							historyType: 'patch',
 							changes: JSON.stringify(patch),
@@ -658,7 +654,6 @@ export function createServerMutators(
 				} else {
 					// First update of the hour, create a snapshot
 					await tx.mutate.deviceHistory.insert({
-						id: null,
 						deviceId: args.id,
 						historyType: 'snapshot',
 						changes: JSON.stringify(newState),

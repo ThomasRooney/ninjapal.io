@@ -35,9 +35,9 @@ const NavApp = ({ title, breadcrumbs, children }: NavAppProps) => {
 				<TooltipProvider>
 					<Tooltip>
 						<TooltipTrigger asChild>
-              <ClientOnly>
-							  <SidebarTrigger className='opacity-50 hover:opacity-100' />
-              </ClientOnly>
+							<ClientOnly>
+								<SidebarTrigger className='opacity-50 hover:opacity-100' />
+							</ClientOnly>
 						</TooltipTrigger>
 						<TooltipContent>
 							<p>

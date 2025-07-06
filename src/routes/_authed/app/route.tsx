@@ -5,7 +5,7 @@ import { initializeZero, zeroAtom } from '@/lib/zero-setup.ts'
 import { ZeroProvider } from '@rocicorp/zero/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
-import { useEffect } from "react";
+import { useEffect } from 'react'
 import { Suspense } from 'react'
 
 const queryClient = new QueryClient()
@@ -35,14 +35,14 @@ function AppContent() {
 	}, [syncUser])
 
 	return (
-    <>
+		<>
 			<AppSidebar variant='inset' />
 			<div className='flex-1 p-2'>
 				<main className='h-full border border-border bg-background rounded flex flex-col overflow-hidden'>
 					<Outlet />
 				</main>
 			</div>
-    </>
+		</>
 	)
 }
 
@@ -50,18 +50,18 @@ function RouteComponent() {
 	// Get the initialized zero instance from the loader data
 	const { user } = Route.useLoaderData()
 
-  if (!zeroAtom.value) {
-    initializeZero(user)
-  }
+	if (!zeroAtom.value) {
+		initializeZero(user)
+	}
 
 	return (
 		<Suspense fallback={null}>
 			<QueryClientProvider client={queryClient}>
-        <ZeroProvider zero={zeroAtom.value!}>
-          <SidebarProvider className='flex h-screen'>
-            <AppContent />
-          </SidebarProvider>
-        </ZeroProvider>
+				<ZeroProvider zero={zeroAtom.value!}>
+					<SidebarProvider className='flex h-screen'>
+						<AppContent />
+					</SidebarProvider>
+				</ZeroProvider>
 			</QueryClientProvider>
 		</Suspense>
 	)

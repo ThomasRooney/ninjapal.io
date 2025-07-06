@@ -13,10 +13,10 @@ export default defineConfig({
 			projects: ['./tsconfig.json'],
 		}),
 		tanstackStart({
-      spa: {
-        enabled: true
-      }
-    }),
+			spa: {
+				enabled: true,
+			},
+		}),
 		tailwindcss(),
 	],
 	test: {

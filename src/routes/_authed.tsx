@@ -1,4 +1,9 @@
-import { ClientOnly, Outlet, createFileRoute, redirect } from '@tanstack/react-router'
+import {
+	ClientOnly,
+	Outlet,
+	createFileRoute,
+	redirect,
+} from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authed')({
 	beforeLoad: async ({ location, context }) => {
@@ -17,7 +22,5 @@ function AuthWrapper() {
 	const { user } = Route.useRouteContext()
 	console.log('🔐 _authed route context:', { user })
 
-	return (
-    <Outlet />
-	)
+	return <Outlet />
 }

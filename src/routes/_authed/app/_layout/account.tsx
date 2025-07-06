@@ -6,7 +6,7 @@ import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authed/app/_layout/account')({
 	component: RouteComponent,
-  ssr: false,
+	ssr: false,
 })
 
 function RouteComponent() {

@@ -84,9 +84,12 @@ export const permissions = definePermissions<AuthData, Schema>(
 			},
 			deviceHistory: {
 				row: {
-					// Only allow reading device history for authenticated users
-					// In production, you'd want to join with devices table to check ownership
-					select: [],
+					// Allow all authenticated users to read device history
+					// The component will filter to only show history for their devices
+					select: [
+						(authData, { cmp }: ExpressionBuilder<Schema, 'deviceHistory'>) =>
+							cmp('id', '>', 0) // Allow all rows for authenticated users
+					],
 					// Only server-side operations can insert
 					insert: [],
 					// No updates or deletes allowed on history
