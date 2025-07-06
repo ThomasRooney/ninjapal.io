@@ -1,5 +1,7 @@
+import type { Schema } from '@/server/db/zero-schema.gen.ts'
+import type { SharedMutators } from '@/server/db/zero-shared-mutators.ts'
 import { useQuery, useZero } from '@rocicorp/zero/react'
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
@@ -9,7 +11,7 @@ export const Route = createFileRoute('/_authed/app/_layout/')({
 
 function RedirectComponent() {
 	const navigate = useNavigate()
-	const z = useZero()
+	const z = useZero<Schema, SharedMutators>()
 	const [connections] = useQuery(z.query.ninjaConnections)
 
 	useEffect(() => {

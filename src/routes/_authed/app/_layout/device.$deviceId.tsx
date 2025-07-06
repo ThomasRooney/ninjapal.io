@@ -29,7 +29,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-type ChangeRecord = { field: string; old?: unknown; new?: unknown }
+type ChangeRecord = {
+	field: string
+	// biome-ignore lint/suspicious/noExplicitAny: Database JSON can contain any value type
+	old?: any
+	// biome-ignore lint/suspicious/noExplicitAny: Database JSON can contain any value type
+	new?: any
+}
 type HistoryEntry = {
 	id: number
 	historyType: 'snapshot' | 'patch'
@@ -580,7 +586,7 @@ function DeviceHistoryView({ deviceId }: { deviceId: string }) {
 			try {
 				setLoading(true)
 				const data = await getDeviceHistory({ data: { deviceId } })
-				setHistory(data)
+				setHistory(data as HistoryEntry[])
 			} catch (err) {
 				setError(err instanceof Error ? err.message : 'Failed to load history')
 			} finally {

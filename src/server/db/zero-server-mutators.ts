@@ -212,10 +212,11 @@ export function createServerMutators(
 				if (!authData.sub) {
 					throw new Error('Not authenticated')
 				}
+				const userId = authData.sub // TypeScript now knows this is not null
 
 				// Get the connection from the database
 				const connection = await tx.query.ninjaConnections
-					.where('userId', authData.sub)
+					.where('userId', userId)
 					.one()
 					.run()
 
@@ -277,7 +278,7 @@ export function createServerMutators(
 					newState.aylaToken?.expiresAt !== connection.aylaExpiresAt
 				) {
 					await sharedMutators.ninjaConnections.updateTokens(tx, {
-						userId: authData.sub,
+						userId: userId,
 						aylaAccessToken: newState.aylaToken?.accessToken || null,
 						aylaRefreshToken: newState.aylaToken?.refreshToken || null,
 						aylaExpiresAt: newState.aylaToken?.expiresAt || null,
@@ -308,7 +309,7 @@ export function createServerMutators(
 
 				// Delete existing devices for this user
 				const existingDevices = await tx.query.devices
-					.where('userId', authData.sub)
+					.where('userId', userId)
 					.run()
 
 				for (const device of existingDevices) {
@@ -427,7 +428,7 @@ export function createServerMutators(
 					// Build device data with mapped properties
 					const deviceData: Record<string, unknown> = {
 						id: crypto.randomUUID(),
-						userId: authData.sub,
+						userId: userId,
 						dsn: device.dsn,
 						productName: device.product_name || null,
 						model: device.model || null,
@@ -497,117 +498,173 @@ export function createServerMutators(
 					// Check if device already exists
 					const existingDevice = await tx.query.devices
 						.where('dsn', device.dsn)
-						.where('userId', authData.sub)
+						.where('userId', userId)
 						.one()
 						.run()
 
-					if (existingDevice) {
-						// Update existing device
+					if (existingDevice?.id) {
+						// Update existing device - history tracking happens in the update mutator
 						const { id, ...dataWithoutId } = deviceData
-						await tx.mutate.devices.update({
-							...dataWithoutId as Parameters<typeof tx.mutate.devices.update>[0],
+						// Call the shared mutator to update the device
+						await sharedMutators.devices.update(tx, {
 							id: existingDevice.id,
-							updatedAt: Date.now(),
+							data: dataWithoutId,
 						})
+
+						// Track history for the update
+						const currentDevice = await tx.query.devices
+							.where('id', existingDevice.id)
+							.one()
+							.run()
+
+						if (currentDevice) {
+							// Check if we already have a snapshot for this hour
+							const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+							const recentHistory = await tx.query.deviceHistory
+								.where('deviceId', existingDevice.id)
+								.orderBy('recordedAt', 'desc')
+								.limit(10)
+								.run()
+
+							// Find if there's already a snapshot in the current hour
+							const currentHourSnapshot = recentHistory.find(
+								(h) =>
+									h.historyType === 'snapshot' &&
+									h.recordedAt &&
+									new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
+							)
+
+							// Merge current state with updates to get the new state
+							const newState = {
+								...currentDevice,
+								...dataWithoutId,
+								updatedAt: Date.now(),
+							}
+
+							if (currentHourSnapshot) {
+								// We already have a snapshot for this hour, create a patch
+								const patch = createJsonMergePatch(
+									currentDevice as Record<string, unknown>,
+									newState as Record<string, unknown>,
+								)
+
+								// Only insert if there are actual changes
+								if (Object.keys(patch).length > 0) {
+									await tx.mutate.deviceHistory.insert({
+										id: null,
+										deviceId: existingDevice.id,
+										historyType: 'patch',
+										changes: JSON.stringify(patch),
+										changedBy: userId,
+									})
+								}
+							} else {
+								// First update of the hour, create a snapshot
+								await tx.mutate.deviceHistory.insert({
+									id: null,
+									deviceId: existingDevice.id,
+									historyType: 'snapshot',
+									changes: JSON.stringify(newState),
+									changedBy: userId,
+								})
+							}
+						}
 					} else {
 						// Insert new device
 						await tx.mutate.devices.insert(
 							deviceData as Parameters<typeof tx.mutate.devices.insert>[0],
 						)
-					}
 
-					// Note: History tracking happens in the devices.update mutator
-					// which has access to Drizzle for direct SQL operations
+						// For new devices, create an initial snapshot
+						const newDevice = await tx.query.devices
+							.where('dsn', device.dsn)
+							.where('userId', userId)
+							.one()
+							.run()
+
+						if (newDevice?.id) {
+							await tx.mutate.deviceHistory.insert({
+								id: null,
+								deviceId: newDevice.id,
+								historyType: 'snapshot',
+								changes: JSON.stringify(deviceData),
+								changedBy: userId,
+							})
+						}
+					}
 				}
 
 				console.log(
-					`[Server] Synced ${devicesWithProperties.length} real devices for user: ${authData.sub}`,
+					`[Server] Synced ${devicesWithProperties.length} real devices for user: ${userId}`,
 				)
 			},
 			async update(
 				tx: Transaction<Schema>,
 				args: { id: string; data: Record<string, unknown> },
 			) {
-				// Delegate to shared mutator for permission checks
+				// Get the current device state before update
+				const currentDevice = await tx.query.devices
+					.where('id', args.id)
+					.one()
+					.run()
+
+				if (!currentDevice) {
+					throw new Error('Device not found')
+				}
+
+				// Delegate to shared mutator for permission checks and update
 				await sharedMutators.devices.update(tx, args)
 
-				// Import Drizzle client
-				const { drizzle } = await import('@/server/db/drizzle/client')
-				const { devices, deviceHistory } = await import('@/server/db/schema')
-				const { eq, and, sql } = await import('drizzle-orm')
+				// Check if we already have a snapshot for this hour
+				const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+				const recentHistory = await tx.query.deviceHistory
+					.where('deviceId', args.id)
+					.orderBy('recordedAt', 'desc')
+					.limit(10)
+					.run()
 
-				// Use a transaction to ensure atomicity
-				await drizzle.transaction(async (trx) => {
-					// Get the current device state before update
-					const [currentDevice] = await trx
-						.select()
-						.from(devices)
-						.where(
-							and(
-								eq(devices.id, args.id),
-								eq(devices.userId, authData.sub || ''),
-							),
-						)
-						.limit(1)
+				// Find if there's already a snapshot in the current hour
+				const currentHourSnapshot = recentHistory.find(
+					(h) =>
+						h.historyType === 'snapshot' &&
+						h.recordedAt &&
+						new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
+				)
 
-					if (!currentDevice) {
-						throw new Error('Device not found')
-					}
+				// Merge current state with updates to get the new state
+				const newState = {
+					...currentDevice,
+					...args.data,
+					updatedAt: Date.now(),
+				}
 
-					// Update the device via Zero
-					await tx.mutate.devices.update({
-						id: args.id,
-						...args.data,
-						updatedAt: Date.now(),
-					})
+				if (currentHourSnapshot) {
+					// We already have a snapshot for this hour, create a patch
+					const patch = createJsonMergePatch(
+						currentDevice as Record<string, unknown>,
+						newState as Record<string, unknown>,
+					)
 
-					// Check if we already have a snapshot for this hour
-					const currentHour = sql`date_trunc('hour', NOW())`
-					const [existingSnapshot] = await trx
-						.select()
-						.from(deviceHistory)
-						.where(
-							and(
-								eq(deviceHistory.deviceId, args.id),
-								eq(deviceHistory.historyType, 'snapshot'),
-								sql`${deviceHistory.recordedAt} >= ${currentHour}`,
-							),
-						)
-						.limit(1)
-
-					// Merge current state with updates to get the new state
-					const newState = {
-						...currentDevice,
-						...args.data,
-						updatedAt: Date.now(),
-					}
-
-					if (existingSnapshot) {
-						// We already have a snapshot for this hour, create a patch
-						const patch = createJsonMergePatch(
-							currentDevice as Record<string, unknown>,
-							newState as Record<string, unknown>,
-						)
-
-						// Only insert if there are actual changes
-						if (Object.keys(patch).length > 0) {
-							await trx.insert(deviceHistory).values({
-								deviceId: args.id,
-								historyType: 'patch',
-								changes: patch,
-								changedBy: authData.sub,
-							})
-						}
-					} else {
-						// First update of the hour, create a snapshot
-						await trx.insert(deviceHistory).values({
+					// Only insert if there are actual changes
+					if (Object.keys(patch).length > 0) {
+						await tx.mutate.deviceHistory.insert({
+							id: null,
 							deviceId: args.id,
-							historyType: 'snapshot',
-							changes: newState,
+							historyType: 'patch',
+							changes: JSON.stringify(patch),
 							changedBy: authData.sub,
 						})
 					}
-				})
+				} else {
+					// First update of the hour, create a snapshot
+					await tx.mutate.deviceHistory.insert({
+						id: null,
+						deviceId: args.id,
+						historyType: 'snapshot',
+						changes: JSON.stringify(newState),
+						changedBy: authData.sub,
+					})
+				}
 
 				console.log(
 					`[Server] Device ${args.id} updated with hourly snapshot/patch pattern`,

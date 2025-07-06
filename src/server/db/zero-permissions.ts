@@ -31,7 +31,9 @@ export type InsertNinjaConnection = InsertValue<
 	typeof zeroSchema.tables.ninjaConnections
 >
 export type InsertDevice = InsertValue<typeof zeroSchema.tables.devices>
-export type InsertDeviceHistory = InsertValue<typeof zeroSchema.tables.deviceHistory>
+export type InsertDeviceHistory = InsertValue<
+	typeof zeroSchema.tables.deviceHistory
+>
 export const permissions = definePermissions<AuthData, Schema>(
 	zeroSchema,
 	() => {
@@ -82,24 +84,17 @@ export const permissions = definePermissions<AuthData, Schema>(
 			},
 			deviceHistory: {
 				row: {
-					// Anyone can read their own device history
-					select: [
-						(authData: AuthData, eb: ExpressionBuilder<Schema, 'deviceHistory'>) => {
-							// This is a bit complex - we need to join with devices to check ownership
-							// For now, we'll allow all authenticated users to read
-							// In production, you'd want to join with devices table
-							return authData.sub !== null
-						},
-					],
+					// Only allow reading device history for authenticated users
+					// In production, you'd want to join with devices table to check ownership
+					select: [],
 					// Only server-side operations can insert
-					// By returning false, only server mutators can write
-					insert: [() => false],
+					insert: [],
 					// No updates or deletes allowed on history
 					update: {
-						preMutation: [() => false],
-						postMutation: [() => false],
+						preMutation: [],
+						postMutation: [],
 					},
-					delete: [() => false],
+					delete: [],
 				},
 			},
 		} satisfies PermissionsConfig<AuthData, Schema>
