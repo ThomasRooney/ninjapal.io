@@ -1,9 +1,10 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
 import { useZero } from '@/hooks/use-typed-zero'
 import { useQuery as useZeroQuery } from '@rocicorp/zero/react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 
 export function DeviceSyncPoller() {
 	const z = useZero()
@@ -16,14 +17,11 @@ export function DeviceSyncPoller() {
 	const isPollingEnabled = !!connections && hasActiveConnection
 
 	// 3. Run the polling query, which is controlled by the `enabled` flag.
-	const { isRefetching } = useQuery({
+	const { isFetching, refetch } = useQuery({
 		// This key is unique to the polling action.
 		queryKey: ['devices', 'syncPoller'],
 		// The "query" is actually our mutation. TanStack Query handles it.
-		queryFn: async () => {
-			await z.mutate.devices.syncRealDevices()
-			return null
-		},
+		queryFn: () => z.mutate.devices.syncRealDevices().server(),
 
 		// --- Critical Configuration ---
 		enabled: isPollingEnabled,
@@ -44,15 +42,27 @@ export function DeviceSyncPoller() {
 		staleTime: 60 * 1000,
 	})
 
-	// Show loader when refetching (not on initial fetch)
-	if (isRefetching) {
-		return (
-			<span title='Syncing devices...'>
-				<Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
-			</span>
-		)
-	}
-
-	// Return empty span to maintain layout consistency
-	return <span className='h-4 w-4' />
+	// Always show the button
+	return (
+		<Button
+			variant='ghost'
+			size='icon'
+			className='h-6 w-6'
+			onClick={() => refetch()}
+			disabled={!isPollingEnabled || isFetching}
+			title={
+				isFetching
+					? 'Syncing devices...'
+					: isPollingEnabled
+						? 'Sync devices now'
+						: 'No active connection'
+			}
+		>
+			{isFetching ? (
+				<Loader2 className='h-3.5 w-3.5 animate-spin' />
+			) : (
+				<RefreshCw className='h-3.5 w-3.5' />
+			)}
+		</Button>
+	)
 }
