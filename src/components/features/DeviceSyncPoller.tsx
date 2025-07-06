@@ -20,7 +20,10 @@ export function DeviceSyncPoller() {
 		// This key is unique to the polling action.
 		queryKey: ['devices', 'syncPoller'],
 		// The "query" is actually our mutation. TanStack Query handles it.
-		queryFn: () => z.mutate.devices.syncRealDevices().server,
+		queryFn: async () => {
+			await z.mutate.devices.syncRealDevices()
+			return null
+		},
 
 		// --- Critical Configuration ---
 		enabled: isPollingEnabled,

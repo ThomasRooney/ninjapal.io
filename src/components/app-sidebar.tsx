@@ -40,17 +40,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarMenuButton
-							asChild
-							className='data-[slot=sidebar-menu-button]:!p-1.5 mt-0.5'
-						>
-							<Link to='/'>
-								<Logo />
-								<div className='flex items-center gap-2'>
+						<SidebarMenuButton className='data-[slot=sidebar-menu-button]:!p-1.5 mt-0.5'>
+							<div className='flex w-full items-center justify-between'>
+								<Link to='/' className='flex items-center gap-2'>
+									<Logo />
 									<span className='text-sm font-semibold'>Ninja Pal</span>
-									<DeviceSyncPoller />
-								</div>
-							</Link>
+								</Link>
+								<DeviceSyncPoller />
+							</div>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 				</SidebarMenu>

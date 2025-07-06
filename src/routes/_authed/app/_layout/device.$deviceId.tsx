@@ -109,10 +109,12 @@ interface DeviceOverviewPageProps {
 		probe_state_raw?: string | null
 		[key: string]: unknown
 	}
-	zeroUser: {
-		prefers_celsius?: boolean | null
-		[key: string]: unknown
-	} | undefined
+	zeroUser:
+		| {
+				prefers_celsius?: boolean | null
+				[key: string]: unknown
+		  }
+		| undefined
 }
 
 function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {

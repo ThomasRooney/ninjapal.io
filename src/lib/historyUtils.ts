@@ -40,11 +40,15 @@ export function reconstructHistorySnapshots(
 
 	for (const record of chronologicalRecords) {
 		// Skip records with null changes
-		if (!record.changes || typeof record.changes !== 'object') {
+		if (!record.changes) {
 			continue
 		}
 
-		const changes = record.changes as Record<string, unknown>
+		// Parse changes if it's a string (from JSONB column)
+		const changes =
+			typeof record.changes === 'string'
+				? JSON.parse(record.changes)
+				: (record.changes as Record<string, unknown>)
 
 		if (record.historyType === 'snapshot') {
 			// Snapshot resets the state. The 'changes' field contains the full object.
