@@ -1,3 +1,4 @@
+import { TemperatureGraph } from '@/components/temperature-graph'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -350,6 +351,17 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 					</Card>
 				)}
 			</div>
+
+			{/* Temperature History Graph */}
+			<TemperatureGraph
+				deviceId={device.id}
+				prefersCelsius={zeroUser?.prefers_celsius ?? false}
+				series={[
+					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
+					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
+				]}
+				className='mt-4'
+			/>
 		</div>
 	)
 }
