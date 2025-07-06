@@ -13,7 +13,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from '@/components/ui/tooltip.tsx'
-import { Link } from '@tanstack/react-router'
+import { ClientOnly, Link } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import React from 'react'
 
@@ -35,7 +35,9 @@ const NavApp = ({ title, breadcrumbs, children }: NavAppProps) => {
 				<TooltipProvider>
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<SidebarTrigger className='opacity-50 hover:opacity-100' />
+              <ClientOnly>
+							  <SidebarTrigger className='opacity-50 hover:opacity-100' />
+              </ClientOnly>
 						</TooltipTrigger>
 						<TooltipContent>
 							<p>

@@ -11,6 +11,7 @@ const searchSchema = z.object({
 export const Route = createFileRoute('/_authed/app/_layout/ninja-connection')({
 	component: RouteComponent,
 	validateSearch: searchSchema,
+  ssr: false
 })
 
 function RouteComponent() {

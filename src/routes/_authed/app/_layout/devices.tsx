@@ -13,6 +13,7 @@ import { Cpu, Loader2 } from 'lucide-react'
 
 export const Route = createFileRoute('/_authed/app/_layout/devices')({
 	component: DevicesPage,
+  ssr: false,
 })
 
 function DevicesPage() {
