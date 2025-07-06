@@ -56,7 +56,7 @@ function DevicesPage() {
 							to='/app/device/$deviceId'
 							params={{ deviceId: device.id }}
 							className='block transition-transform hover:scale-[1.02]'
-							data-testid={`device-card-${device.id}`}
+							data-testid='device-card'
 						>
 							<Card className='h-full hover:shadow-lg transition-shadow cursor-pointer'>
 								<CardHeader>

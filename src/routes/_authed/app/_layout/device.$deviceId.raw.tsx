@@ -36,7 +36,10 @@ function DeviceRawDataPage() {
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<pre className='text-xs bg-muted p-4 rounded-lg overflow-auto max-h-[600px]'>
+				<pre
+					className='text-xs bg-muted p-4 rounded-lg overflow-auto max-h-[600px]'
+					data-testid='device-raw-json'
+				>
 					{JSON.stringify(device, null, 2)}
 				</pre>
 			</CardContent>

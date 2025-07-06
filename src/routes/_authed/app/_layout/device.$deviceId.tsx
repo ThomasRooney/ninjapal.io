@@ -149,7 +149,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 			{/* Primary cards row */}
 			<div className='grid gap-4 md:grid-cols-2'>
 				{/* Cook Status Card - Enhanced */}
-				<Card>
+				<Card data-testid='device-status'>
 					<CardHeader>
 						<CardTitle>Cook Status</CardTitle>
 					</CardHeader>

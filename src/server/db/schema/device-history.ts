@@ -47,7 +47,10 @@ export const deviceHistory = pgTable(
 
 		// Ensure only one snapshot per device per hour
 		oneSnapshotPerHourIdx: uniqueIndex('one_snapshot_per_hour_idx')
-			.on(table.deviceId, sql`date_trunc('hour', ${table.recordedAt}::timestamptz)`)
+			.on(
+				table.deviceId,
+				sql`date_trunc('hour', ${table.recordedAt}::timestamptz)`,
+			)
 			.where(sql`${table.historyType} = 'snapshot'`),
 	}),
 )

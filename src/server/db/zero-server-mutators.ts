@@ -432,8 +432,19 @@ export function createServerMutators(
 							updatedAt: Date.now(),
 						}
 
+						// Reorder properties to ensure GET_GrillState is processed first,
+						// allowing its fallback values to be overwritten by canonical properties.
+						const props = Object.entries(propertiesMap)
+						const grillStateIndex = props.findIndex(
+							([key]) => key === 'GET_GrillState',
+						)
+						if (grillStateIndex > -1) {
+							const grillStateEntry = props.splice(grillStateIndex, 1)[0]
+							props.unshift(grillStateEntry)
+						}
+
 						// Map each property to its corresponding column
-						for (const [propName, propData] of Object.entries(propertiesMap)) {
+						for (const [propName, propData] of props) {
 							const mapping = DEVICE_PROPERTY_MAPPINGS[propName]
 							if (mapping) {
 								const { columnName, dataType } = mapping
@@ -587,18 +598,11 @@ export function createServerMutators(
 										new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
 								)
 
-								// Merge current state with updates to get the new state
-								const newState = {
-									...currentDevice,
-									...dataWithoutId,
-									updatedAt: Date.now(),
-								}
-
 								if (currentHourSnapshot) {
-									// We already have a snapshot for this hour, create a patch
+									// We have a snapshot, so create a patch from the old state to the new state.
 									const patch = createJsonMergePatch(
+										existingDevice as Record<string, unknown>,
 										currentDevice as Record<string, unknown>,
-										newState as Record<string, unknown>,
 									)
 
 									// Only insert if there are actual changes
@@ -611,11 +615,11 @@ export function createServerMutators(
 										})
 									}
 								} else {
-									// First update of the hour, create a snapshot
+									// No recent snapshot, so create a new one with the current state.
 									await tx.mutate.deviceHistory.insert({
 										deviceId: existingDevice.id,
 										historyType: 'snapshot',
-										changes: newState,
+										changes: currentDevice, // The snapshot is the full new state
 										changedBy: userId,
 									})
 								}

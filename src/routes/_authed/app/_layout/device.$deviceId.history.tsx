@@ -116,7 +116,7 @@ function DeviceHistoryPage() {
 	return (
 		<div className='space-y-4'>
 			{history.map((entry) => (
-				<Card key={entry.id}>
+				<Card key={entry.id} data-testid='history-card'>
 					<CardHeader className='pb-3'>
 						<div className='flex items-center justify-between'>
 							<CardTitle className='text-base'>
