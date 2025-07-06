@@ -17,6 +17,7 @@
 
 import Logo from '@/components/logo.tsx'
 
+import { DeviceSyncPoller } from '@/components/features/DeviceSyncPoller.tsx'
 import { NavExamples } from '@/components/nav-examples.tsx'
 // import { NavMain } from "@/components/nav-main"
 // import { NavSecondary } from '@/components/nav-secondary'
@@ -45,7 +46,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 						>
 							<Link to='/'>
 								<Logo />
-								<span className='text-sm font-semibold'>Ninja Pal</span>
+								<div className='flex items-center gap-2'>
+									<span className='text-sm font-semibold'>Ninja Pal</span>
+									<DeviceSyncPoller />
+								</div>
 							</Link>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
