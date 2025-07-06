@@ -96,9 +96,9 @@ function EmailPreview() {
 	}
 
 	return (
-		<div className='container flex flex-col h-full overflow-y-auto'>
+		<div className='container flex flex-col'>
 			<NavApp title='Email Preview & Testing' />
-			<div className='flex flex-col grow overflow-y-auto p-4'>
+			<div className='flex flex-col grow p-4'>
 				<div className='flex flex-col gap-8'>
 					<div className='flex flex-col gap-4 max-w-2xl'>
 						<div className='border rounded-lg bg-background p-4'>

@@ -72,7 +72,7 @@ function RouteComponent() {
 	}, [])
 
 	return (
-		<div className='flex flex-col h-full overflow-y-auto w-full'>
+		<div className='flex flex-col w-full'>
 			<AppNav title='Device Status'>
 				<Button
 					variant='outline'
@@ -87,7 +87,7 @@ function RouteComponent() {
 				</Button>
 			</AppNav>
 
-			<div className='flex flex-col grow overflow-y-auto'>
+			<div className='flex flex-col grow'>
 				<div className='px-4 py-4'>
 					<Table>
 						<TableHeader>

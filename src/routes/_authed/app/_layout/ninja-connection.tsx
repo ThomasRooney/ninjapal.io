@@ -18,7 +18,7 @@ function RouteComponent() {
 	return (
 		<div className='container flex flex-col min-h-screen'>
 			<NavApp title='Ninja Connection' />
-			<div className='flex flex-col grow overflow-y-auto space-y-6 p-6'>
+			<div className='flex flex-col space-y-6 p-6'>
 				<NinjaConnectionForm />
 				<NinjaConnectionDebug />
 			</div>
