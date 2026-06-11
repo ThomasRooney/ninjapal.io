@@ -7,6 +7,7 @@ node = "lts"  # Some tools may still require node
 "ubi:DarthSim/overmind" = "v2.5.1"  # Process manager for development
 supabase = "latest"  # Supabase CLI for local development
 neonctl = "latest"  # Neon CLI for managing Neon Postgres
+railway = "latest"  # Railway CLI — hosts zero-cache + device-sync poller
 
 [env]
 # Default environment variables for development
