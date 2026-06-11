@@ -385,6 +385,16 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 				series={[
 					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
 					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
+					{
+						attributeName: 'probe1_temp_a',
+						name: 'Probe 1',
+						color: '#f59e0b',
+					},
+					{
+						attributeName: 'probe2_temp_a',
+						name: 'Probe 2',
+						color: '#8b5cf6',
+					},
 				]}
 				className='mt-4 mb-8'
 			/>

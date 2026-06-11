@@ -56,10 +56,10 @@ export default drizzleZeroConfig(drizzleSchema, {
       temp_grill: true,
       temp_uipcb: true,
       temp_mainpcb: true,
-      probe1_temp_a: false, // Renamed from probe1_temp - disabled for migration
-      probe1_temp_b: false, // NEW - disabled for migration
-      probe2_temp_a: false, // Renamed from probe2_temp - disabled for migration
-      probe2_temp_b: false, // NEW - disabled for migration
+      probe1_temp_a: true, // Renamed from probe1_temp - disabled for migration
+      probe1_temp_b: true, // NEW - disabled for migration
+      probe2_temp_a: true, // Renamed from probe2_temp - disabled for migration
+      probe2_temp_b: true, // NEW - disabled for migration
       temp_smoke: true, // New column - enabled after migration complete
       
       // Cooking State
