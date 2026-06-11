@@ -15,10 +15,15 @@ import {
 	FormMessage,
 } from '@/components/ui/form.tsx'
 import { Input } from '@/components/ui/input.tsx'
-import { authClient } from '@/lib/auth-client.ts'
+import {
+	authClient,
+	signInWithGoogle,
+	signInWithMagicLink,
+} from '@/lib/auth-client.ts'
 import { cn } from '@/lib/utils.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -40,6 +45,23 @@ export function AuthLoginForm({
 	})
 
 	const router = useRouter()
+	const [magicLinkState, setMagicLinkState] = useState<
+		'idle' | 'sending' | 'sent' | 'error'
+	>('idle')
+
+	async function onMagicLink() {
+		const email = form.getValues('email')
+		const valid = z.string().email().safeParse(email)
+		if (!valid.success) {
+			form.setError('email', {
+				message: 'Enter your email above first, then request a link',
+			})
+			return
+		}
+		setMagicLinkState('sending')
+		const { error } = await signInWithMagicLink(email)
+		setMagicLinkState(error ? 'error' : 'sent')
+	}
 
 	async function onSubmit(values: z.infer<typeof formSchema>) {
 		const { error } = await authClient.signIn.email({
@@ -124,6 +146,48 @@ export function AuthLoginForm({
 							>
 								Login
 							</Button>
+
+							<div className='relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border'>
+								<span className='relative z-10 bg-card px-2 text-muted-foreground'>
+									or
+								</span>
+							</div>
+
+							<Button
+								type='button'
+								variant='outline'
+								className='w-full rounded'
+								data-testid='login-google'
+								onClick={() => signInWithGoogle()}
+							>
+								Continue with Google
+							</Button>
+
+							<Button
+								type='button'
+								variant='outline'
+								className='w-full rounded'
+								data-testid='login-magic-link'
+								disabled={magicLinkState === 'sending'}
+								onClick={onMagicLink}
+							>
+								{magicLinkState === 'sending'
+									? 'Sending…'
+									: 'Email me a login link'}
+							</Button>
+							{magicLinkState === 'sent' && (
+								<p
+									className='text-sm text-muted-foreground text-center'
+									data-testid='magic-link-sent'
+								>
+									Check your inbox — your login link is on its way.
+								</p>
+							)}
+							{magicLinkState === 'error' && (
+								<p className='text-sm text-destructive text-center'>
+									Couldn't send the link. Try again or use your password.
+								</p>
+							)}
 						</form>
 					</Form>
 					<div className='text-center text-sm pt-6'>
