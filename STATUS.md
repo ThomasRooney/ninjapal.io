@@ -20,7 +20,7 @@
 | Deploy protection | Vercel Authentication: previews + prod *deployment URLs* on both projects | gating the **custom prod domains** needs the $150/mo Advanced add-on — not bought; app is behind its own login, marketing is public |
 | PR previews | Vercel Git integration on `ThomasRooney/ninjapal.io` | both projects deploy previews per PR (verified with PR #1) |
 | sync-worker | Railway service `sync-worker` (same project), built from the repo with `Dockerfile.sync` (Playwright base + Bun) | polls Ayla every 60s for each `ninja_connections` row, writes devices + history straight to Neon (replicates to clients via zero-cache); shares `buildDeviceData` with the push mutator |
-| Legal | `/privacy-policy` + `/terms-of-service` on app.pitminder.com | real content (SharkNinja credential disclosure, food-safety disclaimer) |
+| Legal | `/privacy-policy` + `/terms-of-service` on app.pitminder.com | operated by **Resilient Software Ltd** (UK, 71–75 Shelton Street, London WC2H 9JQ); SharkNinja credential disclosure, food-safety disclaimer |
 | Demo data | `demo@pitminder.com` / `demo-smoker-2026` | seed: `bun scripts/seed-demo.ts` (local) or `APP_URL=https://app.pitminder.com ZERO_UPSTREAM_DB=<neon> bun scripts/seed-demo.ts` (prod) |
 
 Secrets: prod `ZERO_AUTH_SECRET`/`BETTER_AUTH_SECRET` are in the commented block at the bottom of local `.env`, mirrored to Railway + Vercel env. Vercel projects live in the **Pro team scope** (`team_JL8iNBq5rqeOkWjFfEnZxvG1`, slug `thomasrooney`), not the hobby personal account — pass `?teamId=` on API calls.
