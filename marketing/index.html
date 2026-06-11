@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PitMinder — your smoker, minded</title>
+<meta name="description" content="PitMinder watches your Ninja Woodfire grill so you don't have to. Live temperatures, beautiful cook graphs, and a full history of every brisket." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23dc2626'/%3E%3Cpath d='M10 20 L14 13 L18 17 L23 9' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0c0a09;
+    --panel: #1c1917;
+    --border: #292524;
+    --text: #fafaf9;
+    --muted: #a8a29e;
+    --ember: #dc2626;
+    --flame: #f59e0b;
+    --sky: #3b82f6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
+  .logo svg { display: block; }
+  nav a.login {
+    color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px;
+    transition: border-color .15s ease;
+  }
+  nav a.login:hover { border-color: var(--muted); }
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .hero h1 {
+    font-size: clamp(40px, 7vw, 64px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05;
+  }
+  .hero h1 .ember { color: var(--ember); }
+  .hero p.sub {
+    margin: 22px auto 0; max-width: 560px; color: var(--muted); font-size: 19px;
+  }
+  .cta-row { margin-top: 36px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .cta {
+    background: var(--ember); color: white; text-decoration: none; font-weight: 700;
+    padding: 14px 28px; border-radius: 10px; font-size: 16px;
+    transition: transform .1s ease, background .15s ease;
+  }
+  .cta:hover { background: #b91c1c; transform: translateY(-1px); }
+  .cta.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 600; }
+  .cta.ghost:hover { background: var(--panel); }
+  .graph-card {
+    margin: 64px auto 0; max-width: 860px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 16px; padding: 28px 28px 16px;
+    text-align: left;
+  }
+  .graph-card .gc-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 14px; }
+  .graph-card h3 { font-size: 15px; font-weight: 600; }
+  .graph-card .live { color: var(--muted); font-size: 13px; }
+  .live .dot { display: inline-block; width: 8px; height: 8px; background: #22c55e; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .legend { display: flex; gap: 20px; padding: 10px 4px 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .legend .key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; }
+  section.features { padding: 88px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 26px;
+  }
+  .card .icon { font-size: 26px; }
+  .card h3 { margin: 14px 0 8px; font-size: 17px; letter-spacing: -0.01em; }
+  .card p { color: var(--muted); font-size: 15px; }
+  .stall {
+    margin: 0 auto; max-width: 720px; text-align: center; padding: 0 0 88px;
+  }
+  .stall h2 { font-size: clamp(26px, 4vw, 34px); letter-spacing: -0.02em; }
+  .stall p { color: var(--muted); margin-top: 14px; font-size: 17px; }
+  footer {
+    border-top: 1px solid var(--border); padding: 30px 0 44px; color: var(--muted); font-size: 14px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  footer a { color: var(--muted); text-decoration: none; margin-left: 18px; }
+  footer a:hover { color: var(--text); }
+  footer .note { max-width: 560px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">
+      <svg width="26" height="26" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#dc2626"/><path d="M10 20 L14 13 L18 17 L23 9" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      PitMinder
+    </div>
+    <nav><a class="login" href="https://app.pitminder.com">Log in</a></nav>
+  </header>
+
+  <section class="hero">
+    <h1>Your smoker, <span class="ember">minded.</span></h1>
+    <p class="sub">PitMinder watches your Ninja Woodfire grill so you don't have to.
+    Live temperatures, beautiful cook graphs, and a record of every brisket — synced in real time, anywhere you are.</p>
+    <div class="cta-row">
+      <a class="cta" href="https://app.pitminder.com/auth/signup">Start minding your pit</a>
+      <a class="cta ghost" href="https://app.pitminder.com/auth/login">I have an account</a>
+    </div>
+
+    <div class="graph-card">
+      <div class="gc-head">
+        <h3>Sunday brisket — hour 6 of 12</h3>
+        <span class="live"><span class="dot"></span>Live</span>
+      </div>
+      <!-- Stylized cook graph: grill holds 107°C, probe climbs through the stall -->
+      <svg viewBox="0 0 760 230" width="100%" role="img" aria-label="Temperature graph of a brisket cook: grill temperature holding steady while the meat climbs through the stall">
+        <g stroke="#292524" stroke-width="1">
+          <line x1="40" y1="30" x2="740" y2="30"/><line x1="40" y1="80" x2="740" y2="80"/>
+          <line x1="40" y1="130" x2="740" y2="130"/><line x1="40" y1="180" x2="740" y2="180"/>
+        </g>
+        <g fill="#a8a29e" font-size="11" font-family="ui-monospace, monospace">
+          <text x="6" y="34">120°</text><text x="12" y="84">90°</text>
+          <text x="12" y="134">60°</text><text x="12" y="184">30°</text>
+        </g>
+        <!-- grill temp: fast preheat then wobbling hold with two lid-open dips -->
+        <path d="M40 200 C60 90 70 56 95 52 L130 50 L150 54 L170 49 L190 53 L210 50 L225 68 L240 51 L270 53 L300 49 L330 52 L360 50 L390 54 L420 50 L450 52 L470 70 L488 51 L520 53 L560 50 L600 52 L640 50 L680 53 L740 51"
+              fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <!-- air temp: shadows the grill slightly lower -->
+        <path d="M40 204 C62 100 74 66 98 62 L140 60 L180 62 L210 59 L226 76 L242 61 L290 62 L340 59 L390 63 L440 60 L470 78 L490 61 L550 62 L620 60 L740 61"
+              fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+        <!-- probe: slow climb, long flat stall, then the push -->
+        <path d="M40 212 L90 198 L150 180 L210 162 L270 148 L330 139 L390 135 L450 133 L510 132 L560 128 L610 118 L660 106 L710 96 L740 92"
+              fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <!-- stall annotation -->
+        <g font-size="12" font-family="ui-sans-serif, system-ui" fill="#a8a29e">
+          <text x="395" y="120" font-style="italic">the stall 😤</text>
+          <path d="M440 125 q 20 14 30 9" stroke="#57534e" fill="none" stroke-width="1"/>
+        </g>
+      </svg>
+      <div class="legend">
+        <span><span class="key" style="background:#dc2626"></span>Grill 107.2°C</span>
+        <span><span class="key" style="background:#3b82f6"></span>Chamber 103.8°C</span>
+        <span><span class="key" style="background:#f59e0b"></span>Brisket 68.4°C</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="grid">
+      <div class="card">
+        <div class="icon">🌡️</div>
+        <h3>Live, from the couch</h3>
+        <p>Grill, chamber, and dual-channel probe temperatures sync to your phone in real time. The lid stays closed; you stay seated.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📈</div>
+        <h3>Graphs worth bragging about</h3>
+        <p>Every cook is recorded and plotted — watch the stall flatten out and know exactly when it broke, down to the minute.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📜</div>
+        <h3>Total recall</h3>
+        <p>A complete, replayable history of every state change your grill ever reported. Settle arguments about last summer's ribs with data.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔔</div>
+        <h3>Alerts (coming soon)</h3>
+        <p>Probe targets, temp drops, lid-open warnings, cook-done pings — delivered before anything dries out.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎛️</div>
+        <h3>Control (coming soon)</h3>
+        <p>Adjust setpoints, change smoke levels, and start cooks remotely. The schema's ready; the brisket is waiting.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>Instant everything</h3>
+        <p>Built on real-time sync — no refresh button, no polling delay. The graph moves when your fire does.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stall">
+    <h2>Built by someone who's also stared at the stall at 2am</h2>
+    <p>PitMinder talks directly to your Ninja account — connect once, and every Woodfire grill on it shows up. No extra hardware, no replacement probes, no subscription.</p>
+    <div class="cta-row">
+      <a class="cta" href="https://app.pitminder.com/auth/signup">Get started free</a>
+    </div>
+  </section>
+
+  <footer>
+    <div class="note">© 2026 PitMinder. Not affiliated with SharkNinja. Ninja and Woodfire are trademarks of their respective owners.</div>
+    <div>
+      <a href="https://app.pitminder.com/privacy-policy">Privacy</a>
+      <a href="https://app.pitminder.com/terms-of-service">Terms</a>
+    </div>
+  </footer>
+</div>
+</body>
+</html>
