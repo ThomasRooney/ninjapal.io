@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && bun scripts/fix-css-hash.ts",
     "check": "biome check && tsc --noEmit",
     "check:fix": "biome check --fix",
     "clean": "rm -rf node_modules bun.lock",
