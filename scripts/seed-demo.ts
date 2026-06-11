@@ -12,10 +12,12 @@ const DEMO_PASSWORD = 'demo-smoker-2026'
 const DEMO_NAME = 'Demo Pitmaster'
 
 const DB_URL = process.env.ZERO_UPSTREAM_DB
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL
-const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY
-if (!DB_URL || !SUPABASE_URL || !ANON_KEY) {
-	console.error('Missing env (ZERO_UPSTREAM_DB / VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY). Run via `bun scripts/seed-demo.ts` so .env is loaded.')
+// App server hosting the better-auth endpoints (override with APP_URL for prod seeding)
+const APP_URL = process.env.APP_URL ?? 'http://localhost:5173'
+if (!DB_URL) {
+	console.error(
+		'Missing ZERO_UPSTREAM_DB. Run via `bun scripts/seed-demo.ts` so .env is loaded.',
+	)
 	process.exit(1)
 }
 
@@ -35,21 +37,25 @@ const jitter = (range: number) => (rand() - 0.5) * 2 * range
 const round1 = (n: number) => Math.round(n * 10) / 10
 
 async function ensureAuthUser(db: Client): Promise<string> {
-	// Try public signup first (local Supabase auto-confirms)
-	const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+	// Sign up via better-auth (no email verification required)
+	const res = await fetch(`${APP_URL}/api/auth/sign-up/email`, {
 		method: 'POST',
-		headers: { apikey: ANON_KEY as string, 'Content-Type': 'application/json' },
-		body: JSON.stringify({ email: DEMO_EMAIL, password: DEMO_PASSWORD }),
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			email: DEMO_EMAIL,
+			password: DEMO_PASSWORD,
+			name: DEMO_NAME,
+		}),
 	})
 	if (!res.ok) {
 		const body = await res.text()
-		// "User already registered" is fine — we look the id up below either way
-		if (!/already registered|user_already_exists/i.test(body)) {
+		// Existing user is fine — we look the id up below either way
+		if (!/already exist|USER_ALREADY_EXISTS/i.test(body)) {
 			throw new Error(`Signup failed (${res.status}): ${body}`)
 		}
 	}
 	const { rows } = await db.query(
-		'select id from auth.users where email = $1',
+		'select id from "user" where email = $1',
 		[DEMO_EMAIL],
 	)
 	if (!rows[0]) throw new Error('Demo auth user not found after signup')

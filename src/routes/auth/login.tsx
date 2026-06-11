@@ -1,7 +1,7 @@
+import { AuthLoginForm } from '@/components/auth-login-form.tsx'
 // import { LoginForm } from '@/components/login-form'
 // import { LoginFormMagic } from '@/components/login-form-magic'
 import NavMain from '@/components/nav-main.tsx'
-import { SupabaseLoginForm } from '@/components/supabase-login.tsx'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/auth/login')({
@@ -15,7 +15,7 @@ function RouteComponent() {
 			<div className='w-full h-full flex flex-col items-center justify-center max-w-md'>
 				{/* <LoginForm /> */}
 				{/* <LoginFormMagic /> */}
-				<SupabaseLoginForm />
+				<AuthLoginForm />
 			</div>
 		</div>
 	)

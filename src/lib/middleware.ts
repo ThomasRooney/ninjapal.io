@@ -46,10 +46,11 @@ export const corsMiddleware = createMiddleware({ type: 'request' }).server(
 
 export const authMiddleware = createMiddleware({ type: 'request' }).server(
 	async ({ next, request }) => {
-		// Extract JWT from Authorization header
+		// Extract JWT from Authorization header and verify its signature
 		const authHeader = request.headers.get('authorization') ?? ''
 		const token = authHeader.replace(/^Bearer\s+/, '')
-		const sub = token ? parseSub(token) : null
+		const { verifyZeroToken } = await import('@/lib/zero-jwt')
+		const sub = token ? await verifyZeroToken(token) : null
 
 		// Pass auth data through context
 		const result = await next({
@@ -61,14 +62,3 @@ export const authMiddleware = createMiddleware({ type: 'request' }).server(
 		return result
 	},
 )
-
-/** Helper – decode the `sub` from your JWT token payload */
-function parseSub(jwt: string): string | null {
-	try {
-		const [, payload] = jwt.split('.')
-		const data = JSON.parse(atob(payload))
-		return data.sub ?? null
-	} catch {
-		return null
-	}
-}

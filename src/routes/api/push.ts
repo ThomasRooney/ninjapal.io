@@ -1,4 +1,5 @@
 import { authMiddleware, corsMiddleware } from '@/lib/middleware'
+import { getSql } from '@/server/db/client'
 import type { AuthData } from '@/server/db/zero-permissions.ts'
 import { schema } from '@/server/db/zero-schema.gen'
 import { createServerMutators } from '@/server/db/zero-server-mutators.ts'
@@ -8,17 +9,11 @@ import {
 	ZQLDatabase,
 } from '@rocicorp/zero/pg'
 import { createServerFileRoute } from '@tanstack/react-start/server'
-import postgres from 'postgres'
 
 // Create a single postgres client at module scope
 // This client will be reused across all requests
-const sql = process.env.ZERO_UPSTREAM_DB
-	? postgres(process.env.ZERO_UPSTREAM_DB, {
-			max: 10, // Increase pool size for better concurrency
-			idle_timeout: 30, // Close idle connections after 30 seconds
-			ssl: false,
-		})
-	: null
+// (sslmode comes from the connection string — required for Neon, absent locally)
+const sql = process.env.ZERO_UPSTREAM_DB ? getSql() : null
 
 // Create a single PushProcessor instance at module scope
 const database = sql

@@ -1,4 +1,4 @@
-import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
+import { authClient } from '@/lib/auth-client.ts'
 import { useNavigate } from '@tanstack/react-router'
 import { LogOutIcon } from 'lucide-react'
 import { Button } from './ui/button.tsx'
@@ -7,8 +7,7 @@ export function AccountLogout() {
 	const navigate = useNavigate()
 
 	const handleLogout = async () => {
-		const supabase = getSupabaseBrowserClient()
-		await supabase.auth.signOut()
+		await authClient.signOut()
 		navigate({ to: '/' })
 	}
 

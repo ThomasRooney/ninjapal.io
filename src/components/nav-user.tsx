@@ -17,7 +17,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx'
-import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
+import { authClient } from '@/lib/auth-client.ts'
 import { Route as RootRoute } from '@/routes/__root.tsx'
 import { useNavigate } from '@tanstack/react-router'
 import { Link } from '@tanstack/react-router'
@@ -30,8 +30,7 @@ export function NavUser() {
 	if (!user) return null
 
 	const handleSignout = async () => {
-		const supabase = getSupabaseBrowserClient()
-		await supabase.auth.signOut()
+		await authClient.signOut()
 		navigate({ to: '/' })
 	}
 

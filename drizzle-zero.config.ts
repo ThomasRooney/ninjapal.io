@@ -11,8 +11,11 @@ export default drizzleZeroConfig(drizzleSchema, {
   // All tables/columns must be defined, but can be set to false to exclude them from the Zero schema.
   // Column names match your Drizzle schema definitions
   tables: {
-    // this can be set to false
-    // e.g. user: false,
+    // better-auth tables — server-side only, never synced to clients
+    user: false,
+    session: false,
+    account: false,
+    verification: false,
     users: {
       id: true,
       email: true,

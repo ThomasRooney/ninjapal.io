@@ -1,20 +1,17 @@
 import { useZero } from '@/hooks/use-typed-zero'
-import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
+import { authClient } from '@/lib/auth-client.ts'
 
 export function useSyncUserZero() {
 	const z = useZero()
 
 	const syncUser = async () => {
-		const supabase = getSupabaseBrowserClient()
-
-		const {
-			data: { user },
-		} = await supabase.auth.getUser()
+		const { data: session } = await authClient.getSession()
+		const user = session?.user
 		if (user) {
+			// id comes from authData.sub inside the mutator
 			await z.mutate.users.upsert({
-				id: user.id,
 				email: user.email ?? '',
-				name: user.user_metadata?.name ?? user.email ?? 'Unknown User',
+				name: user.name ?? user.email ?? 'Unknown User',
 			})
 		}
 	}

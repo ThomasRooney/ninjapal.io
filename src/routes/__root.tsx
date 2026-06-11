@@ -1,6 +1,5 @@
 import { DefaultCatchBoundary } from '@/components/default-catch-boundry.tsx'
 import { NotFound } from '@/components/not-found.tsx'
-import { getSupabaseServerClient } from '@/lib/supabase.ts'
 import type { ErrorComponentProps } from '@tanstack/react-router'
 import {
 	HeadContent,
@@ -17,21 +16,29 @@ import { createServerFn } from '@tanstack/react-start'
 const fetchUser = createServerFn({
 	method: 'GET',
 }).handler(async () => {
-	const supabase = await getSupabaseServerClient()
-	const {
-		data: { session },
-		error: _error,
-	} = await supabase.auth.getSession()
+	const [{ auth }, { signZeroToken }, { getWebRequest }] = await Promise.all([
+		import('@/lib/auth'),
+		import('@/lib/zero-jwt'),
+		import('@tanstack/react-start/server'),
+	])
 
+	const request = getWebRequest()
+	if (!request) return null
+
+	const session = await auth.api.getSession({ headers: request.headers })
 	if (!session?.user?.email) {
 		return null
 	}
 
-	return {
-		email: session.user.email,
+	const user = {
 		id: session.user.id,
-		name: session.user.user_metadata?.name || session.user.email.split('@')[0],
-		accessToken: session.access_token,
+		email: session.user.email,
+		name: session.user.name || session.user.email.split('@')[0],
+	}
+
+	return {
+		...user,
+		accessToken: await signZeroToken(user),
 	}
 })
 

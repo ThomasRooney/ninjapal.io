@@ -1,4 +1,4 @@
-import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
+import { authClient } from '@/lib/auth-client.ts'
 import { useNavigate } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -8,43 +8,33 @@ import { Button } from './ui/button.tsx'
 export const deleteUserFn = createServerFn({ method: 'POST' }).handler(
 	async () => {
 		// Import server-side modules at runtime
-		const { getSupabaseServerClient } = await import('@/lib/supabase.ts')
-		const supabase = getSupabaseServerClient()
+		const [{ auth }, { getSql }, { getWebRequest }] = await Promise.all([
+			import('@/lib/auth'),
+			import('@/server/db/client'),
+			import('@tanstack/react-start/server'),
+		])
 
 		try {
-			// Get the authenticated user
-			const {
-				data: { user },
-			} = await supabase.auth.getUser()
-			if (!user) {
+			const request = getWebRequest()
+			const session = request
+				? await auth.api.getSession({ headers: request.headers })
+				: null
+			if (!session?.user) {
 				return {
 					error: true,
 					message: 'No authenticated user found',
 				}
 			}
 
-			// Delete user data from Zero
-			const postgres = await import('postgres')
-			const dbUrl = process.env.ZERO_UPSTREAM_DB ?? ''
-			const sql = postgres.default(dbUrl, {
-				max: 1,
-				ssl: false,
-				idle_timeout: 20,
+			// Delete app data first (devices/history cascade from users via Zero schema)
+			const sql = getSql()
+			await sql`DELETE FROM public.users WHERE id = ${session.user.id}`
+
+			// Delete the better-auth user (cascades session/account rows)
+			await auth.api.deleteUser({
+				headers: request?.headers ?? new Headers(),
+				body: {},
 			})
-
-			try {
-				await sql.begin(async (tx) => {
-					// Delete the user from the users table
-					await tx`DELETE FROM public.users WHERE id = ${user.id}`
-				})
-			} finally {
-				// Ensure the connection is closed
-				await sql.end({ timeout: 5 })
-			}
-
-			// Delete user from Supabase Auth
-			// Note: This requires Supabase Service Role Key in production
-			await supabase.auth.admin.deleteUser(user.id)
 
 			return { error: false }
 		} catch (error) {
@@ -61,7 +51,6 @@ export const deleteUserFn = createServerFn({ method: 'POST' }).handler(
 export function AccountDelete() {
 	const [isDeleting, setIsDeleting] = useState(false)
 	const navigate = useNavigate()
-	const supabase = getSupabaseBrowserClient()
 
 	const deleteUser = async () => {
 		if (
@@ -84,7 +73,7 @@ export function AccountDelete() {
 			}
 
 			// Sign out client-side after successful deletion
-			await supabase.auth.signOut()
+			await authClient.signOut()
 
 			// Navigate to home page after successful deletion
 			navigate({ to: '/' })

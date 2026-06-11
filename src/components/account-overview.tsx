@@ -1,9 +1,8 @@
 import { useZero } from '@/hooks/use-typed-zero'
-import { getSupabaseBrowserClient } from '@/lib/supabase-client.ts'
+import { authClient } from '@/lib/auth-client.ts'
 import { useQuery } from '@rocicorp/zero/react'
-import type { Session } from '@supabase/supabase-js'
 import { Loader2, Thermometer } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { AccountDelete } from './account-delete.tsx'
 import { Button } from './ui/button.tsx'
@@ -11,40 +10,12 @@ import { Label } from './ui/label.tsx'
 import { Switch } from './ui/switch.tsx'
 
 const AccountOverview = () => {
-	const [session, setSession] = useState<Session | null>(null)
-	const [loading, setLoading] = useState(true)
-	const supabase = getSupabaseBrowserClient()
+	const { data: session, isPending: loading } = authClient.useSession()
 
 	// Placeholder state for subscription loading, adapt as needed
 	const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false)
 	const [savingPreference, setSavingPreference] = useState(false)
 	const z = useZero()
-
-	// Fetch Supabase session
-	useEffect(() => {
-		const fetchSession = async () => {
-			const { data, error } = await supabase.auth.getSession()
-			if (error) {
-				console.error('Error fetching session:', error)
-			} else {
-				setSession(data.session)
-			}
-			setLoading(false)
-		}
-
-		fetchSession()
-
-		// Listen for auth changes
-		const {
-			data: { subscription },
-		} = supabase.auth.onAuthStateChange((_event, newSession) => {
-			setSession(newSession)
-		})
-
-		return () => {
-			subscription.unsubscribe()
-		}
-	}, [supabase])
 
 	const userId = session?.user?.id || ''
 
@@ -88,9 +59,7 @@ const AccountOverview = () => {
 								<div>
 									<p className='text-sm text-muted-foreground'>Name</p>
 									<p className='text-sm'>
-										{session.user.user_metadata?.name ||
-											zeroUser?.name ||
-											'Not available'}
+										{session.user.name || zeroUser?.name || 'Not available'}
 									</p>
 								</div>
 								<div>
@@ -178,7 +147,7 @@ const AccountOverview = () => {
 							<div className='space-y-4'>
 								<p className='text-sm text-muted-foreground'>
 									Deleting your account will permanently remove all your data
-									from Zero and Supabase. This action cannot be undone.
+									from PitMinder. This action cannot be undone.
 								</p>
 								<div>
 									<AccountDelete />

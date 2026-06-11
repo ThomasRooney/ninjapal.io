@@ -1,5 +1,5 @@
+import { AuthSignupForm } from '@/components/auth-signup-form.tsx'
 import NavMain from '@/components/nav-main.tsx'
-import { SupabaseSignupForm } from '@/components/supabase-signup.tsx'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/auth/signup')({
@@ -12,7 +12,7 @@ function SignUpPage() {
 			<NavMain location='auth' />
 			<div className='w-full h-full flex flex-col items-center justify-center max-w-md'>
 				{/* <SignUp /> */}
-				<SupabaseSignupForm />
+				<AuthSignupForm />
 			</div>
 		</div>
 	)
