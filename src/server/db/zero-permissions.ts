@@ -87,7 +87,7 @@ export const permissions = definePermissions<AuthData, Schema>(
 					// Allow all authenticated users to read device history
 					// The component will filter to only show history for their devices
 					select: [
-						(authData, { cmp }: ExpressionBuilder<Schema, 'deviceHistory'>) =>
+						(_authData, { cmp }: ExpressionBuilder<Schema, 'deviceHistory'>) =>
 							cmp('id', '>', 0), // Allow all rows for authenticated users
 					],
 					// Only server-side operations can insert

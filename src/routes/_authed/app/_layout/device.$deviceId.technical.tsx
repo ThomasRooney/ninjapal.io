@@ -21,6 +21,17 @@ function DeviceTechnicalPage() {
 		return null
 	}
 
+	// Fields the Ayla API returns that aren't flattened into columns live in
+	// additionalDeviceProperties (see syncRealDevices).
+	const extra = (device.additionalDeviceProperties ?? {}) as Record<
+		string,
+		unknown
+	>
+	const extraStr = (key: string): string | null =>
+		typeof extra[key] === 'string' || typeof extra[key] === 'number'
+			? String(extra[key])
+			: null
+
 	return (
 		<div className='space-y-4'>
 			<Card>
@@ -53,7 +64,9 @@ function DeviceTechnicalPage() {
 						</div>
 						<div>
 							<dt className='text-sm text-muted-foreground'>OEM Model</dt>
-							<dd className='font-mono text-sm'>{device.oem_model || '—'}</dd>
+							<dd className='font-mono text-sm'>
+								{extraStr('oem_model') || '—'}
+							</dd>
 						</div>
 						<div>
 							<dt className='text-sm text-muted-foreground'>Build Factory</dt>
@@ -63,7 +76,7 @@ function DeviceTechnicalPage() {
 						</div>
 						<div>
 							<dt className='text-sm text-muted-foreground'>Device Type</dt>
-							<dd>{device.device_type || '—'}</dd>
+							<dd>{extraStr('device_type') || '—'}</dd>
 						</div>
 					</dl>
 				</CardContent>
@@ -78,25 +91,29 @@ function DeviceTechnicalPage() {
 						<div>
 							<dt className='text-sm text-muted-foreground'>Location</dt>
 							<dd>
-								{device.lat && device.lng
-									? `${device.lat}, ${device.lng}`
+								{extraStr('lat') && extraStr('lng')
+									? `${extraStr('lat')}, ${extraStr('lng')}`
 									: '—'}
-								{device.locality && ` (${device.locality})`}
+								{extraStr('locality') && ` (${extraStr('locality')})`}
 							</dd>
 						</div>
 						<div>
 							<dt className='text-sm text-muted-foreground'>Last Connected</dt>
 							<dd>
-								{device.connected_at
-									? new Date(device.connected_at).toLocaleString()
+								{extraStr('connected_at')
+									? new Date(
+											extraStr('connected_at') as string,
+										).toLocaleString()
 									: '—'}
 							</dd>
 						</div>
 						<div>
 							<dt className='text-sm text-muted-foreground'>Last Synced</dt>
 							<dd>
-								{device.lastSyncedAt
-									? new Date(device.lastSyncedAt).toLocaleString()
+								{extraStr('lastSyncedAt')
+									? new Date(
+											extraStr('lastSyncedAt') as string,
+										).toLocaleString()
 									: '—'}
 							</dd>
 						</div>

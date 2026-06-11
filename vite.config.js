@@ -22,7 +22,12 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: 'jsdom',
-		exclude: ['e2e/**', 'playwright/**', 'tests/**/*.spec.ts', 'node_modules/**'],
+		exclude: [
+			'e2e/**',
+			'playwright/**',
+			'tests/**/*.spec.ts',
+			'node_modules/**',
+		],
 	},
 	resolve: {
 		alias: {

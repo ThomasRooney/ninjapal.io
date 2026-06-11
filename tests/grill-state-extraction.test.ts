@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 describe('Grill State Extraction', () => {
 	// Mock the Zero server mutator extraction logic

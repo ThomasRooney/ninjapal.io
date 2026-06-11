@@ -41,7 +41,7 @@ export const Route = createFileRoute('/_authed/app/_layout/device/$deviceId')({
 
 interface CookTimeDisplayProps {
 	device: {
-		estimated_end_at?: string | null
+		estimated_end_at?: string | number | null
 	}
 	grillState: {
 		'seconds left'?: number
@@ -53,8 +53,11 @@ function CookTimeDisplay({ device, grillState }: CookTimeDisplayProps) {
 	// Calculate estimated end time from available data - memoized to prevent recalculation on every tick
 	const estimatedEndTime = useMemo(() => {
 		// First, check if we have estimated_end_at in the database
+		// (Zero delivers timestamps as epoch ms)
 		if (device.estimated_end_at) {
-			return device.estimated_end_at
+			return typeof device.estimated_end_at === 'number'
+				? new Date(device.estimated_end_at).toISOString()
+				: device.estimated_end_at
 		}
 
 		// Otherwise, calculate from seconds left if available
@@ -102,12 +105,13 @@ function CookTimeDisplay({ device, grillState }: CookTimeDisplayProps) {
 
 interface DeviceOverviewPageProps {
 	device: {
-		id: string
+		id: string | null
 		cooking_mode?: string | null
 		cooking_state?: string | null
-		estimated_end_at?: string | null
+		estimated_end_at?: string | number | null
 		grill_state_raw?: string | null
 		probe_state_raw?: string | null
+		connectionStatus?: string | null
 		[key: string]: unknown
 	}
 	zeroUser:
@@ -119,7 +123,7 @@ interface DeviceOverviewPageProps {
 }
 
 function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
-	const parseJsonSafely = (jsonString: string | null) => {
+	const parseJsonSafely = (jsonString: string | null | undefined) => {
 		if (!jsonString) return null
 		try {
 			return JSON.parse(jsonString)
@@ -380,7 +384,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 
 			{/* Temperature History Graph */}
 			<TemperatureGraph
-				deviceId={device.id}
+				deviceId={device.id ?? ''}
 				prefersCelsius={zeroUser?.prefers_celsius ?? false}
 				series={[
 					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },

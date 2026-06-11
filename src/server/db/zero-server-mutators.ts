@@ -607,21 +607,31 @@ export function createServerMutators(
 
 									// Only insert if there are actual changes
 									if (Object.keys(patch).length > 0) {
-										await tx.mutate.deviceHistory.insert({
-											deviceId: existingDevice.id,
-											historyType: 'patch',
-											changes: patch,
-											changedBy: userId,
-										})
+										await tx.mutate.deviceHistory.insert(
+											// id is DB-generated (identity); zero insert type wrongly requires it
+											{
+												deviceId: existingDevice.id,
+												historyType: 'patch',
+												changes: patch,
+												changedBy: userId,
+											} as unknown as Parameters<
+												typeof tx.mutate.deviceHistory.insert
+											>[0],
+										)
 									}
 								} else {
 									// No recent snapshot, so create a new one with the current state.
-									await tx.mutate.deviceHistory.insert({
-										deviceId: existingDevice.id,
-										historyType: 'snapshot',
-										changes: currentDevice, // The snapshot is the full new state
-										changedBy: userId,
-									})
+									await tx.mutate.deviceHistory.insert(
+										// id is DB-generated (identity); zero insert type wrongly requires it
+										{
+											deviceId: existingDevice.id,
+											historyType: 'snapshot',
+											changes: currentDevice, // The snapshot is the full new state
+											changedBy: userId,
+										} as unknown as Parameters<
+											typeof tx.mutate.deviceHistory.insert
+										>[0],
+									)
 								}
 							}
 						} else {
@@ -638,12 +648,17 @@ export function createServerMutators(
 								.run()
 
 							if (newDevice?.id) {
-								await tx.mutate.deviceHistory.insert({
-									deviceId: newDevice.id,
-									historyType: 'snapshot',
-									changes: deviceData,
-									changedBy: userId,
-								})
+								await tx.mutate.deviceHistory.insert(
+									// id is DB-generated (identity); zero insert type wrongly requires it
+									{
+										deviceId: newDevice.id,
+										historyType: 'snapshot',
+										changes: deviceData,
+										changedBy: userId,
+									} as unknown as Parameters<
+										typeof tx.mutate.deviceHistory.insert
+									>[0],
+								)
 							}
 						}
 					}
@@ -733,21 +748,31 @@ export function createServerMutators(
 
 					// Only insert if there are actual changes
 					if (Object.keys(patch).length > 0) {
-						await tx.mutate.deviceHistory.insert({
-							deviceId: args.id,
-							historyType: 'patch',
-							changes: patch,
-							changedBy: authData.sub,
-						})
+						await tx.mutate.deviceHistory.insert(
+							// id is DB-generated (identity); zero insert type wrongly requires it
+							{
+								deviceId: args.id,
+								historyType: 'patch',
+								changes: patch,
+								changedBy: authData.sub,
+							} as unknown as Parameters<
+								typeof tx.mutate.deviceHistory.insert
+							>[0],
+						)
 					}
 				} else {
 					// First update of the hour, create a snapshot
-					await tx.mutate.deviceHistory.insert({
-						deviceId: args.id,
-						historyType: 'snapshot',
-						changes: newState,
-						changedBy: authData.sub,
-					})
+					await tx.mutate.deviceHistory.insert(
+						// id is DB-generated (identity); zero insert type wrongly requires it
+						{
+							deviceId: args.id,
+							historyType: 'snapshot',
+							changes: newState,
+							changedBy: authData.sub,
+						} as unknown as Parameters<
+							typeof tx.mutate.deviceHistory.insert
+						>[0],
+					)
 				}
 
 				console.log(

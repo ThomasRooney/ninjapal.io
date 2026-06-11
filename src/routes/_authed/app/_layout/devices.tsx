@@ -52,9 +52,9 @@ function DevicesPage() {
 				<div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
 					{devices.map((device) => (
 						<Link
-							key={device.id}
+							key={device.id ?? device.dsn}
 							to='/app/device/$deviceId'
-							params={{ deviceId: device.id }}
+							params={{ deviceId: device.id ?? '' }}
 							className='block transition-transform hover:scale-[1.02]'
 							data-testid='device-card'
 						>
@@ -99,10 +99,10 @@ function DevicesPage() {
 												<span>{device.rssi} dBm</span>
 											</div>
 										)}
-										{device.temperature_grill !== null && (
+										{device.temp_grill !== null && (
 											<div className='flex justify-between'>
 												<span className='text-muted-foreground'>Temp:</span>
-												<span>{device.temperature_grill}°F</span>
+												<span>{device.temp_grill}°C</span>
 											</div>
 										)}
 									</div>

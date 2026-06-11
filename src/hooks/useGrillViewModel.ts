@@ -58,7 +58,7 @@ export function useGrillViewModel(
 		const smokeIsOn = grillState.smoke === 1
 
 		const isOffline =
-			connectionStatus === 'Offline' || grillState.state?.state === 'zc loss'
+			connectionStatus === 'Offline' || grillState.state === 'zc loss'
 		const hasDeviceError = grillState.error != null && grillState.error !== 0
 
 		const errorStatus = {

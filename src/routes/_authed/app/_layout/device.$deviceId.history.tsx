@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useZero } from '@/hooks/use-typed-zero'
 import {
-	type HistoryChange,
 	calculateHistoryDiffs,
 	reconstructHistorySnapshots,
 } from '@/lib/historyUtils'
