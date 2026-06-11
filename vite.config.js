@@ -16,6 +16,8 @@ export default defineConfig({
 			spa: {
 				enabled: true,
 			},
+			// nitro deployment preset — produces .vercel/output (Build Output API)
+			target: 'vercel',
 		}),
 		tailwindcss(),
 	],

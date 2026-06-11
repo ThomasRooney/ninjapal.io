@@ -12,4 +12,4 @@ test-results
 playwright-report
 auth-state.json
 .output
-.tanstack
+.tanstack.vercel

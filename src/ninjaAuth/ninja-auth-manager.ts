@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
-import { request } from '@playwright/test'
-import { PlaywrightBrowserAutomator } from './browser-automator.ts'
+// Playwright is imported lazily — it must not land in the app server bundle
+// (Vercel functions can't run browsers; sync runs on the Railway worker).
 import { config, getAylaServerConfig } from './config.ts'
 import type {
 	AuthEvent,
@@ -37,7 +37,7 @@ interface CacheEntry<T> {
 export class NinjaAuthManager implements IAuthManager {
 	private state: EnhancedAuthState = {}
 	private stateLoaded = false
-	private browserAutomator: IBrowserAutomator
+	private browserAutomator: IBrowserAutomator | undefined
 	private credentials: Credentials
 
 	// Enhanced caching with TTL
@@ -52,12 +52,27 @@ export class NinjaAuthManager implements IAuthManager {
 	}
 
 	// Private constructor for controlled instantiation
+	private async getBrowserAutomator(): Promise<IBrowserAutomator> {
+		if (!this.browserAutomator) {
+			const { PlaywrightBrowserAutomator } = await import(
+				'./browser-automator.ts'
+			)
+			this.browserAutomator = new PlaywrightBrowserAutomator()
+		}
+		return this.browserAutomator
+	}
+
+	private static async playwrightRequest() {
+		const { request } = await import('@playwright/test')
+		return request
+	}
+
 	private constructor(
 		browserAutomator?: IBrowserAutomator,
 		credentials?: Credentials,
 		initialState?: EnhancedAuthState,
 	) {
-		this.browserAutomator = browserAutomator || new PlaywrightBrowserAutomator()
+		this.browserAutomator = browserAutomator
 
 		// Credentials must be provided
 		if (!credentials) {
@@ -148,9 +163,8 @@ export class NinjaAuthManager implements IAuthManager {
 
 		try {
 			const startTime = Date.now()
-			const identity = await this.browserAutomator.performLogin(
-				this.credentials,
-			)
+			const automator = await this.getBrowserAutomator()
+			const identity = await automator.performLogin(this.credentials)
 
 			// Store identity artifacts in state
 			this.state.identity = {
@@ -450,6 +464,7 @@ export class NinjaAuthManager implements IAuthManager {
 		authCode: string,
 		pkceVerifier: string,
 	) {
+		const request = await NinjaAuthManager.playwrightRequest()
 		const requestContext = await request.newContext()
 
 		try {
@@ -514,6 +529,7 @@ export class NinjaAuthManager implements IAuthManager {
 			throw new Error('No refresh token available')
 		}
 
+		const request = await NinjaAuthManager.playwrightRequest()
 		const requestContext = await request.newContext()
 
 		try {
@@ -557,6 +573,7 @@ export class NinjaAuthManager implements IAuthManager {
 	}
 
 	private async exchangeIdTokenForAylaToken(idToken: string) {
+		const request = await NinjaAuthManager.playwrightRequest()
 		const requestContext = await request.newContext()
 
 		try {
