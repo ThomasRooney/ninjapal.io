@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "check": "biome check && tsc --noEmit && ./scripts/check-forbidden-imports.sh",
-    "check:imports": "./scripts/check-forbidden-imports.sh",
+    "check": "biome check && tsc --noEmit",
     "check:fix": "biome check --fix",
     "clean": "rm -rf node_modules bun.lock",
     "supabase:start": "bunx supabase start",

@@ -52,14 +52,12 @@ function RouteComponent() {
 	// Get the initialized zero instance from the loader data
 	const { user } = Route.useLoaderData()
 
-	if (!zeroAtom.value) {
-		initializeZero(user)
-	}
+	const zero = zeroAtom.value ?? initializeZero(user)
 
 	return (
 		<Suspense fallback={null}>
 			<QueryClientProvider client={queryClient}>
-				<ZeroProvider zero={zeroAtom.value as any}>
+				<ZeroProvider zero={zero}>
 					<DeviceSyncPoller />
 					<SidebarProvider className='flex h-screen'>
 						<AppContent />
