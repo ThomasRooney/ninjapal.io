@@ -1,0 +1,16 @@
+# Device-sync worker image — Playwright base (browser automation for the
+# SharkNinja OAuth login) + Bun runtime. Deployed as the Railway `sync-worker`
+# service (RAILWAY_DOCKERFILE_PATH=Dockerfile.sync).
+FROM mcr.microsoft.com/playwright:v1.53.1-noble
+
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+WORKDIR /app
+COPY package.json bun.lock ./
+# Layer-cached install; postinstall (zero schema codegen) needs sources, so rerun after COPY
+RUN bun install --frozen-lockfile --ignore-scripts || true
+COPY . .
+RUN bun install --frozen-lockfile
+
+CMD ["bun", "scripts/sync-worker.ts"]
