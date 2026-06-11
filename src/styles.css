@@ -1,9 +1,4 @@
-/*
- * source() pins Tailwind's content scanning to src/ so the client and SSR
- * build passes hash identical CSS — without it the SSR bundle can reference
- * a stylesheet hash that was never emitted (TanStack/router#4959).
- */
-@import "tailwindcss" source("../");
+@import "tailwindcss";
 
 @plugin "tailwindcss-animate";
 
@@ -153,4 +148,3 @@ code {
 		@apply bg-background text-foreground;
 	}
 }
-/* PitMinder */
