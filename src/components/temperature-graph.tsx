@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useZero } from '@/hooks/use-typed-zero'
 import { reconstructHistorySnapshots } from '@/lib/historyUtils'
-import { formatTemperature } from '@/lib/temperature-utils'
+import { celsiusToFahrenheit, formatTemperature } from '@/lib/temperature-utils'
 import { useQuery } from '@rocicorp/zero/react'
 import { Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
@@ -181,9 +181,9 @@ export function TemperatureGraph({
 							/>
 							<YAxis
 								tickFormatter={(temp) =>
-									formatTemperature(temp, prefersCelsius, {
-										includeUnit: false,
-									})
+									String(
+										prefersCelsius ? temp : (celsiusToFahrenheit(temp) ?? temp),
+									)
 								}
 								className='text-xs'
 								label={{
