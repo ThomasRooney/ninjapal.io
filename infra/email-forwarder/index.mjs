@@ -91,14 +91,25 @@ export const handler = async (event) => {
 			continue
 		}
 		const rewritten = rewriteHeaders(raw, recipient)
-		await ses.send(
-			new SendRawEmailCommand({
-				Source: process.env.FROM_EMAIL,
-				Destinations: destinations,
-				RawMessage: { Data: Buffer.from(rewritten) },
-			}),
-		)
-		console.log(`forwarded ${mail.messageId} ${recipient} -> ${destinations.join(',')}`)
+		// One send per destination: in SES sandbox a single unverified
+		// recipient rejects the whole call, which must not block the rest.
+		for (const destination of destinations) {
+			try {
+				await ses.send(
+					new SendRawEmailCommand({
+						Source: process.env.FROM_EMAIL,
+						Destinations: [destination],
+						RawMessage: { Data: Buffer.from(rewritten) },
+					}),
+				)
+				console.log(`forwarded ${mail.messageId} ${recipient} -> ${destination}`)
+			} catch (error) {
+				console.error(
+					`forward failed ${mail.messageId} ${recipient} -> ${destination}:`,
+					error.message,
+				)
+			}
+		}
 	}
 	return { disposition: 'STOP_RULE' }
 }
