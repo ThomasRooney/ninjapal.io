@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from '@jest/globals'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { NinjaAuthManager } from './ninja-auth-manager.ts'
 import type { Credentials } from './types.ts'
 

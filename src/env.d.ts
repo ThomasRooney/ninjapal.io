@@ -4,10 +4,6 @@ interface ImportMetaEnv {
 	// Zero Sync Configuration
 	readonly VITE_PUBLIC_SERVER: string
 
-	// Supabase Configuration
-	readonly VITE_SUPABASE_URL: string
-	readonly VITE_SUPABASE_ANON_KEY: string
-
 	// OAuth Configuration (Public)
 	readonly VITE_OAUTH_CLIENT_ID: string
 	readonly VITE_OAUTH_REDIRECT_URI: string

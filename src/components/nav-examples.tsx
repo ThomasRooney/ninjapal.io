@@ -59,7 +59,10 @@ export function NavExamples() {
 								tooltip={item.title}
 								isActive={currentPath === item.url}
 							>
-								<Link to={item.url}>
+								<Link
+									to={item.url}
+									data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, '-')}-link`}
+								>
 									{item.icon && <item.icon className='h-4 w-4' />}
 									<span>{item.title}</span>
 									{item.title === 'Devices' && isDeviceSyncLoading && (

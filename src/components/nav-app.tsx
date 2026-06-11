@@ -30,7 +30,10 @@ interface NavAppProps {
 
 const NavApp = ({ title, breadcrumbs, children }: NavAppProps) => {
 	return (
-		<div className='flex justify-between items-center border-b border-gray-200 h-12 px-4 sticky top-0 bg-background z-10 shrink-0'>
+		<div
+			data-testid='app-nav'
+			className='flex justify-between items-center border-b border-gray-200 h-12 px-4 sticky top-0 bg-background z-10 shrink-0'
+		>
 			<div className='flex items-center gap-2'>
 				<TooltipProvider>
 					<Tooltip>

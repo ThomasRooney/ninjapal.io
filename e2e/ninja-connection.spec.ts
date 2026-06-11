@@ -18,7 +18,7 @@ test.describe('Ninja Connection Page', () => {
     await page.getByTestId('login-email').fill(uniqueEmail);
     await page.getByTestId('login-password').fill(password);
     await page.getByTestId('login-submit').click();
-    await page.waitForURL('/app', { timeout: 10000 });
+    await page.waitForURL('**/app/**', { timeout: 10000 });
   });
 
   test('should render ninja connection page with form and debug components', async ({ page }) => {
