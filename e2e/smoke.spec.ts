@@ -1,12 +1,12 @@
-// e2e/smoke.spec.ts
-import { test, expect } from '@playwright/test';
-test('should load the homepage and display the main heading', async ({ page }) => {
-  // 1. Navigate to the app
-  await page.goto('/');
+import { expect, test } from '@playwright/test'
 
-  // 2. Assert the main heading is visible
-  // IMPORTANT: You will need to add data-testid="main-heading" to your header element.
-  const heading = page.getByTestId('main-heading');
-  await expect(heading).toBeVisible();
-  await expect(heading).toHaveText('Ninjapal');
-});
+test('root redirects unauthenticated visitors to login', async ({ page }) => {
+	await page.goto('/')
+
+	// / -> /app -> auth guard -> login
+	await page.waitForURL('**/auth/login**', { timeout: 10000 })
+
+	const heading = page.getByTestId('main-heading')
+	await expect(heading).toBeVisible()
+	await expect(heading).toHaveText('PitMinder')
+})

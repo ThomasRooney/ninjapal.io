@@ -44,7 +44,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 							<div className='flex w-full items-center justify-between'>
 								<Link to='/' className='flex items-center gap-2'>
 									<Logo />
-									<span className='text-sm font-semibold'>Ninja Pal</span>
+									<span className='text-sm font-semibold'>PitMinder</span>
 								</Link>
 								<DeviceSyncPoller />
 							</div>

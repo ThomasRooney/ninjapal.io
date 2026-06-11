@@ -44,7 +44,7 @@ const HomePageHeader = ({
 						data-testid='main-heading'
 					>
 						<Logo />
-						Ninjapal
+						PitMinder
 					</Link>
 					<DeviceSelector
 						value={selectedDevice}
@@ -77,9 +77,10 @@ const AuthPageHeader = () => {
 			<Link
 				className='font-semibold text-sm flex items-center gap-2 p-1.5'
 				to='/'
+				data-testid='main-heading'
 			>
 				<Logo />
-				Ninja Pal
+				PitMinder
 			</Link>
 		</nav>
 	)

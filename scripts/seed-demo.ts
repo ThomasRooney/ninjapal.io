@@ -3,11 +3,11 @@
  * so the device dashboard and temperature graph can be validated without a
  * real Ninja account. Idempotent: re-running replaces the demo devices.
  *
- * Usage: bun scripts/seed-demo.ts   (requires local Supabase running)
+ * Usage: bun scripts/seed-demo.ts   (requires the local dev stack: mise run dev)
  */
 import { Client } from 'pg'
 
-const DEMO_EMAIL = 'demo@ninjapal.dev'
+const DEMO_EMAIL = 'demo@pitminder.com'
 const DEMO_PASSWORD = 'demo-smoker-2026'
 const DEMO_NAME = 'Demo Pitmaster'
 

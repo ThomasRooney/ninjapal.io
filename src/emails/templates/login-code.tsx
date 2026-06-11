@@ -33,19 +33,19 @@ export const NinjaPalLoginCodeEmail = ({
 	<Html>
 		<Head />
 		<Body style={main}>
-			<Preview>Your login code for Ninja Pal</Preview>
+			<Preview>Your login code for PitMinder</Preview>
 			<Container style={container}>
 				<Img
 					src={`${baseUrl}/static/logo.png`}
 					width='42'
 					height='42'
-					alt='Ninja Pal'
+					alt='PitMinder'
 					style={logo}
 				/>
-				<Heading style={heading}>Your login code for Ninja Pal</Heading>
+				<Heading style={heading}>Your login code for PitMinder</Heading>
 				<Section style={buttonContainer}>
 					<Button style={button} href={magicLink}>
-						Login to Ninja Pal
+						Login to PitMinder
 					</Button>
 				</Section>
 				<Text style={paragraph}>
@@ -55,7 +55,7 @@ export const NinjaPalLoginCodeEmail = ({
 				<code style={code}>{validationCode}</code>
 				<Hr style={hr} />
 				<Link href={baseUrl} style={reportLink}>
-					Ninja Pal
+					PitMinder
 				</Link>
 			</Container>
 		</Body>
