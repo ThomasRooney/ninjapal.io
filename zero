@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+set -e
+
+echo "🚀 ninjapal.io Development Environment Setup"
+echo "==========================================="
+echo
+
+onboarding_pass=true
+
+# Check for mise
+if ! command -v mise &> /dev/null; then
+    onboarding_pass=false
+    echo "❌ mise is not installed"
+    echo
+    echo "mise is required for managing development tools and tasks."
+    echo "Please install it from: https://mise.jdx.dev/getting-started.html"
+    echo
+    echo "Quick install options:"
+    echo "  - curl https://mise.run | sh"
+    echo "  - brew install mise"
+    echo
+    echo "After installation, add mise to your shell:"
+    echo "  - For zsh: echo 'eval \"\$(mise activate zsh)\"' >> ~/.zshrc"
+    echo "  - For bash: echo 'eval \"\$(mise activate bash)\"' >> ~/.bashrc"
+    echo
+else
+    echo "✅ mise is installed"
+fi
+
+# Check for Docker
+if ! command -v docker &> /dev/null; then
+    onboarding_pass=false
+    echo "❌ Docker is not installed"
+    echo
+    echo "Docker is required for running Supabase locally."
+    echo "Please install Docker Desktop from: https://www.docker.com/products/docker-desktop"
+    echo
+elif ! docker ps &> /dev/null 2>&1; then
+    onboarding_pass=false
+    echo "❌ Docker is installed but not running"
+    echo
+    echo "Please start Docker Desktop and try again."
+    echo
+else
+    echo "✅ Docker is installed and running"
+fi
+
+# Check for bun (will be installed by mise, but good to check first)
+if ! command -v bun &> /dev/null; then
+    echo "⚠️  bun is not installed (will be installed by mise)"
+else
+    echo "✅ bun is installed"
+fi
+
+# Exit if prerequisites are missing
+if [ "$onboarding_pass" = false ]; then
+    echo
+    echo "❌ Prerequisites check failed. Please install the missing tools and run this script again."
+    exit 1
+fi
+
+# Create mise.local.toml if it doesn't exist
+if [ ! -f "mise.local.toml" ]; then
+    cat > mise.local.toml << 'EOF'
+# Local mise configuration
+# This file is gitignored and can contain tools and environment variables
+# that you personally need for local development.
+
+[tools]
+# Add your local tools here. Example:
+# dive = "latest"
+
+[env]
+# Add your local environment variables here. Example:
+# EXAMPLE_VAR = "value"
+EOF
+    echo "✅ Created mise.local.toml file"
+fi
+
+# Install tools via mise
+echo
+echo "📦 Installing development tools..."
+echo "This may take a few minutes on first run..."
+mise install
+
+# Verify tool installation
+echo
+echo "🔍 Verifying tool installation..."
+if command -v overmind &> /dev/null; then
+    echo "✅ overmind is installed ($(overmind -v 2>&1 | head -n1))"
+else
+    echo "❌ overmind installation failed"
+    onboarding_pass=false
+fi
+
+if command -v supabase &> /dev/null; then
+    echo "✅ supabase-cli is installed ($(supabase -v))"
+else
+    echo "❌ supabase-cli installation failed"
+    onboarding_pass=false
+fi
+
+# Final status
+echo
+if [ "$onboarding_pass" = true ]; then
+    echo "🎉 Development environment setup complete!"
+    echo
+    echo "Available commands:"
+    echo "  mise run dev         - Start all services (frontend, backend, cache, email)"
+    echo "  mise run dev:core    - Start only frontend and backend"
+    echo "  mise run dev:api     - Start only Supabase backend"
+    echo "  mise run stop        - Stop all services"
+    echo
+    echo "Other useful commands:"
+    echo "  mise tasks           - List all available tasks"
+    echo "  bun install          - Install npm dependencies"
+    echo "  bun db:migrate       - Run database migrations"
+    echo "  bun db:seed          - Seed the database"
+    echo
+else
+    echo "❌ Setup completed with errors. Please check the output above."
+    exit 1
+fi
