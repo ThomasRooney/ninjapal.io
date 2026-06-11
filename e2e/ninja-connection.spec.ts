@@ -79,6 +79,10 @@ test.describe('Ninja Connection Page', () => {
     const editButton = page.getByTestId('ninja-connection-form--edit-button');
     await expect(editButton).toBeVisible();
 
+    // Let the Zero-synced connection row land before interacting — the form
+    // re-renders when it arrives, which can detach the button mid-click.
+    await expect(usernameInput).toHaveValue('initial.user@example.com');
+
     // Step 3: Click Edit Credentials to enter edit mode
     await editButton.click();
 
