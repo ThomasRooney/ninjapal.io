@@ -5,7 +5,6 @@
 bun = "latest"
 node = "lts"  # Some tools may still require node
 "ubi:DarthSim/overmind" = "v2.5.1"  # Process manager for development
-supabase = "latest"  # Supabase CLI for local development
 neonctl = "latest"  # Neon CLI for managing Neon Postgres
 railway = "latest"  # Railway CLI — hosts zero-cache + device-sync poller
 
@@ -20,7 +19,7 @@ install = { run = "bun install", description = "Install npm dependencies" }
 
 # Individual service tasks (used by overmind)
 "dev:frontend" = { run = ".mise-tasks/dev/frontend.bash", description = "Start frontend development server" }
-"dev:supabase" = { run = ".mise-tasks/dev/supabase.bash", description = "Start Supabase backend with proper cleanup" }
+"dev:db" = { run = ".mise-tasks/dev/db.bash", description = "Start local Postgres (wal_level=logical) for Zero" }
 "dev:cache" = { run = ".mise-tasks/dev/cache.bash", description = "Start Zero cache server" }
 "dev:email" = { run = ".mise-tasks/dev/email.bash", description = "Start React Email dev server" }
 
@@ -43,10 +42,6 @@ ps = { run = "overmind ps", description = "Show status of all services" }
 "db:studio" = { run = "bun db:studio", description = "Open Drizzle Studio" }
 "db:zero:generate" = { run = "bun db:zero:generate", description = "Generate Zero schema" }
 
-# Supabase tasks (passthrough to existing bun scripts)
-"supabase:start" = { run = "bun supabase:start", description = "Start local Supabase" }
-"supabase:stop" = { run = "bun supabase:stop", description = "Stop local Supabase" }
-"supabase:reset" = { run = "bun supabase:reset", description = "Reset Supabase database" }
 
 # Code quality
 check = { run = "bun check", description = "Run Biome linter/formatter" }

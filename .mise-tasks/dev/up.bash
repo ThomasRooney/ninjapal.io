@@ -18,7 +18,7 @@ if [ ! -f "$PROCFILE_DEV" ]; then
     cat > "$PROCFILE_DEV" << 'EOF'
 # Development services managed by overmind
 web: mise run dev:frontend
-api: mise run dev:supabase
+db: mise run dev:db
 cache: mise run dev:cache
 email: mise run dev:email
 EOF
