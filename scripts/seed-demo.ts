@@ -281,8 +281,8 @@ async function main() {
 	console.log(`  email:    ${DEMO_EMAIL}`)
 	console.log(`  password: ${DEMO_PASSWORD}`)
 	console.log('URLs:')
-	console.log('  devices:  http://localhost:5173/app/devices')
-	console.log(`  smoker:   http://localhost:5173/app/device/${smokerId}`)
+	console.log(`  devices:  ${APP_URL}/app/devices`)
+	console.log(`  smoker:   ${APP_URL}/app/device/${smokerId}`)
 
 	await db.end()
 }
