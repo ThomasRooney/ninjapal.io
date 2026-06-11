@@ -14,11 +14,13 @@
 |---|---|---|
 | Marketing site | Vercel `pitminder-marketing` → **pitminder.com** + www | static `marketing/` dir (root-directory setting) |
 | App | Vercel `pitminder-app` → **app.pitminder.com** | TanStack Start, nitro `target: 'vercel'`, build `bun run build` |
-| zero-cache | Railway project `pitminder`, service `zero-cache` → https://zero-cache-production-41de.up.railway.app | image `rocicorp/zero:0.20.2025052100`, volume at /data, `ZERO_APP_ID=pitminder`, `PORT=4848` for edge routing. `sync.pitminder.com` blocked on Railway plan (custom-domain API returned Unauthorized) — flip `VITE_PUBLIC_SERVER` when resolved |
+| zero-cache | Railway project `pitminder`, service `zero-cache` → https://zero-cache-production-41de.up.railway.app | image `rocicorp/zero:0.20.2025052100`, volume at /data, `ZERO_APP_ID=pitminder`, `PORT=4848` for edge routing. Custom domain **sync.pitminder.com** (Vercel DNS CNAME → Railway; created via Railway GraphQL API — the CLI's domain command hits expired-token bugs) |
 | Postgres | Neon `ninjapal` (`falling-rice-33754638`), `aws-eu-west-2`, PG17 | logical replication ON; databases: `neondb` (app) + `zero_cvr` + `zero_change`; zero permissions deployed (app id `pitminder`) |
 | Auth | better-auth, cookie sessions | Zero JWTs minted in `fetchUser` (jose HS256, `ZERO_AUTH_SECRET`); push endpoint verifies signature |
 | Deploy protection | Vercel Authentication: previews + prod *deployment URLs* on both projects | gating the **custom prod domains** needs the $150/mo Advanced add-on — not bought; app is behind its own login, marketing is public |
 | PR previews | Vercel Git integration on `ThomasRooney/ninjapal.io` | both projects deploy previews per PR (verified with PR #1) |
+| sync-worker | Railway service `sync-worker` (same project), built from the repo with `Dockerfile.sync` (Playwright base + Bun) | polls Ayla every 60s for each `ninja_connections` row, writes devices + history straight to Neon (replicates to clients via zero-cache); shares `buildDeviceData` with the push mutator |
+| Legal | `/privacy-policy` + `/terms-of-service` on app.pitminder.com | real content (SharkNinja credential disclosure, food-safety disclaimer) |
 | Demo data | `demo@pitminder.com` / `demo-smoker-2026` | seed: `bun scripts/seed-demo.ts` (local) or `APP_URL=https://app.pitminder.com ZERO_UPSTREAM_DB=<neon> bun scripts/seed-demo.ts` (prod) |
 
 Secrets: prod `ZERO_AUTH_SECRET`/`BETTER_AUTH_SECRET` are in the commented block at the bottom of local `.env`, mirrored to Railway + Vercel env. Vercel projects live in the **Pro team scope** (`team_JL8iNBq5rqeOkWjFfEnZxvG1`, slug `thomasrooney`), not the hobby personal account — pass `?teamId=` on API calls.
