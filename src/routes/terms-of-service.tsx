@@ -22,9 +22,11 @@ function TermsOfServicePage() {
 						<p>
 							PitMinder (<strong>pitminder.com</strong>) monitors, records, and
 							graphs data from Ninja Woodfire grills and smokers by connecting
-							to your SharkNinja account. It is a small, independently operated
-							hobby service run by Thomas Rooney from the United Kingdom. By
-							creating an account you agree to these terms. PitMinder is{' '}
+							to your SharkNinja account. The service is operated by{' '}
+							<strong>Resilient Software Ltd</strong>, a company incorporated in
+							the United Kingdom (registered office: 71–75 Shelton Street,
+							London WC2H 9JQ) — "we" in these terms. By creating an account you
+							agree to these terms. PitMinder is{' '}
 							<strong>
 								not affiliated with, endorsed by, or connected to SharkNinja or
 								Ayla Networks
@@ -107,14 +109,14 @@ function TermsOfServicePage() {
 							7. Limitation of liability
 						</h2>
 						<p>
-							To the maximum extent permitted by law, PitMinder and its operator
-							are not liable for any indirect, incidental, special,
-							consequential, or exemplary damages, or any loss of data, food,
-							profits, or goodwill, arising from your use of the service. Our
-							total aggregate liability for any claim is limited to the amount
-							you paid us in the twelve months before the claim — which, for
-							this free service, is zero. Nothing in these terms excludes
-							liability that cannot be excluded under applicable law.
+							To the maximum extent permitted by law, Resilient Software Ltd is
+							not liable for any indirect, incidental, special, consequential,
+							or exemplary damages, or any loss of data, food, profits, or
+							goodwill, arising from your use of the service. Our total
+							aggregate liability for any claim is limited to the amount you
+							paid us in the twelve months before the claim — which, for this
+							free service, is zero. Nothing in these terms excludes liability
+							that cannot be excluded under applicable law.
 						</p>
 					</section>
 

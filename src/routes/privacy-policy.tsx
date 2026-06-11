@@ -20,10 +20,13 @@ function PrivacyPolicyPage() {
 					<section>
 						<h2 className='text-lg font-semibold mb-2'>Who we are</h2>
 						<p>
-							PitMinder (<strong>pitminder.com</strong>) is a small,
-							independently operated service that monitors and graphs data from
-							Ninja Woodfire grills and smokers. It is operated by Thomas Rooney
-							from the United Kingdom. PitMinder is{' '}
+							PitMinder (<strong>pitminder.com</strong>) is a service that
+							monitors and graphs data from Ninja Woodfire grills and smokers,
+							operated by <strong>Resilient Software Ltd</strong>, a company
+							incorporated in the United Kingdom (registered office: 71–75
+							Shelton Street, London WC2H 9JQ). Resilient Software Ltd is the
+							data controller for the personal data described below. PitMinder
+							is{' '}
 							<strong>
 								not affiliated with, endorsed by, or connected to SharkNinja
 							</strong>{' '}
