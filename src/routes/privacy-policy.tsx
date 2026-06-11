@@ -32,10 +32,10 @@ function PrivacyPolicyPage() {
 							</strong>{' '}
 							or Ayla Networks in any way. Questions about this policy:{' '}
 							<a
-								href='mailto:thomas.c.rooney@gmail.com'
+								href='mailto:hello@pitminder.com'
 								className='underline underline-offset-4'
 							>
-								thomas.c.rooney@gmail.com
+								hello@pitminder.com
 							</a>
 							.
 						</p>

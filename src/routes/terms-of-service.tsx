@@ -145,10 +145,10 @@ function TermsOfServicePage() {
 							These terms are governed by the laws of England and Wales, and
 							disputes belong to the courts of England and Wales. Contact:{' '}
 							<a
-								href='mailto:thomas.c.rooney@gmail.com'
+								href='mailto:hello@pitminder.com'
 								className='underline underline-offset-4'
 							>
-								thomas.c.rooney@gmail.com
+								hello@pitminder.com
 							</a>
 							.
 						</p>
