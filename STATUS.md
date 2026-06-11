@@ -1,14 +1,27 @@
-# Project Status — ninjapal.io
+# Project Status — PitMinder (repo: ninjapal.io)
 
-> Last audited: 2026-06-11. Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
+> Last updated: 2026-06-11 (post-migration). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
 
 ## What this is
 
-A web app to **monitor, graph, and (eventually) control a Ninja Woodfire grill/smoker**. It authenticates against the real SharkNinja/Ayla cloud (`logineu.sharkninja.com` → `ads-eu.aylanetworks.com`), pulls device state, stores it in Supabase Postgres via Drizzle, and syncs it to the browser in real time with Zero Sync.
+**PitMinder** (pitminder.com) — a web app to **monitor, graph, and (eventually) control a Ninja Woodfire grill/smoker**. It authenticates against the real SharkNinja/Ayla cloud (`logineu.sharkninja.com` → `ads-eu.aylanetworks.com`), pulls device state, stores it in Postgres via Drizzle, and syncs it to the browser in real time with Zero Sync.
 
-**Stack**: React + TanStack Start/Router · Supabase Postgres · Drizzle ORM · Zero Sync · Tailwind + shadcn/ui · Recharts · Bun · Playwright (e2e).
+**Stack**: React + TanStack Start/Router · **Neon Postgres** (prod) / Docker Postgres (dev) · Drizzle ORM · **better-auth** · Zero Sync · Tailwind + shadcn/ui · Recharts · Bun · Playwright (e2e). Supabase was fully removed 2026-06-11.
 
-> ⚠️ **Stack change decided 2026-06-11**: Supabase is being removed — target is **Neon Postgres + Vercel hosting + better-auth** (zero-cache on a separate long-running host). See next-steps item 3. Until that lands, local dev still runs on Supabase.
+## Production topology (live since 2026-06-11)
+
+| Piece | Where | Notes |
+|---|---|---|
+| Marketing site | Vercel `pitminder-marketing` → **pitminder.com** + www | static `marketing/` dir (root-directory setting) |
+| App | Vercel `pitminder-app` → **app.pitminder.com** | TanStack Start, nitro `target: 'vercel'`, build `bun run build` |
+| zero-cache | Railway project `pitminder`, service `zero-cache` → https://zero-cache-production-41de.up.railway.app | image `rocicorp/zero:0.20.2025052100`, volume at /data, `ZERO_APP_ID=pitminder`, `PORT=4848` for edge routing. `sync.pitminder.com` blocked on Railway plan (custom-domain API returned Unauthorized) — flip `VITE_PUBLIC_SERVER` when resolved |
+| Postgres | Neon `ninjapal` (`falling-rice-33754638`), `aws-eu-west-2`, PG17 | logical replication ON; databases: `neondb` (app) + `zero_cvr` + `zero_change`; zero permissions deployed (app id `pitminder`) |
+| Auth | better-auth, cookie sessions | Zero JWTs minted in `fetchUser` (jose HS256, `ZERO_AUTH_SECRET`); push endpoint verifies signature |
+| Deploy protection | Vercel Authentication: previews + prod *deployment URLs* on both projects | gating the **custom prod domains** needs the $150/mo Advanced add-on — not bought; app is behind its own login, marketing is public |
+| PR previews | Vercel Git integration on `ThomasRooney/ninjapal.io` | both projects deploy previews per PR (verified with PR #1) |
+| Demo data | `demo@pitminder.com` / `demo-smoker-2026` | seed: `bun scripts/seed-demo.ts` (local) or `APP_URL=https://app.pitminder.com ZERO_UPSTREAM_DB=<neon> bun scripts/seed-demo.ts` (prod) |
+
+Secrets: prod `ZERO_AUTH_SECRET`/`BETTER_AUTH_SECRET` are in the commented block at the bottom of local `.env`, mirrored to Railway + Vercel env. Vercel projects live in the **Pro team scope** (`team_JL8iNBq5rqeOkWjFfEnZxvG1`, slug `thomasrooney`), not the hobby personal account — pass `?teamId=` on API calls.
 
 ## Where we are (audit summary)
 
@@ -37,7 +50,8 @@ A web app to **monitor, graph, and (eventually) control a Ninja Woodfire grill/s
 
 1. ~~Finish probe migration~~ ✅ done 2026-06-11
 2. ~~Land the dev-env change~~ ✅ done 2026-06-11 (README quick-start update still pending — fold into step 3's doc rewrite)
-3. **Rip out Supabase → Neon + Vercel** (decided 2026-06-11; owner dislikes Supabase). Supabase currently provides three things, each needs a replacement:
+3. ~~Rip out Supabase → Neon + Vercel~~ ✅ **done 2026-06-11** — see "Production topology" above. Remaining loose ends rolled into the items below: Railway custom domain (`sync.pitminder.com`), moving device sync to a Railway worker (Playwright can't run on Vercel functions — it's lazy-loaded out of the serverless bundle, so the manual sync button will error in prod until then), README rewrite. Original plan kept for reference:
+   **Rip out Supabase → Neon + Vercel** (decided 2026-06-11; owner dislikes Supabase). Supabase currently provides three things, each needs a replacement:
    - **Postgres → Neon.** ✅ Provisioned (2026-06-11): project `ninjapal` (`falling-rice-33754638`), region `aws-eu-west-2` (London), Postgres 17, branches `production` (default) + `development`, **logical replication enabled** (`wal_level=logical` verified). Connection strings (direct for zero-cache replication, pooled for app/drizzle) are in a commented block at the bottom of `.env`. Drizzle + Zero already speak plain Postgres (`ZERO_UPSTREAM_DB`), so cutover is mostly a connection-string swap; Zero will also need its CVR/change DBs — create `zero_cvr` and `zero_change` databases on the production branch when wiring up. Local dev: replace `supabase start` with a plain Postgres Docker container (`wal_level=logical`) in `.mise-tasks/dev/supabase.bash` (rename task to `dev:db`).
    - **Auth (GoTrue) → better-auth.** The client half already exists as currently-dead code (`src/lib/auth-client.ts`, `login-form.tsx`, `login-form-magic.tsx`, magic-link + Google plugins) — resurrect it instead of deleting (supersedes cleanup item below). Work: add better-auth server config with the Drizzle adapter (+ its auth tables via a migration), mount its handler under `src/routes/api/auth/$.ts`, replace `getSupabaseServerClient` session fetch in `__root.tsx` and the Supabase login/signup forms, and have better-auth (JWT plugin) issue the JWTs Zero validates (`ZERO_AUTH_SECRET`); keep `authData.sub` = user id so Zero permissions/mutators are untouched. Only local users exist — no user-data migration needed.
    - **Local stack extras.** Studio → `bun db:studio` (Drizzle Studio) covers it; Mailpit → react-email preview + Resend test mode.
@@ -72,9 +86,9 @@ bun scripts/seed-demo.ts
 
 ```bash
 ./zero                 # one-time onboarding checks (mise, docker, bun)
-mise run dev           # everything via overmind (frontend, supabase, zero-cache, email :3883)
+mise run dev           # everything via overmind (frontend :5173, postgres :54332, zero-cache :4848, email :3883)
 # or manually:
-bun supabase:start && bun zero-cache & bun dev   # frontend on :5173, zero-cache on :4848
+mise run dev:db & bun zero-cache & bun dev
 ```
 
 Gotcha: `@rocicorp/zero-sqlite3` is a native module — if zero-cache dies with `ERR_DLOPEN_FAILED` / `NODE_MODULE_VERSION` mismatch after a Node upgrade, run `npm rebuild @rocicorp/zero-sqlite3`.
