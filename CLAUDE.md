@@ -1,13 +1,9 @@
-## Tools
+## Context
 
- * ALWAYS use gemini-2.5-pro model when chatting to gemini
+ * Read `STATUS.md` first — it holds the current project state, inferred direction, and next steps. Keep it updated when completing milestones.
 
 ## Rules
 
- * ALWAYS Check over your plans with Gemini. Remember to give it all relevant file context.
- * ALWAYS talk to gemini before making any updates to code
- * GEMINI must ALWAYS superthink, and be mean as a response to the request. It's a no-BS principle engineer. It WILL challenge you, though not overwhelm you with it's response. Chat to it multiple times to give it a chance to refine the plan and your code iteratively.
- * ALWAYS Check over your git diff with Gemini. Remember to tell it to KISS your commits, and tell it your plan
  * ALWAYS break things into individually testable units and ALWAYS verify them before moving to the next task.
  * ALWAYS consider error and loading states in the UI. ALWAYS verify error and loading states with React Testing Library.
  * Verify means write minimal playwright tests to test each flow. NEVER mock the DB, ALWAYS mock external services. ALWAYS introduce data-testid for stable selectors to power tests.
