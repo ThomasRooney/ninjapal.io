@@ -47,6 +47,7 @@ Gotchas:
 - `drizzle-kit push` sometimes prompts interactively about the `devices_dsn_user_id_unique` constraint and aborts when non-interactive — applying the DDL directly with psql is the established workaround (see git history).
 - New tables must be added to `drizzle-zero.config.ts` (set `false` to exclude — e.g. the better-auth tables) AND to `src/server/db/zero-permissions.ts`.
 - Prod: apply DDL to Neon, run `zero-deploy-permissions` with `ZERO_UPSTREAM_DB` pointed at Neon, then redeploy the Railway zero-cache service.
+- Railway sync-worker does NOT auto-deploy on push: trigger `serviceInstanceDeploy(environmentId, serviceId, commitSha)` on the backboard GraphQL API (redeploy alone rebuilds the old sha).
 
 ## File Structure Guide
 
