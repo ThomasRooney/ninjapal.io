@@ -15,6 +15,7 @@ import {
 	type TempPoint,
 } from '@/lib/cook-analysis'
 import { reconstructHistorySnapshots } from '@/lib/historyUtils'
+import { hopperStatus } from '@/lib/pellet-model'
 import { NinjaAuthManager } from '@/ninjaAuth/ninja-auth-manager'
 import type { EnhancedAuthState } from '@/ninjaAuth/types'
 import { type AylaDevice, buildDeviceData } from '@/server/db/build-device-data'
@@ -42,7 +43,7 @@ import {
 	ninjaConnections,
 } from '@/server/db/schema'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
-import { and, eq, gte, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
@@ -465,6 +466,107 @@ async function emitCookMessages(
 	}
 }
 
+const PELLET_MESSAGE_KINDS = ['pellet_low', 'pit_drop']
+
+/**
+ * Pellet hopper model: integrates burn over the pit-temperature history
+ * since the last load, and warns ahead of time (vs. pit_drop, which only
+ * fires after the fire is already dying). A "Refilled ✅" button response
+ * on either message kind resets the load clock.
+ */
+async function runPelletForecast(
+	deviceRow: typeof devices.$inferSelect,
+	userId: string,
+	deviceData: Record<string, unknown>,
+) {
+	const capacityKg =
+		deviceRow.hopper_capacity_kg != null
+			? Number(deviceRow.hopper_capacity_kg)
+			: null
+	let loadedAtMs = deviceRow.pellets_loaded_at?.getTime() ?? null
+	if (!capacityKg || !loadedAtMs || !isCooking(deviceData.cook_state)) return
+
+	// Refill acknowledgements reset the load clock
+	const [refill] = await db
+		.select({ ackedAt: cookMessages.ackedAt })
+		.from(cookMessages)
+		.where(
+			and(
+				eq(cookMessages.deviceId, deviceRow.id),
+				inArray(cookMessages.kind, PELLET_MESSAGE_KINDS),
+				eq(cookMessages.response, 'refilled'),
+				gt(cookMessages.ackedAt, new Date(loadedAtMs)),
+			),
+		)
+		.orderBy(desc(cookMessages.ackedAt))
+		.limit(1)
+	if (refill?.ackedAt) {
+		loadedAtMs = refill.ackedAt.getTime()
+		await db
+			.update(devices)
+			.set({ pellets_loaded_at: refill.ackedAt })
+			.where(eq(devices.id, deviceRow.id))
+	}
+
+	const rows = await db
+		.select()
+		.from(deviceHistory)
+		.where(
+			and(
+				eq(deviceHistory.deviceId, deviceRow.id),
+				gte(deviceHistory.recordedAt, new Date(loadedAtMs)),
+			),
+		)
+	const grillSeries: TempPoint[] = reconstructHistorySnapshots(
+		rows
+			.map((r) => ({
+				id: Number(r.id),
+				historyType: r.historyType,
+				recordedAt: r.recordedAt?.getTime() ?? null,
+				changedBy: r.changedBy,
+				changes: r.changes as never,
+			}))
+			.sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0)),
+	)
+		.filter((s) => typeof s.state.temp_grill === 'number' && s.recordedAt)
+		.map((s) => ({
+			t: s.recordedAt as number,
+			value: s.state.temp_grill as number,
+		}))
+	if (typeof deviceData.temp_grill === 'number') {
+		grillSeries.push({ t: Date.now(), value: deviceData.temp_grill })
+	}
+	if (grillSeries.length < 2) return
+
+	const status = hopperStatus({
+		capacityKg,
+		loadedAtMs,
+		grillSeries,
+		nowMs: Date.now(),
+	})
+
+	if (
+		status.refillSoon &&
+		status.emptyAtMs != null &&
+		!(await hasRecentUnacked(deviceRow.id, 'pellet_low'))
+	) {
+		const emptyAt = new Date(status.emptyAtMs).toLocaleTimeString('en-GB', {
+			hour: '2-digit',
+			minute: '2-digit',
+			timeZone: process.env.COOK_TZ ?? 'Europe/London',
+		})
+		await emitMessage({
+			deviceId: deviceRow.id,
+			userId,
+			kind: 'pellet_low',
+			title: `Pellets low — ~${status.remainingKg.toFixed(1)} kg left 🪵`,
+			body: `Burning ${status.currentRateKgPerHour.toFixed(2)} kg/h at the current pit temp; the hopper runs dry around ${emptyAt}. Top it up now to avoid a temperature crash.`,
+			requiresAck: true,
+			actions: [{ id: 'refilled', label: 'Refilled ✅' }],
+		})
+	}
+}
+
 /** Creates/ends cook_sessions on cook_state transitions. */
 async function handleSessionTransition(
 	deviceId: string,
@@ -665,6 +767,7 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 				deviceData,
 			)
 			await emitCookMessages(existing.id, conn.userId, existing, deviceData)
+			await runPelletForecast(existing, conn.userId, deviceData)
 			await executePendingCommands(
 				{ id: existing.id, dsn: existing.dsn },
 				(deviceData.cook_mode as string) ?? null,
@@ -886,6 +989,7 @@ async function stepSimulatedDevices() {
 				deviceData,
 			)
 			await emitCookMessages(device.id, device.userId, device, deviceData)
+			await runPelletForecast(device, device.userId, deviceData)
 			await runAutopilot(
 				{ ...device, sim_state: sim },
 				device.userId,
