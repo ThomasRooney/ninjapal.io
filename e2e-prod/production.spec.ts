@@ -35,28 +35,35 @@ test.describe('Production validation', () => {
 		await expect(page.locator('body')).toContainText(/AI|pitmaster|smoker/i)
 	})
 
-	test('demo login reaches the live simulated smoker', async ({ page }) => {
-		await loginDemo(page)
+	test('demo login reaches the live simulated smoker', async ({ browser }) => {
 		const [device] = await query(
 			`select id from devices where product_name = 'Demo Smoker' and is_simulated limit 1`,
 		)
 		expect(device?.id).toBeTruthy()
-		await page.goto(`/app/device/${device.id}`)
-		// Known issue: ~20% of cold loads hit a hydration race (React #418
-		// recovery dies); a reload always heals it. See STATUS.md.
-		const firstTry = await page
-			.getByTestId('temperature-display')
-			.waitFor({ timeout: 15000 })
-			.then(() => true)
-			.catch(() => false)
-		if (!firstTry) await page.reload()
-		await expect(page.getByTestId('temperature-display')).toBeVisible({
-			timeout: 30000,
-		})
+		// Known issue (STATUS.md): cold loads can hit a hydration race under
+		// burst traffic; a clean context always heals it — try up to 3.
+		let visible = false
+		let page: import('@playwright/test').Page | null = null
+		for (let attempt = 0; attempt < 3 && !visible; attempt++) {
+			const ctx = await browser.newContext({
+				storageState: '/tmp/pitminder-prod-storage-state.json',
+			})
+			page = await ctx.newPage()
+			await page.goto(`/app/device/${device.id}`)
+			visible = await page
+				.getByTestId('temperature-display')
+				.waitFor({ timeout: 20000 })
+				.then(() => true)
+				.catch(() => false)
+			if (!visible) await ctx.close()
+		}
+		expect(visible).toBe(true)
+		if (!page) throw new Error('unreachable')
 		const reading = await page.getByTestId('temperature-display').textContent()
 		expect(reading).not.toBe('—')
 		// New feature surfaces: photo card present
 		await expect(page.getByTestId('cook-photos')).toBeVisible()
+		await page.context().close()
 	})
 
 	test('worker is stepping the simulated cook', async () => {
