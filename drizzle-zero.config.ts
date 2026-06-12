@@ -65,6 +65,8 @@ export default drizzleZeroConfig(drizzleSchema, {
       probe2_temp_b: true, // NEW - disabled for migration
       probe1_target_temp: true, // app-owned doneness target
       probe2_target_temp: true, // app-owned doneness target
+      autopilot_enabled: true,
+      autopilot_state: true,
       temp_smoke: true, // New column - enabled after migration complete
       
       // Cooking State
@@ -147,6 +149,18 @@ export default drizzleZeroConfig(drizzleSchema, {
       historyType: true,
       changedBy: true,
       changes: true,
+    },
+    deviceCommands: {
+      id: true,
+      deviceId: true,
+      userId: true,
+      kind: true,
+      payload: true,
+      source: true,
+      status: true,
+      error: true,
+      createdAt: true,
+      executedAt: true,
     },
     cookMessages: {
       id: true,

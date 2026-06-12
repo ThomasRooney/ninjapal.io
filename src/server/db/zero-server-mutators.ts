@@ -16,6 +16,19 @@ export function createServerMutators(
 	const sharedMutators = createSharedMutators(authData)
 
 	return {
+		deviceCommands: {
+			async create(
+				tx,
+				args: {
+					id: string
+					deviceId: string
+					kind: 'set_pit_temp' | 'hold_warm'
+					payload: { setpointC: number; reason?: string }
+				},
+			) {
+				await sharedMutators.deviceCommands.create(tx, args)
+			},
+		},
 		cookMessages: {
 			async respond(tx, args: { id: string; response?: string }) {
 				await sharedMutators.cookMessages.respond(tx, args)

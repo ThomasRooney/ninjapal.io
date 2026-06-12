@@ -57,6 +57,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 			{ cmp }: ExpressionBuilder<Schema, 'cookSessions'>,
 		) => cmp('userId', authData.sub as string)
 
+		const allowIfSelfCommand = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'deviceCommands'>,
+		) => cmp('userId', authData.sub as string)
+
 		const allowIfSelfMessage = (
 			authData: AuthData,
 			{ cmp }: ExpressionBuilder<Schema, 'cookMessages'>,
@@ -108,6 +113,15 @@ export const permissions = definePermissions<AuthData, Schema>(
 						postMutation: [],
 					},
 					delete: [],
+				},
+			},
+			deviceCommands: {
+				row: {
+					select: [allowIfSelfCommand],
+					// Enqueued via the custom mutator / worker only
+					insert: [],
+					update: { preMutation: [], postMutation: [] },
+					delete: [allowIfSelfCommand],
 				},
 			},
 			cookMessages: {

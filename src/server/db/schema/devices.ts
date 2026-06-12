@@ -59,6 +59,10 @@ export const devices = pgTable(
 			scale: 1,
 		}),
 
+		// AI pitmaster (app-owned)
+		autopilot_enabled: boolean('autopilot_enabled').default(false),
+		autopilot_state: jsonb('autopilot_state'), // { baseSetpointC, nudgedAtMs, holdEngagedAtMs, announcedDone }
+
 		// Cooking State
 		cook_state_raw: text('cook_state_raw'), // JSON string
 		cook_mode: varchar('cook_mode', { length: 50 }),

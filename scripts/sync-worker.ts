@@ -19,8 +19,18 @@ import { NinjaAuthManager } from '@/ninjaAuth/ninja-auth-manager'
 import type { EnhancedAuthState } from '@/ninjaAuth/types'
 import { type AylaDevice, buildDeviceData } from '@/server/db/build-device-data'
 import {
+	type AutopilotState,
+	evaluateAutopilot,
+} from '@/server/control/autopilot'
+import {
+	buildSetpointCommand,
+	sendDatapoint,
+} from '@/server/control/ayla-control'
+import { validateIntent } from '@/server/control/safety'
+import {
 	cookMessages,
 	cookSessions,
+	deviceCommands,
 	deviceHistory,
 	devices,
 	ninjaConnections,
@@ -76,6 +86,209 @@ function toHistoryState(
 		state[k] = v instanceof Date ? v.toISOString() : v
 	}
 	return state
+}
+
+/** Executes one validated setpoint change against the device. */
+async function executeSetpoint(
+	device: { id: string; dsn: string },
+	userId: string,
+	setpointC: number,
+	reason: string,
+	source: 'user' | 'autopilot',
+	kind: 'set_pit_temp' | 'hold_warm',
+	headers: Record<string, string>,
+	commandId?: string,
+): Promise<void> {
+	const result = await sendDatapoint(
+		device.dsn,
+		'SET_Cook_Command',
+		buildSetpointCommand(setpointC),
+		headers,
+	)
+	const status = result.status === 'sent' ? 'sent' : result.status
+	if (commandId) {
+		await db
+			.update(deviceCommands)
+			.set({ status, error: result.error ?? null, executedAt: new Date() })
+			.where(eq(deviceCommands.id, commandId))
+	} else {
+		await db.insert(deviceCommands).values({
+			deviceId: device.id,
+			userId,
+			kind,
+			payload: { setpointC, reason },
+			source,
+			status,
+			error: result.error ?? null,
+			executedAt: new Date(),
+		})
+	}
+	console.log(
+		`[control] ${source} ${kind} ${setpointC}°C (${reason}) -> ${status}`,
+	)
+}
+
+/** Runs queued manual commands for a device through the safety envelope. */
+async function executePendingCommands(
+	device: { id: string; dsn: string },
+	mode: string | null,
+	currentSetpointC: number | null,
+	headers: Record<string, string>,
+) {
+	const pending = await db
+		.select()
+		.from(deviceCommands)
+		.where(
+			and(
+				eq(deviceCommands.deviceId, device.id),
+				eq(deviceCommands.status, 'pending'),
+			),
+		)
+	for (const command of pending) {
+		const payload = command.payload as { setpointC?: number; reason?: string }
+		if (typeof payload.setpointC !== 'number') {
+			await db
+				.update(deviceCommands)
+				.set({ status: 'rejected', error: 'missing setpointC' })
+				.where(eq(deviceCommands.id, command.id))
+			continue
+		}
+		const verdict = validateIntent(
+			{
+				kind: command.kind as 'set_pit_temp' | 'hold_warm',
+				setpointC: payload.setpointC,
+				reason: payload.reason ?? 'manual',
+			},
+			{ mode, currentSetpointC },
+		)
+		if (!verdict.ok) {
+			await db
+				.update(deviceCommands)
+				.set({ status: 'rejected', error: verdict.rejectReason })
+				.where(eq(deviceCommands.id, command.id))
+			continue
+		}
+		await executeSetpoint(
+			device,
+			command.userId,
+			verdict.setpointC,
+			payload.reason ?? 'manual',
+			'user',
+			command.kind as 'set_pit_temp' | 'hold_warm',
+			headers,
+			command.id,
+		)
+	}
+}
+
+/** Phase-1 autopilot tick for a device. */
+async function runAutopilot(
+	deviceRow: typeof devices.$inferSelect,
+	userId: string,
+	deviceData: Record<string, unknown>,
+	headers: Record<string, string>,
+) {
+	if (!deviceRow.autopilot_enabled) return
+	const setpoint = parseSetpoint(deviceData)
+	const nowMs = Date.now()
+
+	// Lead-probe series from history (4h) for stall detection
+	const since = new Date(nowMs - 4 * 3_600_000)
+	const rows = await db
+		.select()
+		.from(deviceHistory)
+		.where(
+			and(
+				eq(deviceHistory.deviceId, deviceRow.id),
+				gte(deviceHistory.recordedAt, since),
+			),
+		)
+	const snapshots = reconstructHistorySnapshots(
+		rows
+			.map((r) => ({
+				id: Number(r.id),
+				historyType: r.historyType,
+				recordedAt: r.recordedAt?.getTime() ?? null,
+				changedBy: r.changedBy,
+				changes: r.changes as never,
+			}))
+			.sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0)),
+	)
+	const probe1Series: TempPoint[] = snapshots
+		.filter((s) => typeof s.state.probe1_temp_a === 'number' && s.recordedAt)
+		.map((s) => ({
+			t: s.recordedAt as number,
+			value: s.state.probe1_temp_a as number,
+		}))
+		.sort((a, b) => a.t - b.t)
+
+	const num = (v: unknown) => (typeof v === 'number' ? v : null)
+	const result = evaluateAutopilot({
+		nowMs,
+		cooking: isCooking(deviceData.cook_state),
+		mode: (deviceData.cook_mode as string) ?? null,
+		setpointC: setpoint,
+		probes: [
+			{
+				index: 1,
+				tempC: num(deviceData.probe1_temp_a),
+				targetC:
+					deviceRow.probe1_target_temp != null
+						? Number(deviceRow.probe1_target_temp)
+						: null,
+			},
+			{
+				index: 2,
+				tempC: num(deviceData.probe2_temp_a),
+				targetC:
+					deviceRow.probe2_target_temp != null
+						? Number(deviceRow.probe2_target_temp)
+						: null,
+			},
+		],
+		probe1Series,
+		state: (deviceRow.autopilot_state as AutopilotState) ?? {},
+	})
+
+	for (const intent of result.intents) {
+		const verdict = validateIntent(intent, {
+			mode: (deviceData.cook_mode as string) ?? null,
+			currentSetpointC: setpoint,
+		})
+		if (!verdict.ok) {
+			console.warn(`[autopilot] intent rejected: ${verdict.rejectReason}`)
+			continue
+		}
+		await executeSetpoint(
+			{ id: deviceRow.id, dsn: deviceRow.dsn },
+			userId,
+			verdict.setpointC,
+			intent.reason,
+			'autopilot',
+			intent.kind,
+			headers,
+		)
+	}
+	for (const m of result.messages) {
+		await emitMessage({
+			deviceId: deviceRow.id,
+			userId,
+			kind: m.kind,
+			title: m.title,
+			body: m.body,
+			requiresAck: m.requiresAck,
+			actions: m.actions,
+		})
+	}
+	if (
+		JSON.stringify(result.state) !==
+		JSON.stringify(deviceRow.autopilot_state ?? {})
+	) {
+		await db
+			.update(devices)
+			.set({ autopilot_state: result.state })
+			.where(eq(devices.id, deviceRow.id))
+	}
 }
 
 const COOKING_STATES = new Set(['preheating', 'cooking'])
@@ -423,6 +636,13 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 				deviceData,
 			)
 			await emitCookMessages(existing.id, conn.userId, existing, deviceData)
+			await executePendingCommands(
+				{ id: existing.id, dsn: existing.dsn },
+				(deviceData.cook_mode as string) ?? null,
+				parseSetpoint(deviceData),
+				headers,
+			)
+			await runAutopilot(existing, conn.userId, deviceData, headers)
 
 			// Hourly snapshot, otherwise a merge patch against the previous state
 			const hourStart = new Date()

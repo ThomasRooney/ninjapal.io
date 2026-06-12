@@ -1,5 +1,6 @@
 import {
 	EtaLine,
+	PitControl,
 	PitGauges,
 	ProbeRow,
 	StallBadge,
@@ -329,6 +330,19 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 										? '—'
 										: (viewModel?.activeProbeCount ?? 0)}
 								</span>
+							</div>
+
+							<div className='border-t pt-3'>
+								<PitControl
+									deviceId={device.id ?? ''}
+									autopilotEnabled={device.autopilot_enabled === true}
+									currentSetpointC={
+										typeof grillState?.setpoint === 'number'
+											? grillState.setpoint
+											: null
+									}
+									prefersCelsius={zeroUser?.prefers_celsius ?? false}
+								/>
 							</div>
 						</div>
 					</CardContent>

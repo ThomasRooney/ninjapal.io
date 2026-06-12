@@ -2,6 +2,7 @@ import { Sparkline } from '@/components/sparkline'
 import { TempGauge } from '@/components/temp-gauge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { useCookTelemetry } from '@/hooks/use-cook-telemetry'
 import { useZero } from '@/hooks/use-typed-zero'
 import { projectETA } from '@/lib/cook-analysis'
@@ -11,6 +12,7 @@ import {
 	fahrenheitToCelsius,
 	formatTemperature,
 } from '@/lib/temperature-utils'
+import { useQuery } from '@rocicorp/zero/react'
 import { Flame, Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
@@ -273,6 +275,126 @@ export function ProbeRow({
 					{active ? 'Active' : 'Monitoring'}
 				</p>
 			</div>
+		</div>
+	)
+}
+
+/** Autopilot toggle + manual setpoint control ("grab the wheel"). */
+export function PitControl({
+	deviceId,
+	autopilotEnabled,
+	currentSetpointC,
+	prefersCelsius,
+}: {
+	deviceId: string
+	autopilotEnabled: boolean
+	currentSetpointC: number | null
+	prefersCelsius: boolean
+}) {
+	const z = useZero()
+	const [draft, setDraft] = useState('')
+	const [commands] = useQuery(
+		z.query.deviceCommands
+			.where('deviceId', deviceId)
+			.orderBy('createdAt', 'desc')
+			.limit(1),
+	)
+	const lastCommand = commands?.[0]
+
+	async function toggleAutopilot(enabled: boolean) {
+		await z.mutate.devices.update({
+			id: deviceId,
+			data: { autopilot_enabled: enabled },
+		})
+	}
+
+	async function sendSetpoint() {
+		const display = Number.parseFloat(draft)
+		if (Number.isNaN(display)) return
+		const c = prefersCelsius
+			? display
+			: (fahrenheitToCelsius(display) ?? display)
+		await z.mutate.deviceCommands.create({
+			id: crypto.randomUUID(),
+			deviceId,
+			kind: 'set_pit_temp',
+			payload: { setpointC: Math.round(c * 10) / 10, reason: 'manual' },
+		})
+		setDraft('')
+	}
+
+	const payload = lastCommand?.payload as
+		| { setpointC?: number; reason?: string }
+		| undefined
+
+	return (
+		<div className='space-y-3' data-testid='pit-control'>
+			<div className='flex items-center justify-between'>
+				<div>
+					<p className='text-sm font-medium'>AI pitmaster</p>
+					<p className='text-xs text-muted-foreground'>
+						{autopilotEnabled
+							? 'Managing the pit: hold-warm at doneness, stall nudges'
+							: 'Off — manual control only'}
+					</p>
+				</div>
+				<Switch
+					checked={autopilotEnabled}
+					onCheckedChange={toggleAutopilot}
+					data-testid='autopilot-toggle'
+				/>
+			</div>
+			<div className='flex items-center gap-2'>
+				<Input
+					value={draft}
+					onChange={(e) => setDraft(e.target.value)}
+					onKeyDown={(e) => e.key === 'Enter' && sendSetpoint()}
+					placeholder={
+						currentSetpointC != null
+							? `pit ${formatTemperature(currentSetpointC, prefersCelsius)}`
+							: prefersCelsius
+								? 'pit °C'
+								: 'pit °F'
+					}
+					className='h-8 w-28 text-sm'
+					data-testid='setpoint-input'
+				/>
+				<Button
+					size='sm'
+					className='h-8'
+					onClick={sendSetpoint}
+					disabled={!draft.trim()}
+					data-testid='setpoint-send'
+				>
+					Set pit
+				</Button>
+			</div>
+			{lastCommand && (
+				<p
+					className='text-xs text-muted-foreground'
+					data-testid='command-status'
+				>
+					last command:{' '}
+					{payload?.setpointC != null
+						? `${payload.setpointC}°C`
+						: lastCommand.kind}{' '}
+					· {lastCommand.source} ·{' '}
+					<span
+						className={
+							lastCommand.status === 'sent'
+								? 'text-green-600'
+								: lastCommand.status === 'failed' ||
+										lastCommand.status === 'rejected'
+									? 'text-red-600'
+									: 'text-amber-600'
+						}
+					>
+						{lastCommand.status === 'dry_run'
+							? 'dry run (control not yet armed)'
+							: lastCommand.status}
+					</span>
+				</p>
+			)}
 		</div>
 	)
 }

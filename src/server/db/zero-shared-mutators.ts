@@ -55,6 +55,37 @@ export function createSharedMutators(authData: AuthData) {
 				await tx.mutate.users.update(args)
 			},
 		},
+		deviceCommands: {
+			/** Enqueue a manual control command for the worker to execute. */
+			async create(
+				tx: Transaction<Schema>,
+				args: {
+					id: string
+					deviceId: string
+					kind: 'set_pit_temp' | 'hold_warm'
+					payload: { setpointC: number; reason?: string }
+				},
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				const device = await tx.query.devices
+					.where('id', args.deviceId)
+					.where('userId', authData.sub)
+					.one()
+					.run()
+				if (!device) throw new Error('Device not found')
+				await tx.mutate.deviceCommands.insert({
+					id: args.id,
+					deviceId: args.deviceId,
+					userId: authData.sub,
+					kind: args.kind,
+					payload: args.payload,
+					source: 'user',
+					status: 'pending',
+					createdAt: Date.now(),
+				})
+			},
+		},
 		cookMessages: {
 			/** Ack a message — optionally with a chosen action id or steer text. */
 			async respond(
