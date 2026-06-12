@@ -1,3 +1,9 @@
+import {
+	EtaLine,
+	PitGauges,
+	ProbeRow,
+	StallBadge,
+} from '@/components/pit-dashboard'
 import { TemperatureGraph } from '@/components/temperature-graph'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -26,7 +32,6 @@ import {
 	Clock,
 	CloudSnow,
 	DoorOpen,
-	Flame,
 	Loader2,
 	Thermometer,
 	Wifi,
@@ -172,6 +177,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 								</p>
 							</div>
 						</div>
+						<StallBadge deviceId={device.id ?? ''} />
 
 						<div className='space-y-2'>
 							<div className='flex items-center justify-between'>
@@ -203,6 +209,15 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 							</div>
 
 							<CookTimeDisplay device={device} grillState={grillState} />
+							<EtaLine
+								deviceId={device.id ?? ''}
+								targetC={
+									device.probe1_target_temp != null
+										? Number(device.probe1_target_temp)
+										: null
+								}
+								prefersCelsius={zeroUser?.prefers_celsius ?? false}
+							/>
 						</div>
 					</CardContent>
 				</Card>
@@ -214,33 +229,15 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 						<CardDescription>Temperature readings</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div className='space-y-3'>
-							{viewModel?.displayTemperatures.map((temp) => (
-								<div
-									key={temp.name}
-									className='flex items-center justify-between'
-								>
-									<div className='flex items-center gap-2'>
-										{temp.name === 'Chamber' && (
-											<Thermometer className='h-4 w-4 text-muted-foreground' />
-										)}
-										{temp.name === 'Exhaust' && (
-											<CloudSnow className='h-4 w-4 text-muted-foreground' />
-										)}
-										{temp.name === 'Grill' && (
-											<Flame className='h-4 w-4 text-muted-foreground' />
-										)}
-										<span className='text-sm font-medium'>{temp.name}</span>
-									</div>
-									<span className='text-lg font-semibold'>
-										{formatTemperature(
-											temp.temp,
-											zeroUser?.prefers_celsius ?? false,
-										)}
-									</span>
-								</div>
-							))}
-						</div>
+						<PitGauges
+							deviceId={device.id ?? ''}
+							setpointC={
+								typeof grillState?.setpoint === 'number'
+									? grillState.setpoint
+									: null
+							}
+							prefersCelsius={zeroUser?.prefers_celsius ?? false}
+						/>
 					</CardContent>
 				</Card>
 			</div>
@@ -346,36 +343,33 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 						</CardHeader>
 						<CardContent>
 							<div className='space-y-3'>
-								{viewModel.connectedProbes.map((probe) => (
-									<div
-										key={probe.name}
-										className={`flex items-center justify-between p-3 rounded-lg ${
-											probe.active ? 'bg-primary/10' : 'bg-muted/50'
-										}`}
-									>
-										<div>
-											<p className='font-medium capitalize'>
-												{probe.name.replace('probe', 'Probe ')}
-											</p>
-											<p className='text-sm text-muted-foreground'>
-												{probe.active ? 'Active' : 'Monitoring'}
-											</p>
-										</div>
-										<div className='text-right'>
-											<p className='text-xl font-semibold'>
-												{formatTemperature(
-													probe.temp,
-													zeroUser?.prefers_celsius ?? false,
-												)}
-											</p>
-											{probe.progress < 100 && (
-												<p className='text-sm text-muted-foreground'>
-													{probe.progress}% done
-												</p>
-											)}
-										</div>
-									</div>
-								))}
+								{viewModel.connectedProbes.map((probe, idx) => {
+									const probeIndex = (idx + 1) as 1 | 2
+									const tempKey =
+										probeIndex === 1 ? 'probe1_temp_a' : 'probe2_temp_a'
+									const targetKey =
+										probeIndex === 1
+											? 'probe1_target_temp'
+											: 'probe2_target_temp'
+									return (
+										<ProbeRow
+											key={probe.name}
+											deviceId={device.id ?? ''}
+											probeIndex={probeIndex}
+											name={probe.name.replace('probe', 'Probe ')}
+											active={probe.active === 1}
+											tempC={
+												device[tempKey] != null ? Number(device[tempKey]) : null
+											}
+											targetC={
+												device[targetKey] != null
+													? Number(device[targetKey])
+													: null
+											}
+											prefersCelsius={zeroUser?.prefers_celsius ?? false}
+										/>
+									)
+								})}
 							</div>
 						</CardContent>
 					</Card>
