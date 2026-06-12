@@ -105,3 +105,27 @@ test.describe('Production validation', () => {
 		expect(rows[0]?.role).not.toBe('admin')
 	})
 })
+
+test('director check-ins are visible in the feed', async ({ page }) => {
+	await loginDemo(page)
+	await page.goto('/app/messages')
+	const runs = page.getByTestId('director-run')
+	await expect(runs.first()).toBeVisible({ timeout: 30000 })
+	await expect(runs.first()).toContainText('Pit director check-in')
+})
+
+test('pit chat steers from live MCP tools', async ({ page }) => {
+	test.setTimeout(120_000)
+	await loginDemo(page)
+	await page.goto('/app/messages')
+	const input = page.getByTestId('pit-chat-input')
+	await expect(input).toBeVisible({ timeout: 30000 })
+	await input.fill(
+		'What is the current pit temperature? One short sentence with the °C number.',
+	)
+	await page.getByTestId('pit-chat-send').click()
+	await expect(page.getByTestId('chat-message').last()).toContainText(
+		/°C|degrees/i,
+		{ timeout: 60000 },
+	)
+})
