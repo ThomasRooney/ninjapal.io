@@ -113,35 +113,29 @@
         <h3>Sunday brisket — hour 6 of 12</h3>
         <span class="live"><span class="dot"></span>Live</span>
       </div>
-      <!-- Stylized cook graph: grill holds 107°C, probe climbs through the stall -->
-      <svg viewBox="0 0 760 230" width="100%" role="img" aria-label="Temperature graph of a brisket cook: grill temperature holding steady while the meat climbs through the stall">
+      <!-- Live-drawn cook graph from real PitMinder demo telemetry -->
+      <svg id="cookviz" viewBox="0 0 760 230" width="100%" role="img" aria-label="Temperature graph of a brisket cook drawing itself: grill temperature holding steady while the meat climbs through the stall">
         <g stroke="#292524" stroke-width="1">
           <line x1="40" y1="30" x2="740" y2="30"/><line x1="40" y1="80" x2="740" y2="80"/>
           <line x1="40" y1="130" x2="740" y2="130"/><line x1="40" y1="180" x2="740" y2="180"/>
         </g>
         <g fill="#a8a29e" font-size="11" font-family="ui-monospace, monospace">
-          <text x="6" y="34">120°</text><text x="12" y="84">90°</text>
-          <text x="12" y="134">60°</text><text x="12" y="184">30°</text>
+          <text x="6" y="34">120&#176;</text><text x="12" y="84">90&#176;</text>
+          <text x="12" y="134">60&#176;</text><text x="12" y="184">30&#176;</text>
         </g>
-        <!-- grill temp: fast preheat then wobbling hold with two lid-open dips -->
-        <path d="M40 200 C60 90 70 56 95 52 L130 50 L150 54 L170 49 L190 53 L210 50 L225 68 L240 51 L270 53 L300 49 L330 52 L360 50 L390 54 L420 50 L450 52 L470 70 L488 51 L520 53 L560 50 L600 52 L640 50 L680 53 L740 51"
-              fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        <!-- air temp: shadows the grill slightly lower -->
-        <path d="M40 204 C62 100 74 66 98 62 L140 60 L180 62 L210 59 L226 76 L242 61 L290 62 L340 59 L390 63 L440 60 L470 78 L490 61 L550 62 L620 60 L740 61"
-              fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
-        <!-- probe: slow climb, long flat stall, then the push -->
-        <path d="M40 212 L90 198 L150 180 L210 162 L270 148 L330 139 L390 135 L450 133 L510 132 L560 128 L610 118 L660 106 L710 96 L740 92"
-              fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        <!-- stall annotation -->
-        <g font-size="12" font-family="ui-sans-serif, system-ui" fill="#a8a29e">
-          <text x="395" y="120" font-style="italic">the stall 😤</text>
+        <polyline id="line-grill" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points=""/>
+        <polyline id="line-air" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" points=""/>
+        <polyline id="line-probe" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points=""/>
+        <g id="stall-note" font-size="12" font-family="ui-sans-serif, system-ui" fill="#a8a29e" opacity="0">
+          <text x="395" y="120" font-style="italic">the stall &#128548;</text>
           <path d="M440 125 q 20 14 30 9" stroke="#57534e" fill="none" stroke-width="1"/>
         </g>
+        <text id="hour-note" x="740" y="220" text-anchor="end" font-size="11" fill="#57534e" font-family="ui-monospace, monospace"></text>
       </svg>
       <div class="legend">
-        <span><span class="key" style="background:#dc2626"></span>Grill 107.2°C</span>
-        <span><span class="key" style="background:#3b82f6"></span>Chamber 103.8°C</span>
-        <span><span class="key" style="background:#f59e0b"></span>Brisket 68.4°C</span>
+        <span><span class="key" style="background:#dc2626"></span>Grill <span id="v-grill">—</span></span>
+        <span><span class="key" style="background:#3b82f6"></span>Chamber <span id="v-air">—</span></span>
+        <span><span class="key" style="background:#f59e0b"></span>Brisket <span id="v-probe">—</span></span>
       </div>
     </div>
   </section>
@@ -197,5 +191,58 @@
     </div>
   </footer>
 </div>
+<script>
+(function () {
+  // Real telemetry from the PitMinder demo brisket cook: [hours, grill, chamber, probe] °C
+  var DATA = [[0,49.5,46.9,6.5],[0.08,69.7,66.2,6.9],[0.17,82,79,7.5],[0.25,90.7,87.2,8.1],[0.33,97.4,93.8,8.4],[0.42,99.5,96.6,8.8],[0.5,105,101,11.5],[0.58,106.7,100.9,13.8],[0.67,105.5,100.3,16.3],[0.75,109.2,104,18.7],[0.83,104.4,101.2,21.1],[0.92,104.5,100.3,23.5],[1,104.7,100.1,25.4],[1.08,109.4,106.3,27.4],[1.17,108.2,104.3,29.3],[1.25,110,107.6,31.3],[1.33,106,101.3,33.3],[1.42,106.7,103.5,35.3],[1.5,106.6,101.8,37.2],[1.58,105.9,103.5,39.1],[1.67,108.9,106.8,40.7],[1.75,108.2,103.8,42.2],[1.83,106,102.5,43.8],[1.92,108.8,103.3,45.3],[2,104.1,100.6,47],[2.08,105.3,101.2,48.5],[2.17,108.2,103.4,50.1],[2.25,104.2,102.1,51.4],[2.33,105,101.2,52.6],[2.42,106.6,103.4,53.9],[2.5,109.4,105.4,55.2],[2.58,107.5,102.8,56.4],[2.67,108,102.7,57.5],[2.75,104.7,98.9,58.6],[2.83,106.9,103.7,59.8],[2.92,94.6,92.1,60.8],[3,97.4,92,61.9],[3.08,93.3,89.4,62.9],[3.17,109.2,106.1,64.1],[3.25,105,101.7,65.1],[3.33,108.9,106.2,66.2],[3.42,106.1,103.6,67.1],[3.5,109.6,104.9,68.1],[3.58,106.2,100.5,68.9],[3.67,109.7,105.6,69.9],[3.75,105.6,99.8,69.9],[3.83,107.4,104.6,70.1],[3.92,108,103.8,70.2],[4,106.6,101.8,70.3],[4.08,105.6,101.8,70.4],[4.17,104.8,99.4,70.3],[4.25,109.2,105.2,70.4],[4.33,104.3,99.3,70.5],[4.42,104.6,101.6,70.8],[4.5,107.3,103.4,71],[4.58,104.6,99.6,71],[4.67,107.4,101.5,71.3],[4.75,105.7,101.9,71.5],[4.83,109.7,105.8,71.6],[4.92,108.1,105.3,71.7],[5,108.5,105.3,71.9],[5.08,109.8,106.9,72.2],[5.17,108,103.6,72.4],[5.25,109.3,104.6,72.5],[5.33,107.7,104.5,72.8],[5.42,109.8,104.9,72.9],[5.5,108.4,103.2,73.8],[5.58,107.3,101.6,74.5],[5.67,108.1,103.8,75.2],[5.75,107.1,101.8,75.8],[5.83,106.3,103.6,76.6],[5.92,92.2,89,77.2],[6,95.8,93.3,78],[6.08,95.8,91.7,78.5],[6.17,108.3,104.3,79.2],[6.25,108.7,106.4,79.8],[6.33,104.2,99.2,80.4],[6.42,107.5,102.9,81.1],[6.5,108.4,103.9,81.7],[6.58,107,101.4,82.1],[6.67,109.2,105.2,82.8],[6.75,104.9,101.6,83.3],[6.83,105.4,102.1,83.6],[6.92,105.2,101.3,84.3],[7,109.7,104.9,84.8],[7.08,108.3,103.3,85.3],[7.17,105.1,101.1,85.8],[7.25,104.5,102.5,86.1],[7.33,107.1,103,86.6],[7.42,109.9,105.3,87.1],[7.5,108.6,104.5,87.5],[7.58,104.2,99.7,88],[7.67,107,103.7,88.1],[7.75,108.6,105.8,88.6],[7.83,107.3,103.3,88.9],[7.92,107.5,104.3,89],[8,105.1,102,89.3]];
+  var X0 = 40, X1 = 740, Y_TOP = 30, Y_BOT = 213; // 120°C .. ~7°C linear-ish
+  var T_MAX = DATA[DATA.length - 1][0];
+  function x(h) { return X0 + (h / T_MAX) * (X1 - X0); }
+  function y(c) { return 180 - ((c - 30) / 30) * 50; }
+  var grill = document.getElementById('line-grill');
+  var air = document.getElementById('line-air');
+  var probe = document.getElementById('line-probe');
+  var stall = document.getElementById('stall-note');
+  var hourNote = document.getElementById('hour-note');
+  var vG = document.getElementById('v-grill'), vA = document.getElementById('v-air'), vP = document.getElementById('v-probe');
+  if (!grill) return;
+
+  function render(n) {
+    var pg = [], pa = [], pp = [];
+    for (var i = 0; i < n; i++) {
+      var d = DATA[i];
+      pg.push(x(d[0]) + ',' + y(d[1]));
+      pa.push(x(d[0]) + ',' + y(d[2]));
+      pp.push(x(d[0]) + ',' + y(d[3]));
+    }
+    grill.setAttribute('points', pg.join(' '));
+    air.setAttribute('points', pa.join(' '));
+    probe.setAttribute('points', pp.join(' '));
+    var last = DATA[Math.max(0, n - 1)];
+    vG.textContent = last[1].toFixed(1) + '\u00b0C';
+    vA.textContent = last[2].toFixed(1) + '\u00b0C';
+    vP.textContent = last[3].toFixed(1) + '\u00b0C';
+    hourNote.textContent = 'hour ' + last[0].toFixed(1) + ' of 12';
+    stall.style.opacity = last[0] >= 3.5 ? '1' : '0';
+    stall.style.transition = 'opacity 1.2s ease';
+  }
+
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    render(DATA.length);
+    return;
+  }
+
+  var DURATION = 14000, HOLD = 2600;
+  var start = null;
+  function tick(now) {
+    if (start === null) start = now;
+    var t = (now - start) % (DURATION + HOLD);
+    var frac = Math.min(1, t / DURATION);
+    render(Math.max(2, Math.round(frac * DATA.length)));
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
 </body>
 </html>

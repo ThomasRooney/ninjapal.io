@@ -18,4 +18,6 @@ interface ImportMetaEnv {
 
 interface ImportMeta {
 	readonly env: ImportMetaEnv
+	/** Bun: true when this module is the entrypoint */
+	readonly main: boolean
 }

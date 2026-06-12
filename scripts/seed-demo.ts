@@ -91,7 +91,7 @@ export type CookPoint = {
 }
 
 /** Generates telemetry for a cook (all temps °C, 5-min cadence). */
-function generateCookTelemetry(
+export function generateCookTelemetry(
 	startMs: number,
 	profile: CookProfile,
 ): CookPoint[] {
@@ -452,7 +452,9 @@ async function main() {
 	await db.end()
 }
 
-main().catch((e) => {
-	console.error(e)
-	process.exit(1)
-})
+if (import.meta.main) {
+	main().catch((e) => {
+		console.error(e)
+		process.exit(1)
+	})
+}
