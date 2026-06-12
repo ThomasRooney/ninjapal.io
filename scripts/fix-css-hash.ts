@@ -6,11 +6,24 @@
  *
  * Runs as part of `bun run build`.
  */
-import { copyFileSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import {
+	copyFileSync,
+	existsSync,
+	readFileSync,
+	readdirSync,
+	statSync,
+} from 'node:fs'
 import { join } from 'node:path'
 
 const FUNCTIONS_DIR = '.vercel/output/functions'
 const ASSETS_DIR = '.vercel/output/static/assets'
+
+// TanStack Start ≥1.168 fixed router#4959 upstream and Vercel's builder
+// lays output out differently — treat a missing layout as nothing to do.
+if (!existsSync(ASSETS_DIR) || !existsSync(FUNCTIONS_DIR)) {
+	console.log('fix-css-hash: output layout not present, skipping (fixed upstream)')
+	process.exit(0)
+}
 
 function walk(dir: string, files: string[] = []): string[] {
 	for (const entry of readdirSync(dir)) {
