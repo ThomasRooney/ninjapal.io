@@ -1,0 +1,1 @@
+const t=n=>n==null?n:Math.round((n-32)*5/9*10)/10,e=n=>n==null?n:Math.round((n*9/5+32)*10)/10,l=(n,u,r="celsius")=>{if(n==null)return"--";let i=n;return r==="fahrenheit"&&u?i=t(n):r==="celsius"&&!u&&(i=e(n)),`${i}${u?"°C":"°F"}`};export{e as c,l as f};

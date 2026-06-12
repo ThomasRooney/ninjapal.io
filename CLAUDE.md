@@ -1,6 +1,7 @@
 ## Context
 
- * Read `STATUS.md` first — it holds the current project state, inferred direction, and next steps. Keep it updated when completing milestones.
+ * Read `STATUS.md` first — it holds the current project state, production topology, inferred direction, and next steps. Keep it updated when completing milestones.
+ * This is **PitMinder** (pitminder.com): real-time monitoring/graphing for Ninja Woodfire smokers. Operated by Resilient Software Ltd — public-facing text names the company, never Thomas personally.
 
 ## Rules
 
@@ -12,175 +13,56 @@
  * ALWAYS follow conventional commit rules `<type>:<space><message title>\n\n * Bullet Points explaining what updated`
 
 ## Project Context
-This is a project with a Supabase backend and Zero Sync for real-time data synchronization. The project uses:
-- **Frontend**: React with TanStack Router and TanStack Start
-- **Backend**: Supabase PostgreSQL
-- **ORM**: Drizzle ORM
-- **Real-time**: Zero Sync
-- **Styling**: Tailwind CSS + shadcn/ui
+
+- **Frontend**: React with TanStack Router and TanStack Start (nitro `target: 'vercel'`)
+- **Database**: Postgres — Neon in production, Docker locally (`wal_level=logical`)
+- **ORM**: Drizzle (push-based; no migration files)
+- **Real-time**: Zero Sync (zero-cache on Railway in prod)
+- **Auth**: better-auth (email+password, magic link, Google) — Zero JWTs minted in `fetchUser` with `ZERO_AUTH_SECRET`
+- **Email**: Resend outbound (verified domain), SES inbound forwarding (`infra/email-forwarder/`)
+- **Styling**: Tailwind CSS + shadcn/ui; graphs with Recharts
 - **Package Manager**: Bun
 
-## Key Commands Reference
+## Key Commands
 
-### Development
 ```bash
-bun dev                     # Start development server
-bun build                   # Build for production
-bun check                   # Run Biome linter/formatter
+mise run dev               # overmind: web :5173, postgres :54332, zero-cache :4848, email :3883
+bun check                  # biome + tsc — keep green
+bun test                   # vitest unit suite
+bunx playwright test       # e2e (needs the dev stack running; reuses it)
+bun db:seed                # drizzle push + demo account (demo@pitminder.com / demo-smoker-2026)
+bun db:zero:generate       # regenerate Zero schema after config changes
+bun build                  # production build (.vercel/output) + fix-css-hash step
 ```
 
-### Database Operations
-```bash
-bun supabase:start         # Start local Supabase
-bun supabase:stop          # Stop local Supabase  
-bun supabase:reset         # Reset database
-bun db:generate            # Generate Drizzle migration
-bun db:migrate             # Apply migration to database
-bun db:push                # Push schema changes (dev only)
-bun db:seed                # Reset and seed database
-bun db:zero:generate       # Generate Zero schema
-```
+## Schema Update Workflow (Expand–Migrate–Contract)
 
-### Zero Cache
-```bash
-bun zero-cache             # Start Zero cache development server
-```
+1. **Expand**: add the column/table in `src/server/db/schema/` (nullable/default), set it to `false` in `drizzle-zero.config.ts`, apply with `bunx drizzle-kit push`.
+2. **Migrate**: update application code; test.
+3. **Contract**: flip the config entry to `true`, `bun db:zero:generate`, restart zero-cache, verify real-time sync.
 
-## Schema Update Workflow
-
-When updating database schemas, always follow the **Expand-Migrate-Contract** pattern:
-
-### 1. Expand Phase
-```bash
-# 1. Add column to src/server/db/schema.ts (nullable/default)
-# 2. Set column to false in drizzle-zero.config.ts
-# 3. Generate and apply migration
-bun db:generate
-bun db:migrate
-```
-
-### 2. Migrate Phase
-```bash
-# 4. Update application code to use new column
-# 5. Test thoroughly
-# 6. Deploy application changes
-```
-
-### 3. Contract Phase
-```bash
-# 7. Enable column in drizzle-zero.config.ts (false → true)
-# 8. Regenerate Zero schema
-bun db:zero:generate
-# 9. Test real-time functionality
-```
+Gotchas:
+- `drizzle-kit push` sometimes prompts interactively about the `devices_dsn_user_id_unique` constraint and aborts when non-interactive — applying the DDL directly with psql is the established workaround (see git history).
+- New tables must be added to `drizzle-zero.config.ts` (set `false` to exclude — e.g. the better-auth tables) AND to `src/server/db/zero-permissions.ts`.
+- Prod: apply DDL to Neon, run `zero-deploy-permissions` with `ZERO_UPSTREAM_DB` pointed at Neon, then redeploy the Railway zero-cache service.
 
 ## File Structure Guide
 
-### Schema Files
-- `src/server/db/schema.ts` - Drizzle schema definitions
-- `drizzle-zero.config.ts` - Zero sync table/column configuration
-- `src/server/db/zero-schema.gen.ts` - Auto-generated Zero schema
-
-### Key Application Files
-- `src/routes/_authed/app/_layout/zero-mutations.tsx` - Example Zero mutations
-- `src/lib/zero-client-mutators.ts` - Client-side Zero operations
-- `src/server/db/zero-server-mutators.ts` - Server-side Zero operations
-
-### Configuration
-- `drizzle.config.ts` - Drizzle configuration
-- `supabase/config.toml` - Supabase local configuration
-- `biome.json` - Code formatting/linting rules
-
-## Common Tasks
-
-### Adding a New Table
-1. Define table in `src/server/db/schema.ts`
-2. Add table config to `drizzle-zero.config.ts`
-3. Generate migration: `bun db:generate`
-4. Apply migration: `bun db:migrate`
-5. Generate Zero schema: `bun db:zero:generate`
-
-### Adding a New Column
-1. Add column to table in `src/server/db/schema.ts` (nullable!)
-2. Set column to `false` in `drizzle-zero.config.ts`
-3. Generate migration: `bun db:generate`
-4. Apply migration: `bun db:migrate`
-5. Update application code
-6. Enable in Zero config and regenerate schema
-
-### Testing Changes
-```bash
-# Reset environment for clean testing
-bun supabase:reset
-bun db:seed
-bun db:zero:generate
-
-# Check everything works
-bun dev
-# Test in browser, especially real-time features
-```
+- `src/server/db/schema/` — Drizzle schemas (devices, device-history, cook-sessions, ninja, auth)
+- `drizzle-zero.config.ts` / `src/server/db/zero-schema.gen.ts` — Zero sync config / generated schema
+- `src/server/db/zero-{shared,server}-mutators.ts`, `zero-permissions.ts` — Zero mutators + permissions
+- `src/server/db/build-device-data.ts` — Ayla property → device-row mapping (shared with worker)
+- `src/lib/cook-analysis.ts` — stall/ETA/stability/histogram (pure, unit-tested)
+- `src/ninjaAuth/` — SharkNinja OAuth → Ayla tokens (Playwright is lazy-loaded; it must never enter the Vercel bundle)
+- `scripts/sync-worker.ts` + `Dockerfile.sync` — Railway polling worker (the only place device sync runs in prod)
+- `scripts/seed-demo.ts` — demo data (3 cooks); `APP_URL`/`ZERO_UPSTREAM_DB` env to seed prod
+- `marketing/` — static marketing site (own Vercel project)
+- `infra/email-forwarder/` — SES inbound → forwarding Lambda source
 
 ## Troubleshooting
 
-### Migration Issues
-```bash
-# Check migration status
-bun db:studio
-
-# Rollback if needed
-bun db:migrate --rollback
-
-# Reset database
-bun db:seed
-```
-
-### Zero Sync Issues
-```bash
-# Regenerate Zero schema
-bun db:zero:generate
-
-# Check Zero cache is running
-bun zero-cache
-
-# Verify config matches schema
-# Check drizzle-zero.config.ts vs src/server/db/schema.ts
-```
-
-### Build Issues
-```bash
-# Clean and rebuild
-bun check
-bun build
-
-# Check TypeScript errors
-npx tsc --noEmit
-```
-
-## Development Workflow
-
-1. **Start Services**
-   ```bash
-   bun supabase:start
-   bun zero-cache    # In separate terminal
-   bun dev          # In separate terminal
-   ```
-
-2. **Make Changes**
-    - Follow schema update rules for database changes
-    - Use `bun check` frequently during development
-    - Test real-time features after Zero schema changes
-
-3. **Before Committing**
-   ```bash
-   bun check        # Lint and format
-   bun build        # Ensure build works
-   # Test app functionality
-   ```
-
-## Notes for Claude
-- Always run `bun check` after making code changes
-- Use the expand-migrate-contract pattern for all schema changes
-- When adding columns, start with `false` in drizzle-zero.config.ts
-- Test real-time sync after enabling columns in Zero config
-- Prefer editing existing files over creating new ones
-- Check existing patterns before implementing new features
+- **Zero sync stale after schema change**: regenerate (`bun db:zero:generate`), delete the replica (`/tmp/pitminder_zero_replica.db*`), restart zero-cache.
+- **zero-cache crashes with `ERR_DLOPEN_FAILED`** after a Node upgrade: `npm rebuild @rocicorp/zero-sqlite3`.
+- **Local Postgres vanished**: OrbStack auto-quits when no containers run; `mise run dev:db` restarts it (detached, restart policy).
+- **Vercel CSS 404 / hydration break**: the SSR bundle can reference a stylesheet hash the client never emitted (TanStack/router#4959) — `scripts/fix-css-hash.ts` in the build handles it; don't remove it.
+- **e2e flakes on signup**: test emails must be unique (`Date.now()` + random suffix) — parallel workers collide on bare timestamps.

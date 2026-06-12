@@ -13,3 +13,4 @@ playwright-report
 auth-state.json
 .output
 .tanstack.vercel
+.vercel

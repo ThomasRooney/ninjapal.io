@@ -1,0 +1,13 @@
+{
+  "date": "2026-06-11T17:02:48.355Z",
+  "preset": "nitro-prerender",
+  "framework": {
+    "name": "nitro",
+    "version": ""
+  },
+  "versions": {
+    "nitro": "2.11.12"
+  },
+  "commands": {},
+  "config": {}
+}

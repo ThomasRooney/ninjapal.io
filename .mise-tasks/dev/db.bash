@@ -2,6 +2,8 @@
 
 # Local Postgres for development (replaces Supabase).
 # wal_level=logical is required by Zero's replication.
+# Runs detached with a restart policy: OrbStack auto-quits when no containers
+# run, so a foreground --rm container dies with the shell that started it.
 
 set -e
 
@@ -9,29 +11,20 @@ CONTAINER_NAME="pitminder-db"
 VOLUME_NAME="pitminder-pgdata"
 PORT="54332"
 
-cleanup() {
-    echo
-    echo "🛑 Stopping Postgres..."
-    docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    echo "✅ Postgres stopped"
-    exit 0
-}
-
-trap cleanup SIGINT SIGTERM
-
-# Remove any stopped leftover container with the same name
-docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
-
-echo "🐘 Starting Postgres 17 on port ${PORT} (wal_level=logical)..."
-docker run --rm \
-    --name "$CONTAINER_NAME" \
-    -e POSTGRES_PASSWORD=postgres \
-    -p "${PORT}:5432" \
-    -v "${VOLUME_NAME}:/var/lib/postgresql/data" \
-    postgres:17 \
-    -c wal_level=logical &
-
-DOCKER_PID=$!
+if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    echo "✅ Postgres already running on port ${PORT}"
+else
+    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    echo "🐘 Starting Postgres 17 on port ${PORT} (wal_level=logical)..."
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        --restart unless-stopped \
+        -e POSTGRES_PASSWORD=postgres \
+        -p "${PORT}:5432" \
+        -v "${VOLUME_NAME}:/var/lib/postgresql/data" \
+        postgres:17 \
+        -c wal_level=logical >/dev/null
+fi
 
 # Wait for Postgres to accept connections
 for _ in $(seq 1 30); do
@@ -42,4 +35,7 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
-wait "$DOCKER_PID"
+# Under overmind this task must stay in the foreground; follow the logs.
+if [ -t 1 ] || [ -n "$OVERMIND_PROCESS_NAME" ]; then
+    exec docker logs -f "$CONTAINER_NAME"
+fi

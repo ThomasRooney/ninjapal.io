@@ -1,0 +1,43 @@
+import { jsx, jsxs } from 'file:///Users/thomasrooney/Code/ninjapal.io/node_modules/react/jsx-runtime.js';
+
+const Logo = () => {
+  return /* @__PURE__ */ jsx("div", { className: "flex items-center p-0.5 rounded text-white bg-gradient-to-br from-stone-500 to-stone-800 border border-stone-700 shadow", children: /* @__PURE__ */ jsxs(
+    "svg",
+    {
+      className: "h-4 w-4",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      xmlns: "http://www.w3.org/2000/svg",
+      "aria-hidden": true,
+      children: [
+        /* @__PURE__ */ jsx(
+          "path",
+          {
+            d: "M12 20C12 20 11 19 11 17C11 15 12 14 12 12C12 10 11 9 11 7C11 5 12 4 12 4C12 4 13 5 13 7C13 9 12 10 12 12C12 14 13 15 13 17C13 19 12 20 12 20Z",
+            fill: "currentColor",
+            opacity: "0.3"
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "path",
+          {
+            d: "M10 18C10 18 9.5 17.5 9.5 16.5C9.5 15.5 10 15 10 14C10 13 9.5 12.5 9.5 11.5C9.5 10.5 10 10 10 10C10 10 10.5 10.5 10.5 11.5C10.5 12.5 10 13 10 14C10 15 10.5 15.5 10.5 16.5C10.5 17.5 10 18 10 18Z",
+            fill: "currentColor",
+            opacity: "0.5"
+          }
+        ),
+        /* @__PURE__ */ jsx(
+          "path",
+          {
+            d: "M14 18C14 18 14.5 17.5 14.5 16.5C14.5 15.5 14 15 14 14C14 13 14.5 12.5 14.5 11.5C14.5 10.5 14 10 14 10C14 10 13.5 10.5 13.5 11.5C13.5 12.5 14 13 14 14C14 15 13.5 15.5 13.5 16.5C13.5 17.5 14 18 14 18Z",
+            fill: "currentColor",
+            opacity: "0.5"
+          }
+        )
+      ]
+    }
+  ) });
+};
+
+export { Logo as L };
+//# sourceMappingURL=logo-6qfVLBMy.mjs.map

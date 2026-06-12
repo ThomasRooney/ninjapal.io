@@ -1,0 +1,1 @@
+import{u as r,a as s}from"./use-typed-zero-Cxg49JEA.js";import{i,r as c}from"./main-7kOEVug6.js";const f=function(){const n=i(),t=r(),[e]=s(t.query.ninjaConnections);return c.useEffect(()=>{var o;if(e!==void 0){const a=!!((o=e==null?void 0:e[0])!=null&&o.username);n(a?{to:"/app/devices",replace:!0}:{to:"/app/ninja-connection",replace:!0})}},[e,n]),null};export{f as component};
