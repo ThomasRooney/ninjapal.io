@@ -30,6 +30,8 @@ mise run dev               # overmind: web :5173, postgres :54332, zero-cache :4
 bun check                  # biome + tsc — keep green
 bun test                   # vitest unit suite
 bunx playwright test       # e2e (needs the dev stack running; reuses it)
+PROD_DATABASE_URL=<neon> bunx playwright test -c playwright.prod.config.ts  # prod validation (6 checks)
+bun scripts/admin-access.ts  # allowlist your IP (24h) for /app/admin in prod + open it (--local for dev)
 bun db:seed                # drizzle push + demo account (demo@pitminder.com / demo-smoker-2026)
 bun db:zero:generate       # regenerate Zero schema after config changes
 bun build                  # production build (.vercel/output) + fix-css-hash step
