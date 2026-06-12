@@ -18,6 +18,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx'
 import { authClient } from '@/lib/auth-client.ts'
+import { clearUserCache } from '@/lib/user-cache'
 import { Route as RootRoute } from '@/routes/__root.tsx'
 import { useNavigate } from '@tanstack/react-router'
 import { Link } from '@tanstack/react-router'
@@ -31,6 +32,7 @@ export function NavUser() {
 
 	const handleSignout = async () => {
 		await authClient.signOut()
+		clearUserCache()
 		navigate({ to: '/' })
 	}
 

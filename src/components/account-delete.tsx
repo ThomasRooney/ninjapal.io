@@ -1,4 +1,5 @@
 import { authClient } from '@/lib/auth-client.ts'
+import { clearUserCache } from '@/lib/user-cache'
 import { useNavigate } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
@@ -74,6 +75,7 @@ export function AccountDelete() {
 
 			// Sign out client-side after successful deletion
 			await authClient.signOut()
+			clearUserCache()
 
 			// Navigate to home page after successful deletion
 			navigate({ to: '/' })

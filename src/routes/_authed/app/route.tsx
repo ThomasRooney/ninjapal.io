@@ -1,13 +1,10 @@
 import { AppSidebar } from '@/components/app-sidebar.tsx'
-import { DeviceSyncPoller } from '@/components/features/DeviceSyncPoller'
 import { SidebarProvider } from '@/components/ui/sidebar.tsx'
 import { Toaster } from '@/components/ui/sonner.tsx'
-import { useSyncUserZero } from '@/hooks/use-sync-user-zero.ts'
 import { initializeZero, zeroAtom } from '@/lib/zero-setup.ts'
 import { ZeroProvider } from '@rocicorp/zero/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
-import { useEffect } from 'react'
 import { Suspense } from 'react'
 
 const queryClient = new QueryClient()
@@ -34,13 +31,6 @@ export const Route = createFileRoute('/_authed/app')({
 })
 
 function AppContent() {
-	const { syncUser } = useSyncUserZero()
-
-	// Sync user data with Zero database when app loads
-	useEffect(() => {
-		syncUser()
-	}, [syncUser])
-
 	const { user } = Route.useLoaderData()
 	return (
 		<>
@@ -83,7 +73,6 @@ function RouteComponent() {
 		<Suspense fallback={null}>
 			<QueryClientProvider client={queryClient}>
 				<ZeroProvider zero={zero}>
-					<DeviceSyncPoller />
 					<SidebarProvider className='flex h-screen'>
 						<AppContent />
 					</SidebarProvider>

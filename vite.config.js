@@ -26,6 +26,7 @@ export default defineConfig({
 		environment: 'jsdom',
 		exclude: [
 			'e2e/**',
+			'e2e-prod/**',
 			'playwright/**',
 			'tests/**/*.spec.ts',
 			'node_modules/**',

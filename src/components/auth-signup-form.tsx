@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/form.tsx'
 import { Input } from '@/components/ui/input.tsx'
 import { authClient } from '@/lib/auth-client.ts'
+import { clearUserCache } from '@/lib/user-cache'
 import { cn } from '@/lib/utils.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from '@tanstack/react-router'
@@ -56,6 +57,7 @@ export function AuthSignupForm({
 		}
 
 		// better-auth auto-signs-in after signup — refresh loaders and enter the app
+		clearUserCache()
 		await router.invalidate()
 		await router.navigate({ to: '/app' })
 	}

@@ -20,6 +20,7 @@ import {
 	signInWithGoogle,
 	signInWithMagicLink,
 } from '@/lib/auth-client.ts'
+import { clearUserCache } from '@/lib/user-cache'
 import { cn } from '@/lib/utils.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from '@tanstack/react-router'
@@ -77,6 +78,7 @@ export function AuthLoginForm({
 		}
 
 		// Session cookie is set — re-run loaders so route context picks up the user
+		clearUserCache()
 		await router.invalidate()
 		await router.navigate({ to: '/app' })
 	}

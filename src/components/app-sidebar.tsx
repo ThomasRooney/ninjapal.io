@@ -17,7 +17,6 @@
 
 import Logo from '@/components/logo.tsx'
 
-import { DeviceSyncPoller } from '@/components/features/DeviceSyncPoller.tsx'
 import { NavExamples } from '@/components/nav-examples.tsx'
 // import { NavMain } from "@/components/nav-main"
 // import { NavSecondary } from '@/components/nav-secondary'
@@ -46,7 +45,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 									<Logo />
 									<span className='text-sm font-semibold'>PitMinder</span>
 								</Link>
-								<DeviceSyncPoller />
 							</div>
 						</SidebarMenuButton>
 					</SidebarMenuItem>

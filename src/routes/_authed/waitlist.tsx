@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { authClient } from '@/lib/auth-client'
+import { clearUserCache } from '@/lib/user-cache'
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { Flame } from 'lucide-react'
 
@@ -33,6 +34,7 @@ function WaitlistPage() {
 						variant='outline'
 						onClick={async () => {
 							await authClient.signOut()
+							clearUserCache()
 							navigate({ to: '/' })
 						}}
 						data-testid='waitlist-signout'

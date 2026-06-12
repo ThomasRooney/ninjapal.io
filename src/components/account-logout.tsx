@@ -1,4 +1,5 @@
 import { authClient } from '@/lib/auth-client.ts'
+import { clearUserCache } from '@/lib/user-cache'
 import { useNavigate } from '@tanstack/react-router'
 import { LogOutIcon } from 'lucide-react'
 import { Button } from './ui/button.tsx'
@@ -8,6 +9,7 @@ export function AccountLogout() {
 
 	const handleLogout = async () => {
 		await authClient.signOut()
+		clearUserCache()
 		navigate({ to: '/' })
 	}
 
