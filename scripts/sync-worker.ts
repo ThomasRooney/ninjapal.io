@@ -26,6 +26,12 @@ import {
 	buildSetpointCommand,
 	sendDatapoint,
 } from '@/server/control/ayla-control'
+import {
+	initialSimState,
+	simDeviceData,
+	type SimState,
+	stepSim,
+} from '@/server/control/sim-grill'
 import { validateIntent } from '@/server/control/safety'
 import {
 	cookMessages,
@@ -90,7 +96,7 @@ function toHistoryState(
 
 /** Executes one validated setpoint change against the device. */
 async function executeSetpoint(
-	device: { id: string; dsn: string },
+	device: { id: string; dsn: string; isSimulated?: boolean },
 	userId: string,
 	setpointC: number,
 	reason: string,
@@ -99,12 +105,31 @@ async function executeSetpoint(
 	headers: Record<string, string>,
 	commandId?: string,
 ): Promise<void> {
-	const result = await sendDatapoint(
-		device.dsn,
-		'SET_Cook_Command',
-		buildSetpointCommand(setpointC),
-		headers,
-	)
+	let result: { status: 'sent' | 'dry_run' | 'failed'; error?: string }
+	if (device.isSimulated) {
+		// Simulated grills execute for real: write the setpoint into sim_state
+		const [row] = await db
+			.select({ sim_state: devices.sim_state })
+			.from(devices)
+			.where(eq(devices.id, device.id))
+		const sim = row?.sim_state as SimState | null
+		if (sim) {
+			await db
+				.update(devices)
+				.set({ sim_state: { ...sim, setpointC } })
+				.where(eq(devices.id, device.id))
+			result = { status: 'sent' }
+		} else {
+			result = { status: 'failed', error: 'sim device has no sim_state' }
+		}
+	} else {
+		result = await sendDatapoint(
+			device.dsn,
+			'SET_Cook_Command',
+			buildSetpointCommand(setpointC),
+			headers,
+		)
+	}
 	const status = result.status === 'sent' ? 'sent' : result.status
 	if (commandId) {
 		await db
@@ -260,7 +285,11 @@ async function runAutopilot(
 			continue
 		}
 		await executeSetpoint(
-			{ id: deviceRow.id, dsn: deviceRow.dsn },
+			{
+				id: deviceRow.id,
+				dsn: deviceRow.dsn,
+				isSimulated: deviceRow.is_simulated === true,
+			},
 			userId,
 			verdict.setpointC,
 			intent.reason,
@@ -709,14 +738,194 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 	)
 }
 
-async function cycle() {
-	const connections = await db.select().from(ninjaConnections)
-	for (const conn of connections) {
+/** Steps every simulated device through the same pipeline as real ones. */
+async function stepSimulatedDevices() {
+	const sims = await db
+		.select()
+		.from(devices)
+		.where(eq(devices.is_simulated, true))
+
+	for (const device of sims) {
 		try {
-			await syncConnection(conn)
+			const now = Date.now()
+			let sim = device.sim_state as SimState | null
+
+			// Process control commands first (start/stop/setpoints)
+			const pending = await db
+				.select()
+				.from(deviceCommands)
+				.where(
+					and(
+						eq(deviceCommands.deviceId, device.id),
+						eq(deviceCommands.status, 'pending'),
+					),
+				)
+			for (const command of pending) {
+				const payload = command.payload as {
+					setpointC?: number
+					reason?: string
+				}
+				if (command.kind === 'start_sim_cook') {
+					sim = initialSimState({
+						setpointC: payload.setpointC ?? 107,
+						nowMs: now,
+					})
+					await db
+						.update(devices)
+						.set({
+							sim_state: sim,
+							pellets_loaded_at: new Date(),
+							autopilot_state: null,
+						})
+						.where(eq(devices.id, device.id))
+					await db
+						.update(deviceCommands)
+						.set({ status: 'sent', executedAt: new Date() })
+						.where(eq(deviceCommands.id, command.id))
+					continue
+				}
+				if (command.kind === 'stop_sim_cook') {
+					if (sim) sim = { ...sim, cooking: false }
+					await db
+						.update(devices)
+						.set({ sim_state: sim })
+						.where(eq(devices.id, device.id))
+					await db
+						.update(deviceCommands)
+						.set({ status: 'sent', executedAt: new Date() })
+						.where(eq(deviceCommands.id, command.id))
+					continue
+				}
+				if (typeof payload.setpointC !== 'number') {
+					await db
+						.update(deviceCommands)
+						.set({ status: 'rejected', error: 'missing setpointC' })
+						.where(eq(deviceCommands.id, command.id))
+					continue
+				}
+				const verdict = validateIntent(
+					{
+						kind: command.kind as 'set_pit_temp' | 'hold_warm',
+						setpointC: payload.setpointC,
+						reason: payload.reason ?? 'manual',
+					},
+					{ mode: sim?.mode ?? 'smoker', currentSetpointC: sim?.setpointC ?? null },
+				)
+				if (!verdict.ok) {
+					await db
+						.update(deviceCommands)
+						.set({ status: 'rejected', error: verdict.rejectReason })
+						.where(eq(deviceCommands.id, command.id))
+					continue
+				}
+				await executeSetpoint(
+					{ id: device.id, dsn: device.dsn, isSimulated: true },
+					command.userId,
+					verdict.setpointC,
+					payload.reason ?? 'manual',
+					'user',
+					command.kind as 'set_pit_temp' | 'hold_warm',
+					{},
+					command.id,
+				)
+				if (sim) sim = { ...sim, setpointC: verdict.setpointC }
+			}
+
+			if (!sim) continue
+
+			// Physics step + write through the normal pipeline
+			sim = stepSim(sim, now)
+			await db
+				.update(devices)
+				.set({ sim_state: sim })
+				.where(eq(devices.id, device.id))
+
+			const deviceData = simDeviceData(sim, device.dsn, device.productName)
+			const row = toRow(deviceData)
+			const historyState = toHistoryState(deviceData)
+			await db.update(devices).set(row).where(eq(devices.id, device.id))
+
+			// Hourly snapshot / per-cycle patch (same scheme as real devices)
+			const hourStart = new Date()
+			hourStart.setMinutes(0, 0, 0)
+			const [snapshotThisHour] = await db
+				.select({ id: deviceHistory.id })
+				.from(deviceHistory)
+				.where(
+					and(
+						eq(deviceHistory.deviceId, device.id),
+						eq(deviceHistory.historyType, 'snapshot'),
+						gte(deviceHistory.recordedAt, hourStart),
+					),
+				)
+				.limit(1)
+			if (snapshotThisHour) {
+				const previousState = toHistoryState(
+					device as unknown as Record<string, unknown>,
+				)
+				const patch = createJsonMergePatch(previousState, historyState)
+				if (Object.keys(patch).length > 0) {
+					await db.insert(deviceHistory).values({
+						deviceId: device.id,
+						historyType: 'patch',
+						changes: patch,
+					})
+				}
+			} else {
+				await db.insert(deviceHistory).values({
+					deviceId: device.id,
+					historyType: 'snapshot',
+					changes: historyState,
+				})
+			}
+
+			await handleSessionTransition(
+				device.id,
+				device.userId,
+				device.cook_state,
+				deviceData,
+			)
+			await emitCookMessages(device.id, device.userId, device, deviceData)
+			await runAutopilot(
+				{ ...device, sim_state: sim },
+				device.userId,
+				deviceData,
+				{},
+			)
 		} catch (error) {
 			console.error(
-				`sync failed for user ${conn.userId}:`,
+				`sim step failed for device ${device.id}:`,
+				error instanceof Error ? error.message : error,
+			)
+		}
+	}
+}
+
+async function cycle() {
+	// Simulated grills first: cheap, high-value, and must never be starved
+	// by slow browser-auth attempts against stale real connections.
+	await stepSimulatedDevices()
+
+	const connections = await db.select().from(ninjaConnections)
+	for (const conn of connections) {
+		// Back off connections that keep failing auth (e2e leftovers, changed
+		// passwords). attempts resets when the user re-saves credentials.
+		if ((conn.attempts ?? 0) >= 3) continue
+		try {
+			await syncConnection(conn)
+			if ((conn.attempts ?? 0) > 0) {
+				await db
+					.update(ninjaConnections)
+					.set({ attempts: 0 })
+					.where(eq(ninjaConnections.userId, conn.userId))
+			}
+		} catch (error) {
+			await db
+				.update(ninjaConnections)
+				.set({ attempts: (conn.attempts ?? 0) + 1 })
+				.where(eq(ninjaConnections.userId, conn.userId))
+			console.error(
+				`sync failed for user ${conn.userId} (attempt ${(conn.attempts ?? 0) + 1}):`,
 				error instanceof Error ? error.message : error,
 			)
 		}

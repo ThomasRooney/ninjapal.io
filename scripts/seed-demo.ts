@@ -393,6 +393,8 @@ async function main() {
 			is_lid_open, is_probe1_installed, is_probe2_installed,
 			temp_grill, temp_air, temp_smoke, probe1_temp_a, probe1_temp_b,
 			probe1_target_temp,
+			autopilot_enabled, is_simulated, sim_state,
+			hopper_capacity_kg, pellets_loaded_at,
 			seconds_left_on_timer, estimated_end_at,
 			grill_state_raw, probe_state_raw,
 			ota_fw_version, device_serial_num, created_at, updated_at
@@ -402,6 +404,8 @@ async function main() {
 			false, true, false,
 			$3, $4, $5, $6, $7,
 			96,
+			true, true, $12,
+			4.0, to_timestamp($13 / 1000.0),
 			14400, to_timestamp($8 / 1000.0),
 			$10, $11,
 			'2.1.4', 'DEMO-SN-0001', to_timestamp($9 / 1000.0), now()
@@ -418,6 +422,19 @@ async function main() {
 			brisketStart,
 			grillStateRaw,
 			probeStateRaw,
+			JSON.stringify({
+				cooking: true,
+				mode: 'smoker',
+				setpointC: brisket.setpoint,
+				grillC: latest.temp_grill,
+				probe1C: latest.probe1_temp_a,
+				probe2C: null,
+				probe1CapC: 99,
+				probe2CapC: 99,
+				startedAtMs: brisketStart,
+				lastStepMs: now,
+			}),
+			now - 1.7 * HOUR,
 		],
 	)
 	const smokerId = smokerRes.rows[0].id as string

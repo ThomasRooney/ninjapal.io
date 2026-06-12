@@ -62,8 +62,12 @@ export function createSharedMutators(authData: AuthData) {
 				args: {
 					id: string
 					deviceId: string
-					kind: 'set_pit_temp' | 'hold_warm'
-					payload: { setpointC: number; reason?: string }
+					kind:
+						| 'set_pit_temp'
+						| 'hold_warm'
+						| 'start_sim_cook'
+						| 'stop_sim_cook'
+					payload: { setpointC?: number; reason?: string }
 				},
 			) {
 				if (!authData.sub) throw new Error('Not authenticated')

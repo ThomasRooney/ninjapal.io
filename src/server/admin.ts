@@ -3,7 +3,23 @@ import { getSql } from '@/server/db/client'
 import { ADMIN_EMAIL } from '@/server/user-provision'
 import { getWebRequest } from '@tanstack/react-start/server'
 
-/** Throws unless the current session belongs to the admin account. */
+function clientIp(request: Request): string | null {
+	const headers = request.headers
+	const fwd =
+		headers.get('x-vercel-forwarded-for') ??
+		headers.get('x-real-ip') ??
+		headers.get('x-forwarded-for')
+	if (!fwd) return null
+	return fwd.split(',')[0].trim()
+}
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
+
+/**
+ * Throws unless the current session belongs to the admin account AND the
+ * request originates from an allowlisted IP (24h TTL, managed by
+ * `bun scripts/admin-access.ts`). Loopback is exempt for local dev.
+ */
 export async function requireAdmin(): Promise<{ id: string; email: string }> {
 	const request = getWebRequest()
 	if (!request) throw new Error('No request')
@@ -12,6 +28,22 @@ export async function requireAdmin(): Promise<{ id: string; email: string }> {
 	if (!session || email !== ADMIN_EMAIL) {
 		throw new Error('Admin only')
 	}
+
+	const ip = clientIp(request)
+	if (ip && !LOOPBACK.has(ip)) {
+		const sql = getSql()
+		await sql`delete from admin_ip_allowlist where expires_at < now()`
+		const rows = await sql`
+			select 1 from admin_ip_allowlist
+			where ip = ${ip} and expires_at > now() limit 1
+		`
+		if (rows.length === 0) {
+			throw new Error(
+				`Admin IP ${ip} not allowlisted — run \`bun scripts/admin-access.ts\` from your machine`,
+			)
+		}
+	}
+
 	return { id: session.user.id, email: session.user.email }
 }
 
