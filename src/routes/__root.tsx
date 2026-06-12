@@ -28,27 +28,44 @@ const fetchUser = createServerFn({
 	const request = getWebRequest()
 	if (!request) return null
 
-	const session = await auth.api.getSession({ headers: request.headers })
-	if (!session?.user?.email) {
-		return null
+	// This runs during SSR of every shell: a thrown error here gets
+	// dehydrated into the HTML and bricks hydration (blank app). Retry
+	// transient DB hiccups once; degrade to logged-out rather than throw.
+	const attempt = async () => {
+		const session = await auth.api.getSession({ headers: request.headers })
+		if (!session?.user?.email) {
+			return null
+		}
+
+		const user = {
+			id: session.user.id,
+			email: session.user.email,
+			name: session.user.name || session.user.email.split('@')[0],
+		}
+
+		const provisioned = await provisionUser(user)
+
+		return {
+			...user,
+			whitelisted: provisioned.whitelisted,
+			isAdmin: provisioned.isAdmin,
+			impersonatedBy:
+				(session.session as { impersonatedBy?: string | null })
+					?.impersonatedBy ?? null,
+			accessToken: await signZeroToken(user),
+		}
 	}
 
-	const user = {
-		id: session.user.id,
-		email: session.user.email,
-		name: session.user.name || session.user.email.split('@')[0],
-	}
-
-	const provisioned = await provisionUser(user)
-
-	return {
-		...user,
-		whitelisted: provisioned.whitelisted,
-		isAdmin: provisioned.isAdmin,
-		impersonatedBy:
-			(session.session as { impersonatedBy?: string | null })?.impersonatedBy ??
-			null,
-		accessToken: await signZeroToken(user),
+	try {
+		return await attempt()
+	} catch (firstError) {
+		console.error('fetchUser attempt 1 failed:', firstError)
+		try {
+			return await attempt()
+		} catch (secondError) {
+			console.error('fetchUser attempt 2 failed:', secondError)
+			return null
+		}
 	}
 })
 

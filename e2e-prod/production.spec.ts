@@ -17,11 +17,10 @@ async function query(
 	}
 }
 
+// Session comes from globalSetup storageState — one login per run, because
+// rapid repeated sign-ins trip better-auth's rate limit.
 async function loginDemo(page: import('@playwright/test').Page) {
-	await page.goto('/auth/login')
-	await page.getByTestId('login-email').fill('demo@pitminder.com')
-	await page.getByTestId('login-password').fill('demo-smoker-2026')
-	await page.getByTestId('login-submit').click()
+	await page.goto('/app')
 	await page.waitForURL('**/app/**', { timeout: 20000 })
 }
 
@@ -77,8 +76,10 @@ test.describe('Production validation', () => {
 	})
 
 	test('fresh signups are held at the waitlist and cannot reach admin', async ({
-		page,
+		browser,
 	}) => {
+		const ctx = await browser.newContext({ storageState: undefined })
+		const page = await ctx.newPage()
 		const email = `prod-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@pitminder-test.example`
 		await page.goto('/auth/signup')
 		await page.getByTestId('signup-email').fill(email)
@@ -96,6 +97,7 @@ test.describe('Production validation', () => {
 		// Clean the throwaway account back out of prod
 		await query(`delete from users where email = $1`, [email])
 		await query(`delete from "user" where email = $1`, [email])
+		await ctx.close()
 	})
 
 	test('demo user is not an admin in prod', async () => {

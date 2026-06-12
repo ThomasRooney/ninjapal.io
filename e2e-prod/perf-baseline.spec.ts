@@ -3,13 +3,10 @@ import { expect, test } from '@playwright/test'
 /** Interaction-speed measurements against prod. Run before + after fixes. */
 test('measure navigation timings', async ({ page }) => {
 	test.setTimeout(180_000)
-	await page.goto('/auth/login')
-	await page.getByTestId('login-email').fill('demo@pitminder.com')
-	await page.getByTestId('login-password').fill('demo-smoker-2026')
 	const loginStart = Date.now()
-	await page.getByTestId('login-submit').click()
+	await page.goto('/app')
 	await page.waitForURL('**/app/**', { timeout: 30000 })
-	console.log(`login->app: ${Date.now() - loginStart}ms`)
+	console.log(`cold load->app: ${Date.now() - loginStart}ms`)
 
 	// Wait for the app shell to settle
 	await page.getByTestId('nav-devices-link').waitFor({ timeout: 30000 })

@@ -4,6 +4,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
 	testDir: './e2e-prod',
+	globalSetup: './e2e-prod/global-setup.ts',
 	fullyParallel: false,
 	workers: 1,
 	retries: 1,
@@ -12,6 +13,7 @@ export default defineConfig({
 	use: {
 		baseURL: 'https://app.pitminder.com',
 		trace: 'on-first-retry',
+		storageState: '/tmp/pitminder-prod-storage-state.json',
 	},
 	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 })

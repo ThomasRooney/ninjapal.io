@@ -17,8 +17,13 @@ export function getSql() {
 			throw new Error('ZERO_UPSTREAM_DB environment variable is not set')
 		}
 		_sql = postgres(url, {
-			max: 10,
-			idle_timeout: 30,
+			// Serverless-friendly: small per-instance pool, fail fast instead
+			// of hanging on dead frozen-instance connections, and no prepared
+			// statements so the Neon pgbouncer (pooled) endpoint works.
+			max: 4,
+			idle_timeout: 20,
+			connect_timeout: 10,
+			prepare: false,
 		})
 	}
 	return _sql
