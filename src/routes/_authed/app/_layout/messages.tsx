@@ -17,6 +17,7 @@ import {
 	Flame,
 	PartyPopper,
 	Send,
+	SkipForward,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -177,15 +178,29 @@ function MessageCard({
 						{!pending && message.ackedAt != null && message.requiresAck && (
 							<p
 								className='mt-2 text-xs text-muted-foreground flex items-center gap-1'
-								data-testid='message-acked'
+								data-testid={
+									message.response === 'skipped'
+										? 'message-skipped'
+										: 'message-acked'
+								}
 							>
-								<Check className='h-3 w-3 text-green-600' />
-								{chosenLabel ? (
+								{message.response === 'skipped' ? (
 									<>
-										you chose <span className='font-medium'>{chosenLabel}</span>
+										<SkipForward className='h-3 w-3' />
+										skipped — superseded by a newer update
 									</>
 								) : (
-									'acknowledged'
+									<>
+										<Check className='h-3 w-3 text-green-600' />
+										{chosenLabel ? (
+											<>
+												you chose{' '}
+												<span className='font-medium'>{chosenLabel}</span>
+											</>
+										) : (
+											'acknowledged'
+										)}
+									</>
 								)}{' '}
 								· {timeLabel(message.ackedAt)}
 							</p>

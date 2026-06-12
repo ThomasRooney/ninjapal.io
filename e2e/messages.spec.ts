@@ -25,6 +25,18 @@ test.describe('Messages', () => {
 		await expect(page.getByText('AI nudged pit')).toBeVisible()
 		// previously-made choices are recorded
 		expect(await page.getByTestId('message-acked').count()).toBeGreaterThan(0)
+		// implicitly-skipped decisions are visible but resolved
+		await expect(page.getByTestId('message-skipped').first()).toContainText(
+			/skipped — superseded/,
+		)
+	})
+
+	test('only the latest message carries live actions', async ({ page }) => {
+		await page.goto('/app/messages')
+		// exactly one pending decision at a time — older ones auto-skip
+		await expect(page.getByTestId('message-pending')).toHaveCount(1, {
+			timeout: 20000,
+		})
 	})
 
 	test('pending message has action buttons and steer input', async ({

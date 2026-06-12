@@ -540,6 +540,17 @@ async function main() {
 		ackedMinutesLater: 7,
 	})
 	await insertMessage({
+		hoursAgo: 5.6,
+		kind: 'spritz',
+		title: 'Bark check — consider a spritz',
+		body: 'Pit 107.1°C, probe 61.8°C. Surface drying faster than usual; a spritz now would slow bark set.',
+		requiresAck: true,
+		actions: [{ id: 'done', label: 'Spritzed ✅' }],
+		// Implicitly skipped: the next ack-message superseded it
+		response: 'skipped',
+		ackedMinutesLater: 30,
+	})
+	await insertMessage({
 		hoursAgo: 4.5,
 		kind: 'stall_start',
 		title: 'The stall has begun 😤 — 68.1°C flat',

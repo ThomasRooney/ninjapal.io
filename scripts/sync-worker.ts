@@ -413,6 +413,24 @@ async function sendPush(userId: string, title: string, body: string) {
 	}
 }
 
+/** Marks every pending ack-message for a device as implicitly skipped. */
+async function skipPendingMessages(deviceId: string) {
+	const skipped = await db
+		.update(cookMessages)
+		.set({ response: 'skipped', ackedAt: new Date() })
+		.where(
+			and(
+				eq(cookMessages.deviceId, deviceId),
+				eq(cookMessages.requiresAck, true),
+				isNull(cookMessages.ackedAt),
+			),
+		)
+		.returning({ id: cookMessages.id })
+	if (skipped.length) {
+		console.log(`messages: auto-skipped ${skipped.length} for ${deviceId}`)
+	}
+}
+
 async function emitMessage(args: {
 	deviceId: string
 	userId: string
@@ -422,6 +440,11 @@ async function emitMessage(args: {
 	requiresAck?: boolean
 	actions?: Array<{ id: string; label: string }>
 }) {
+	// Only the LATEST message carries live actions: a new ack-required
+	// message supersedes anything still pending (the moment has passed).
+	if (args.requiresAck) {
+		await skipPendingMessages(args.deviceId)
+	}
 	await db.insert(cookMessages).values({
 		deviceId: args.deviceId,
 		userId: args.userId,
@@ -948,6 +971,9 @@ async function handleSessionTransition(
 		})
 		return
 	}
+
+	// Cook ended: any still-pending decision is moot now
+	await skipPendingMessages(deviceId)
 
 	// Cook ended: close the active session and compute stats from history
 	const [active] = await db
