@@ -57,6 +57,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 			{ cmp }: ExpressionBuilder<Schema, 'cookSessions'>,
 		) => cmp('userId', authData.sub as string)
 
+		const allowIfSelfMessage = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'cookMessages'>,
+		) => cmp('userId', authData.sub as string)
+
 		return {
 			users: {
 				row: {
@@ -103,6 +108,18 @@ export const permissions = definePermissions<AuthData, Schema>(
 						postMutation: [],
 					},
 					delete: [],
+				},
+			},
+			cookMessages: {
+				row: {
+					select: [allowIfSelfMessage],
+					// Created server-side (worker/seed); clients only ack
+					insert: [],
+					update: {
+						preMutation: [allowIfSelfMessage],
+						postMutation: [allowIfSelfMessage],
+					},
+					delete: [allowIfSelfMessage],
 				},
 			},
 			cookSessions: {

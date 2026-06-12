@@ -19,6 +19,7 @@ import { NinjaAuthManager } from '@/ninjaAuth/ninja-auth-manager'
 import type { EnhancedAuthState } from '@/ninjaAuth/types'
 import { type AylaDevice, buildDeviceData } from '@/server/db/build-device-data'
 import {
+	cookMessages,
 	cookSessions,
 	deviceHistory,
 	devices,
@@ -100,6 +101,128 @@ function parseSetpoint(deviceData: Record<string, unknown>): number | null {
 	return null
 }
 
+async function emitMessage(args: {
+	deviceId: string
+	userId: string
+	kind: string
+	title: string
+	body: string
+	requiresAck?: boolean
+	actions?: Array<{ id: string; label: string }>
+}) {
+	await db.insert(cookMessages).values({
+		deviceId: args.deviceId,
+		userId: args.userId,
+		kind: args.kind,
+		title: args.title,
+		body: args.body,
+		requiresAck: args.requiresAck ?? false,
+		actions: args.actions ?? null,
+	})
+	console.log(`message [${args.kind}] for device ${args.deviceId}`)
+}
+
+async function hasRecentUnacked(deviceId: string, kind: string) {
+	const [existing] = await db
+		.select({ id: cookMessages.id })
+		.from(cookMessages)
+		.where(
+			and(
+				eq(cookMessages.deviceId, deviceId),
+				eq(cookMessages.kind, kind),
+				isNull(cookMessages.ackedAt),
+				eq(cookMessages.requiresAck, true),
+			),
+		)
+		.limit(1)
+	return !!existing
+}
+
+/**
+ * Telemetry-transition coaching messages — technical, with real numbers.
+ * (AI-action messages join these once device control ships.)
+ */
+async function emitCookMessages(
+	deviceId: string,
+	userId: string,
+	prev: typeof devices.$inferSelect,
+	deviceData: Record<string, unknown>,
+) {
+	const setpoint = parseSetpoint(deviceData)
+	const prevGrill = prev.temp_grill != null ? Number(prev.temp_grill) : null
+	const nextGrill =
+		typeof deviceData.temp_grill === 'number' ? deviceData.temp_grill : null
+	const prevProbe =
+		prev.probe1_temp_a != null ? Number(prev.probe1_temp_a) : null
+	const nextProbe =
+		typeof deviceData.probe1_temp_a === 'number'
+			? deviceData.probe1_temp_a
+			: null
+	const target =
+		prev.probe1_target_temp != null ? Number(prev.probe1_target_temp) : null
+
+	// Doneness reached
+	if (
+		target != null &&
+		prevProbe != null &&
+		nextProbe != null &&
+		prevProbe < target &&
+		nextProbe >= target &&
+		!(await hasRecentUnacked(deviceId, 'target_reached'))
+	) {
+		await emitMessage({
+			deviceId,
+			userId,
+			kind: 'target_reached',
+			title: `Probe 1 hit ${nextProbe.toFixed(1)}°C — target reached 🎉`,
+			body: `Doneness target ${target.toFixed(0)}°C met (pit at ${nextGrill?.toFixed(1) ?? '—'}°C). Pull it to rest, or hold it warm.`,
+			requiresAck: true,
+			actions: [
+				{ id: 'pulled', label: 'Pulled to rest 🍽️' },
+				{ id: 'hold', label: 'Keep holding warm' },
+			],
+		})
+	}
+
+	// Pellet-hopper heuristic: pit falls hard with the setpoint unchanged
+	if (
+		setpoint != null &&
+		prevGrill != null &&
+		nextGrill != null &&
+		prevGrill >= setpoint - 8 &&
+		nextGrill < setpoint - 12 &&
+		isCooking(deviceData.cook_state) &&
+		!(await hasRecentUnacked(deviceId, 'pit_drop'))
+	) {
+		await emitMessage({
+			deviceId,
+			userId,
+			kind: 'pit_drop',
+			title: "We've likely run out of wood pellets. Refill! 🔥",
+			body: `Pit fell ${prevGrill.toFixed(0)}→${nextGrill.toFixed(0)}°C in one sync cycle with setpoint ${setpoint.toFixed(0)}°C unchanged — classic empty-hopper curve. Refill within ~10 min to stay on plan.`,
+			requiresAck: true,
+			actions: [{ id: 'refilled', label: 'Refilled ✅' }],
+		})
+	}
+
+	// Recovery
+	if (
+		setpoint != null &&
+		prevGrill != null &&
+		nextGrill != null &&
+		prevGrill < setpoint - 12 &&
+		nextGrill >= setpoint - 5
+	) {
+		await emitMessage({
+			deviceId,
+			userId,
+			kind: 'pit_recovered',
+			title: `Pit recovered — ${nextGrill.toFixed(1)}°C, back on plan`,
+			body: `Holding ${setpoint.toFixed(0)}°C ±3° again. No action needed.`,
+		})
+	}
+}
+
 /** Creates/ends cook_sessions on cook_state transitions. */
 async function handleSessionTransition(
 	deviceId: string,
@@ -122,6 +245,14 @@ async function handleSessionTransition(
 			setpoint: parseSetpoint(deviceData)?.toString() ?? null,
 		})
 		console.log(`session started for device ${deviceId}`)
+		const sp = parseSetpoint(deviceData)
+		await emitMessage({
+			deviceId,
+			userId,
+			kind: 'session_start',
+			title: `Cook started — ${(deviceData.cook_mode as string) ?? 'cook'} mode${sp ? `, pit → ${sp.toFixed(0)}°C` : ''}`,
+			body: 'Telemetry is recording. Session stats land when the cook ends.',
+		})
 		return
 	}
 
@@ -291,6 +422,7 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 				existing.cook_state,
 				deviceData,
 			)
+			await emitCookMessages(existing.id, conn.userId, existing, deviceData)
 
 			// Hourly snapshot, otherwise a merge patch against the previous state
 			const hourStart = new Date()

@@ -1,9 +1,12 @@
 'use client'
 
+import { useZero } from '@/hooks/use-typed-zero'
+import { useQuery } from '@rocicorp/zero/react'
 import { useIsFetching } from '@tanstack/react-query'
 import { Link, useMatches } from '@tanstack/react-router'
 import {
 	Activity,
+	Bell,
 	Cpu,
 	Flame,
 	Loader2,
@@ -43,6 +46,11 @@ const items = [
 		icon: Activity,
 	},
 	{
+		title: 'Messages',
+		url: '/app/messages',
+		icon: Bell,
+	},
+	{
 		title: 'Cooks',
 		url: '/app/cooks',
 		icon: Flame,
@@ -58,6 +66,9 @@ export function NavExamples() {
 	const matches = useMatches()
 	const currentPath = matches[matches.length - 1]?.pathname
 	const isSyncing = useIsFetching({ queryKey: ['devices', 'syncPoller'] })
+	const z = useZero()
+	const [ackable] = useQuery(z.query.cookMessages.where('requiresAck', true))
+	const pendingCount = ackable?.filter((m) => m.ackedAt == null).length ?? 0
 	const isDeviceSyncLoading = isSyncing > 0
 
 	return (
@@ -80,6 +91,14 @@ export function NavExamples() {
 									<span>{item.title}</span>
 									{item.title === 'Devices' && isDeviceSyncLoading && (
 										<Loader2 className='h-3 w-3 animate-spin ml-auto' />
+									)}
+									{item.title === 'Messages' && pendingCount > 0 && (
+										<span
+											className='ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white'
+											data-testid='messages-badge'
+										>
+											{pendingCount}
+										</span>
 									)}
 								</Link>
 							</SidebarMenuButton>

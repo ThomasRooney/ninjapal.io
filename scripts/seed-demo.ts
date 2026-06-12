@@ -429,6 +429,41 @@ async function main() {
 		[userId],
 	)
 
+	// Coaching-message feed for the live brisket (technical copy; AI-action
+	// messages demo the managed-pit vision)
+	async function insertMessage(args: {
+		hoursAgo: number
+		kind: string
+		title: string
+		body: string
+		requiresAck?: boolean
+		ackedMinutesLater?: number
+		actions?: Array<{ id: string; label: string }>
+		response?: string
+	}) {
+		const createdAt = now - args.hoursAgo * HOUR
+		const ackedAt =
+			args.ackedMinutesLater != null
+				? createdAt + args.ackedMinutesLater * 60_000
+				: null
+		await db.query(
+			`insert into cook_messages (device_id, user_id, kind, title, body, requires_ack, actions, response, created_at, acked_at)
+			 values ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9 / 1000.0), ${ackedAt ? 'to_timestamp($10 / 1000.0)' : 'null'})`,
+			[
+				smokerId,
+				userId,
+				args.kind,
+				args.title,
+				args.body,
+				args.requiresAck ?? false,
+				args.actions ? JSON.stringify(args.actions) : null,
+				args.response ?? null,
+				createdAt,
+				...(ackedAt ? [ackedAt] : []),
+			],
+		)
+	}
+
 	// Telemetry + sessions for all three cooks (ribs/chicken finished, brisket live)
 	let inserted = 0
 	inserted += await insertCookHistory(db, smokerId, ribsPoints, ribs)
@@ -438,8 +473,78 @@ async function main() {
 	inserted += await insertCookHistory(db, smokerId, points, brisket)
 	await insertSession(db, smokerId, userId, points, brisket, true)
 
+	await db.query('delete from cook_messages where device_id = $1', [smokerId])
+	await insertMessage({
+		hoursAgo: 8,
+		kind: 'session_start',
+		title: 'Cook started — smoker mode, pit → 107°C',
+		body: 'Probe 1 in at 6.5°C, doneness target 96°C. Plan: hold 107°C ±3° through the stall, drop to 65°C hold-warm at target.',
+	})
+	await insertMessage({
+		hoursAgo: 5.1,
+		kind: 'spritz',
+		title: 'Spritz baby, spritz 💦',
+		body: 'Hour 3 check: pit 107.4°C, probe 64.2°C, bark surface drying (est. 118°C). Open, spritz, close — under 30 seconds.',
+		requiresAck: true,
+		actions: [{ id: 'done', label: 'Spritzed ✅' }],
+		response: 'done',
+		ackedMinutesLater: 7,
+	})
+	await insertMessage({
+		hoursAgo: 4.5,
+		kind: 'stall_start',
+		title: 'The stall has begun 😤 — 68.1°C flat',
+		body: 'Probe 1 climbing 0.3°C/15min (threshold 1.0). Wrap in butcher paper to save ~90 min, or ride it out for thicker bark.',
+		requiresAck: true,
+		actions: [
+			{ id: 'wrap', label: 'Wrap it 🧻' },
+			{ id: 'ride', label: 'Ride it out 💪' },
+		],
+		response: 'ride',
+		ackedMinutesLater: 22,
+	})
+	await insertMessage({
+		hoursAgo: 3.8,
+		kind: 'ai_adjust',
+		title: 'AI nudged pit +3°C → 110°C',
+		body: 'Probe 1 stalled 41 min at 68.4°C. A slightly hotter pit shortens the stall without bark risk; reverting to 107°C once climb rate ≥1.5°C/15min.',
+	})
+	await insertMessage({
+		hoursAgo: 2.6,
+		kind: 'ai_adjust',
+		title: 'AI reverted pit → 107°C — stall broken 💪',
+		body: 'Probe 1 at 71.8°C climbing 2.1°C/15min. Back on the original plan; ETA to 96°C target recalculated: ~02:40.',
+	})
+	await insertMessage({
+		hoursAgo: 1.9,
+		kind: 'pit_drop',
+		title: "We've likely run out of wood pellets. Refill! 🔥",
+		body: 'Pit fell 107→91°C over 12 min with setpoint unchanged and lid closed — classic empty-hopper curve. Refill within ~10 min to stay on plan.',
+		requiresAck: true,
+		actions: [{ id: 'refilled', label: 'Refilled ✅' }],
+		response: 'refilled',
+		ackedMinutesLater: 9,
+	})
+	await insertMessage({
+		hoursAgo: 1.7,
+		kind: 'pit_recovered',
+		title: 'Pit recovered — 106.8°C, back on plan',
+		body: 'Hopper refilled at 23:12; pit re-stabilised in 11 min. Holding 107°C ±3°. ETA to target unchanged: ~02:40. No action needed.',
+	})
+	await insertMessage({
+		hoursAgo: 0.4,
+		kind: 'spritz',
+		title: 'Spritz baby, spritz 💦',
+		body: 'Hour 7.5 check: pit 105.1°C, probe 89.3°C — final stretch. One last spritz protects the bark through the push to 96°C.',
+		requiresAck: true,
+		actions: [
+			{ id: 'done', label: 'Spritzed ✅' },
+			{ id: 'skip', label: 'Skip this one' },
+		],
+	})
+
 	console.log(
-		`Seeded ${inserted} history records across 3 cooks for device ${smokerId}`,
+		`Seeded ${inserted} history records + message feed for device ${smokerId}`,
 	)
 	console.log('')
 	console.log('Demo login:')

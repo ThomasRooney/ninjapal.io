@@ -55,6 +55,27 @@ export function createSharedMutators(authData: AuthData) {
 				await tx.mutate.users.update(args)
 			},
 		},
+		cookMessages: {
+			/** Ack a message — optionally with a chosen action id or steer text. */
+			async respond(
+				tx: Transaction<Schema>,
+				args: { id: string; response?: string },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				const message = await tx.query.cookMessages
+					.where('id', args.id)
+					.where('userId', authData.sub)
+					.one()
+					.run()
+				if (!message) throw new Error('Message not found')
+				await tx.mutate.cookMessages.update({
+					id: args.id,
+					response: args.response ?? null,
+					ackedAt: Date.now(),
+				})
+			},
+		},
 		cookSessions: {
 			async rename(
 				tx: Transaction<Schema>,
