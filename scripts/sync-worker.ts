@@ -28,6 +28,11 @@ import {
 	sendDatapoint,
 } from '@/server/control/ayla-control'
 import {
+	DEFAULT_DIRECTOR_MODEL,
+	type DirectorToolHandlers,
+	runDirectorLoop,
+} from '@/server/control/pit-director'
+import {
 	initialSimState,
 	simDeviceData,
 	type SimState,
@@ -35,13 +40,16 @@ import {
 } from '@/server/control/sim-grill'
 import { validateIntent } from '@/server/control/safety'
 import {
+	appConfig,
 	cookMessages,
+	cookPhotos,
 	cookSessions,
 	deviceCommands,
 	deviceHistory,
 	devices,
 	ninjaConnections,
 } from '@/server/db/schema'
+import Anthropic from '@anthropic-ai/sdk'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
 import { and, desc, eq, gt, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
@@ -101,7 +109,7 @@ async function executeSetpoint(
 	userId: string,
 	setpointC: number,
 	reason: string,
-	source: 'user' | 'autopilot',
+	source: 'user' | 'autopilot' | 'director',
 	kind: 'set_pit_temp' | 'hold_warm',
 	headers: Record<string, string>,
 	commandId?: string,
@@ -567,6 +575,264 @@ async function runPelletForecast(
 	}
 }
 
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
+const DIRECTOR_INTERVAL_MS = Number(
+	process.env.PIT_DIRECTOR_INTERVAL_MS ?? 10 * 60_000,
+)
+/** In-memory cadence per device; a restart just runs one check-in early. */
+const directorLastRun = new Map<string, number>()
+
+async function configValue(key: string): Promise<string | null> {
+	const [row] = await db
+		.select({ value: appConfig.value })
+		.from(appConfig)
+		.where(eq(appConfig.key, key))
+	if (!row) return null
+	return typeof row.value === 'string' ? row.value : JSON.stringify(row.value)
+}
+
+/** Reconstructs full state snapshots from history rows since `since`. */
+async function loadSnapshots(deviceId: string, since: Date) {
+	const rows = await db
+		.select()
+		.from(deviceHistory)
+		.where(
+			and(
+				eq(deviceHistory.deviceId, deviceId),
+				gte(deviceHistory.recordedAt, since),
+			),
+		)
+	return reconstructHistorySnapshots(
+		rows
+			.map((r) => ({
+				id: Number(r.id),
+				historyType: r.historyType,
+				recordedAt: r.recordedAt?.getTime() ?? null,
+				changedBy: r.changedBy,
+				changes: r.changes as never,
+			}))
+			.sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0)),
+	)
+}
+
+/**
+ * The agentic judgment layer: every ~10 min per active cook, an LLM
+ * inspects the cook through tools and may message the user or adjust the
+ * pit (through the same safety envelope as everything else).
+ */
+async function runPitDirector(
+	deviceRow: typeof devices.$inferSelect,
+	userId: string,
+	deviceData: Record<string, unknown>,
+	headers: Record<string, string>,
+) {
+	if (!anthropic || !deviceRow.autopilot_enabled) return
+	if (!isCooking(deviceData.cook_state)) return
+	const last = directorLastRun.get(deviceRow.id) ?? 0
+	if (Date.now() - last < DIRECTOR_INTERVAL_MS) return
+	if ((await configValue('pit_director_enabled')) === 'false') return
+	directorLastRun.set(deviceRow.id, Date.now())
+
+	const model = (await configValue('pit_director_model')) ?? DEFAULT_DIRECTOR_MODEL
+	const num = (v: unknown) => (typeof v === 'number' ? v : null)
+	const setpoint = parseSetpoint(deviceData)
+
+	const handlers: DirectorToolHandlers = {
+		get_telemetry: async () => ({
+			cookState: deviceData.cook_state,
+			mode: deviceData.cook_mode,
+			setpointC: setpoint,
+			pitC: num(deviceData.temp_grill),
+			airC: num(deviceData.temp_air),
+			smokeC: num(deviceData.temp_smoke),
+			lidOpen: deviceData.is_lid_open === true,
+			probes: [
+				{
+					probe: 1,
+					installed: deviceData.is_probe1_installed === true,
+					tempC: num(deviceData.probe1_temp_a),
+					targetC:
+						deviceRow.probe1_target_temp != null
+							? Number(deviceRow.probe1_target_temp)
+							: null,
+				},
+				{
+					probe: 2,
+					installed: deviceData.is_probe2_installed === true,
+					tempC: num(deviceData.probe2_temp_a),
+					targetC:
+						deviceRow.probe2_target_temp != null
+							? Number(deviceRow.probe2_target_temp)
+							: null,
+				},
+			],
+		}),
+		get_cook_history: async ({ hours }) => {
+			const h = Math.min(Math.max(hours ?? 6, 1), 24)
+			const snapshots = await loadSnapshots(
+				deviceRow.id,
+				new Date(Date.now() - h * 3_600_000),
+			)
+			const points = snapshots
+				.filter((s) => s.recordedAt)
+				.map((s) => ({
+					t: new Date(s.recordedAt as number).toISOString(),
+					pitC: num(s.state.temp_grill),
+					probe1C: num(s.state.probe1_temp_a),
+					probe2C: num(s.state.probe2_temp_a),
+				}))
+				.sort((a, b) => a.t.localeCompare(b.t))
+			// Downsample to ≤48 points so the context stays small
+			const step = Math.max(1, Math.ceil(points.length / 48))
+			return points.filter((_, i) => i % step === 0 || i === points.length - 1)
+		},
+		list_past_sessions: async () => {
+			const rows = await db
+				.select()
+				.from(cookSessions)
+				.where(eq(cookSessions.deviceId, deviceRow.id))
+				.orderBy(desc(cookSessions.startedAt))
+				.limit(6)
+			return rows
+				.filter((s) => s.endedAt != null)
+				.map((s) => ({
+					name: s.name,
+					mode: s.cook_mode,
+					startedAt: s.startedAt.toISOString(),
+					hours:
+						s.endedAt != null
+							? Math.round(
+									((s.endedAt.getTime() - s.startedAt.getTime()) / 3_600_000) *
+										10,
+								) / 10
+							: null,
+					setpointC: s.setpoint != null ? Number(s.setpoint) : null,
+					avgPitC: s.avg_temp_grill != null ? Number(s.avg_temp_grill) : null,
+					maxProbeC:
+						s.max_probe1_temp != null ? Number(s.max_probe1_temp) : null,
+					stabilityScore: s.stability_score,
+					stallSeconds: s.stall_seconds,
+				}))
+		},
+		get_recent_messages: async () => {
+			const rows = await db
+				.select()
+				.from(cookMessages)
+				.where(eq(cookMessages.deviceId, deviceRow.id))
+				.orderBy(desc(cookMessages.createdAt))
+				.limit(15)
+			return rows.map((m) => ({
+				at: m.createdAt.toISOString(),
+				kind: m.kind,
+				title: m.title,
+				body: m.body,
+				requiresAck: m.requiresAck,
+				userResponse: m.response,
+				acked: m.ackedAt != null,
+			}))
+		},
+		get_pellet_status: async () => {
+			const capacityKg =
+				deviceRow.hopper_capacity_kg != null
+					? Number(deviceRow.hopper_capacity_kg)
+					: null
+			const loadedAtMs = deviceRow.pellets_loaded_at?.getTime() ?? null
+			if (!capacityKg || !loadedAtMs)
+				return { configured: false, note: 'no hopper capacity/load time set' }
+			const snapshots = await loadSnapshots(deviceRow.id, new Date(loadedAtMs))
+			const grillSeries: TempPoint[] = snapshots
+				.filter((s) => typeof s.state.temp_grill === 'number' && s.recordedAt)
+				.map((s) => ({
+					t: s.recordedAt as number,
+					value: s.state.temp_grill as number,
+				}))
+			const status = hopperStatus({
+				capacityKg,
+				loadedAtMs,
+				grillSeries,
+				nowMs: Date.now(),
+			})
+			return {
+				configured: true,
+				capacityKg,
+				...status,
+				emptyAt: status.emptyAtMs
+					? new Date(status.emptyAtMs).toISOString()
+					: null,
+			}
+		},
+		list_photos: async () => {
+			const rows = await db
+				.select({ url: cookPhotos.url, createdAt: cookPhotos.createdAt })
+				.from(cookPhotos)
+				.where(eq(cookPhotos.userId, userId))
+				.orderBy(desc(cookPhotos.createdAt))
+				.limit(10)
+			return rows.map((p) => ({
+				url: p.url,
+				at: p.createdAt.toISOString(),
+			}))
+		},
+		set_pit_temp: async ({ setpointC, reason }) => {
+			const verdict = validateIntent(
+				{ kind: 'set_pit_temp', setpointC, reason },
+				{
+					mode: (deviceData.cook_mode as string) ?? null,
+					currentSetpointC: setpoint,
+				},
+			)
+			if (!verdict.ok) return { ok: false, rejected: verdict.rejectReason }
+			await executeSetpoint(
+				{
+					id: deviceRow.id,
+					dsn: deviceRow.dsn,
+					isSimulated: deviceRow.is_simulated === true,
+				},
+				userId,
+				verdict.setpointC,
+				reason,
+				'director',
+				'set_pit_temp',
+				headers,
+			)
+			return {
+				ok: true,
+				appliedC: verdict.setpointC,
+				clamped: verdict.setpointC !== setpointC,
+			}
+		},
+		send_message: async (args) => {
+			await emitMessage({
+				deviceId: deviceRow.id,
+				userId,
+				kind: 'director',
+				title: args.title,
+				body: args.body,
+				requiresAck: args.requiresAck ?? false,
+				actions: args.actions,
+			})
+			return { ok: true }
+		},
+	}
+
+	try {
+		const result = await runDirectorLoop({
+			client: anthropic,
+			model,
+			contextNote: `Smoker: ${deviceRow.productName ?? deviceRow.dsn}. Local time: ${new Date().toLocaleString('en-GB', { timeZone: process.env.COOK_TZ ?? 'Europe/London' })}.`,
+			handlers,
+		})
+		console.log(
+			`[director] ${deviceRow.id} model=${model} iters=${result.iterations} setpoints=${result.setpointChanges} msgs=${result.messagesSent} :: ${result.summary.slice(0, 200)}`,
+		)
+	} catch (error) {
+		console.error(
+			`[director] failed for device ${deviceRow.id}:`,
+			error instanceof Error ? error.message : error,
+		)
+	}
+}
+
 /** Creates/ends cook_sessions on cook_state transitions. */
 async function handleSessionTransition(
 	deviceId: string,
@@ -775,6 +1041,7 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 				headers,
 			)
 			await runAutopilot(existing, conn.userId, deviceData, headers)
+			await runPitDirector(existing, conn.userId, deviceData, headers)
 
 			// Hourly snapshot, otherwise a merge patch against the previous state
 			const hourStart = new Date()
@@ -991,6 +1258,12 @@ async function stepSimulatedDevices() {
 			await emitCookMessages(device.id, device.userId, device, deviceData)
 			await runPelletForecast(device, device.userId, deviceData)
 			await runAutopilot(
+				{ ...device, sim_state: sim },
+				device.userId,
+				deviceData,
+				{},
+			)
+			await runPitDirector(
 				{ ...device, sim_state: sim },
 				device.userId,
 				deviceData,
