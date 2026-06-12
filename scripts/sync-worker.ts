@@ -65,7 +65,11 @@ if (!DB_URL) {
 }
 const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS ?? 60_000)
 
-const sql = postgres(DB_URL, { max: 5, idle_timeout: 30 })
+const sql = postgres(DB_URL, {
+	max: 5,
+	idle_timeout: 30,
+	connect_timeout: 20,
+})
 const db = drizzle(sql)
 
 const AYLA_BASE = 'https://ads-eu.aylanetworks.com'
@@ -1398,9 +1402,22 @@ async function cycle() {
 console.log(
 	`sync-worker starting: interval ${INTERVAL_MS}ms, db ${DB_URL.replace(/:[^:@/]+@/, ':***@')}`,
 )
+let cycleCount = 0
 while (true) {
 	const start = Date.now()
-	await cycle()
+	try {
+		await cycle()
+		cycleCount++
+		// Heartbeat: first cycle, then every ~10 min, so a silent hang is visible
+		if (cycleCount === 1 || cycleCount % 10 === 0) {
+			console.log(`cycle ${cycleCount} ok (${Date.now() - start}ms)`)
+		}
+	} catch (error) {
+		console.error(
+			`cycle ${cycleCount + 1} failed:`,
+			error instanceof Error ? (error.stack ?? error.message) : error,
+		)
+	}
 	const elapsed = Date.now() - start
 	await new Promise((r) => setTimeout(r, Math.max(5_000, INTERVAL_MS - elapsed)))
 }
