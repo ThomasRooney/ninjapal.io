@@ -1,10 +1,28 @@
-import { renderHook } from '@testing-library/react'
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCountdown } from './useCountdown'
 
+// Minimal renderHook on raw createRoot+act: @testing-library/react 16.x
+// binds its own React copy under vitest + react 19.2 (null dispatcher).
+function renderHook<T>(hook: () => T): { result: { current: T } } {
+	const result = { current: undefined as T }
+	function Probe() {
+		result.current = hook()
+		return null
+	}
+	const root = createRoot(document.createElement('div'))
+	act(() => {
+		root.render(createElement(Probe))
+	})
+	return { result }
+}
+
 describe('useCountdown', () => {
 	beforeEach(() => {
-		vi.useFakeTimers()
+		// shouldAdvanceTime keeps React 19's internal setTimeout-based
+		// commit scheduling alive in jsdom; faking it freezes cleanup
+		vi.useFakeTimers({ shouldAdvanceTime: true })
 	})
 
 	afterEach(() => {

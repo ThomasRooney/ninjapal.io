@@ -9,14 +9,14 @@ import { Button } from './ui/button.tsx'
 export const deleteUserFn = createServerFn({ method: 'POST' }).handler(
 	async () => {
 		// Import server-side modules at runtime
-		const [{ auth }, { getSql }, { getWebRequest }] = await Promise.all([
+		const [{ auth }, { getSql }, { getRequest }] = await Promise.all([
 			import('@/lib/auth'),
 			import('@/server/db/client'),
 			import('@tanstack/react-start/server'),
 		])
 
 		try {
-			const request = getWebRequest()
+			const request = getRequest()
 			const session = request
 				? await auth.api.getSession({ headers: request.headers })
 				: null

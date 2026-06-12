@@ -1,6 +1,6 @@
 import { auth } from '@/lib/auth'
 import { getSql } from '@/server/db/client'
-import { getWebRequest } from '@tanstack/react-start/server'
+import { getRequest } from '@tanstack/react-start/server'
 import { del, put } from '@vercel/blob'
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024
@@ -14,7 +14,7 @@ const ALLOWED_TYPES = new Set([
 const MAX_PHOTOS_PER_USER = 200
 
 async function requireSession(): Promise<{ id: string }> {
-	const request = getWebRequest()
+	const request = getRequest()
 	if (!request) throw new Error('No request')
 	const session = await auth.api.getSession({ headers: request.headers })
 	if (!session?.user) throw new Error('Not authenticated')

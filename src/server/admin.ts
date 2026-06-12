@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { getSql } from '@/server/db/client'
 import { ADMIN_EMAIL } from '@/server/user-provision'
-import { getWebRequest } from '@tanstack/react-start/server'
+import { getRequest } from '@tanstack/react-start/server'
 
 function clientIp(request: Request): string | null {
 	const headers = request.headers
@@ -21,7 +21,7 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
  * `bun scripts/admin-access.ts`). Loopback is exempt for local dev.
  */
 export async function requireAdmin(): Promise<{ id: string; email: string }> {
-	const request = getWebRequest()
+	const request = getRequest()
 	if (!request) throw new Error('No request')
 	const session = await auth.api.getSession({ headers: request.headers })
 	const email = session?.user?.email?.toLowerCase()

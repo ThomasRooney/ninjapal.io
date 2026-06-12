@@ -5,8 +5,9 @@ import { routeTree } from './routeTree.gen.ts'
 
 // import './styles.css'
 
-// Create a new router instance
-export const createRouter = () => {
+// Router factory — the Start plugin expects this exact export name; the
+// Register interface is generated into routeTree.gen.ts now.
+export const getRouter = () => {
 	const router = createTanstackRouter({
 		routeTree,
 		context: {
@@ -16,13 +17,4 @@ export const createRouter = () => {
 		scrollRestoration: true,
 	})
 	return router
-}
-
-const router = createRouter()
-
-// Register the router instance for type safety
-declare module '@tanstack/react-router' {
-	interface Register {
-		router: typeof router
-	}
 }

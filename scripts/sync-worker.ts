@@ -1362,12 +1362,34 @@ async function stepSimulatedDevices() {
 }
 
 const PHOTO_TTL_DAYS = 60
+const DIRECTOR_RUN_TTL_DAYS = 30
 let lastPhotoReapMs = 0
+
+/**
+ * Reaps aged director_runs (check-in transcripts have no value after the
+ * cook is long over) and prunes the in-memory cadence map so device
+ * deletions don't leak entries.
+ */
+async function reapDirectorRuns() {
+	const cutoff = new Date(Date.now() - DIRECTOR_RUN_TTL_DAYS * 24 * 3_600_000)
+	const gone = await db
+		.delete(directorRuns)
+		.where(lte(directorRuns.createdAt, cutoff))
+	if (Array.isArray(gone) && gone.length) {
+		console.log(`director: reaped ${gone.length} aged runs`)
+	}
+	for (const [deviceId, lastMs] of directorLastRun) {
+		if (Date.now() - lastMs > 24 * 3_600_000) directorLastRun.delete(deviceId)
+	}
+}
 
 /** Reaps cook photos past their 60-day TTL: blob first, then the row. */
 async function reapExpiredPhotos() {
 	if (Date.now() - lastPhotoReapMs < 6 * 3_600_000) return
 	lastPhotoReapMs = Date.now()
+	await reapDirectorRuns().catch((error) =>
+		console.error('director reap failed:', error),
+	)
 	const cutoff = new Date(Date.now() - PHOTO_TTL_DAYS * 24 * 3_600_000)
 	const expired = await db
 		.select({ id: cookPhotos.id, url: cookPhotos.url })

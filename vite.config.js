@@ -19,6 +19,8 @@ export default defineConfig({
 			// nitro deployment preset — produces .vercel/output (Build Output API)
 			target: 'vercel',
 		}),
+		// Start 1.16x no longer bundles React Refresh — must follow tanstackStart()
+		react(),
 		tailwindcss(),
 	],
 	test: {
@@ -36,6 +38,9 @@ export default defineConfig({
 		alias: {
 			'@': resolve(__dirname, './src'),
 		},
+		// One React instance everywhere — react 19.2 ships dual CJS/ESM and
+		// vitest otherwise loads both (null dispatcher in renderHook).
+		dedupe: ['react', 'react-dom'],
 	},
 	// Playwright is lazy-loaded for the Ninja OAuth flow and must never be
 	// bundled (CLAUDE.md) — keep the optimizer/SSR pipeline away from it.

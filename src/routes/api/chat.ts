@@ -1,4 +1,4 @@
-import { createServerFileRoute } from '@tanstack/react-start/server'
+import { createFileRoute } from '@tanstack/react-router'
 
 const CHAT_SYSTEM = `You are PitMinder's pitmaster — the same intelligence that runs the user's smoker between check-ins, now in direct conversation. The user types here to steer the cook, ask questions, or hand you tasks.
 
@@ -12,87 +12,91 @@ Acting:
 - If something looks unsafe or contradictory, say so plainly and do not act on it.
 - Never invent telemetry. If a tool fails, say what failed.`
 
-export const ServerRoute = createServerFileRoute('/api/chat').methods({
-	POST: async ({ request }) => {
-		const [
-			{ auth },
-			{ createPitMinderMcpServer },
-			{ getSql },
-			{ anthropic },
-			ai,
-			{ Client },
-			{ InMemoryTransport },
-		] = await Promise.all([
-			import('@/lib/auth'),
-			import('@/server/mcp/pitminder-server'),
-			import('@/server/db/client'),
-			import('@ai-sdk/anthropic'),
-			import('ai'),
-			import('@modelcontextprotocol/sdk/client/index.js'),
-			import('@modelcontextprotocol/sdk/inMemory.js'),
-		])
+export const Route = createFileRoute('/api/chat')({
+	server: {
+		handlers: {
+			POST: async ({ request }: { request: Request }) => {
+				const [
+					{ auth },
+					{ createPitMinderMcpServer },
+					{ getSql },
+					{ anthropic },
+					ai,
+					{ Client },
+					{ InMemoryTransport },
+				] = await Promise.all([
+					import('@/lib/auth'),
+					import('@/server/mcp/pitminder-server'),
+					import('@/server/db/client'),
+					import('@ai-sdk/anthropic'),
+					import('ai'),
+					import('@modelcontextprotocol/sdk/client/index.js'),
+					import('@modelcontextprotocol/sdk/inMemory.js'),
+				])
 
-		const session = await auth.api.getSession({ headers: request.headers })
-		if (!session?.user) {
-			return new Response('Unauthorized', { status: 401 })
-		}
+				const session = await auth.api.getSession({ headers: request.headers })
+				if (!session?.user) {
+					return new Response('Unauthorized', { status: 401 })
+				}
 
-		const { messages } = await request.json()
+				const { messages } = await request.json()
 
-		// Model is admin-configurable, shared with the pit director
-		const sql = getSql()
-		const [modelRow] = await sql`
+				// Model is admin-configurable, shared with the pit director
+				const sql = getSql()
+				const [modelRow] = await sql`
 			select value from app_config where key = 'pit_director_model'
 		`
-		const modelId =
-			(typeof modelRow?.value === 'string' ? modelRow.value : null) ??
-			'claude-haiku-4-5-20251001'
+				const modelId =
+					(typeof modelRow?.value === 'string' ? modelRow.value : null) ??
+					'claude-haiku-4-5-20251001'
 
-		// The chat loop talks to the SAME MCP server that external agents
-		// get at /api/mcp — here over an in-memory transport (no HTTP hop).
-		const mcpServer = createPitMinderMcpServer(session.user.id)
-		const [clientTransport, serverTransport] =
-			InMemoryTransport.createLinkedPair()
-		await mcpServer.connect(serverTransport)
-		const mcp = new Client({ name: 'pitminder-chat', version: '1.0.0' })
-		await mcp.connect(clientTransport)
+				// The chat loop talks to the SAME MCP server that external agents
+				// get at /api/mcp — here over an in-memory transport (no HTTP hop).
+				const mcpServer = createPitMinderMcpServer(session.user.id)
+				const [clientTransport, serverTransport] =
+					InMemoryTransport.createLinkedPair()
+				await mcpServer.connect(serverTransport)
+				const mcp = new Client({ name: 'pitminder-chat', version: '1.0.0' })
+				await mcp.connect(clientTransport)
 
-		const { tools: mcpTools } = await mcp.listTools()
-		const tools = Object.fromEntries(
-			mcpTools.map((t) => [
-				t.name,
-				ai.tool({
-					description: t.description,
-					inputSchema: ai.jsonSchema(t.inputSchema as never),
-					execute: async (args: unknown) => {
-						const result = await mcp.callTool({
-							name: t.name,
-							arguments: (args ?? {}) as Record<string, unknown>,
-						})
-						const content = result.content as Array<{
-							type: string
-							text?: string
-						}>
-						return content
-							.filter((c) => c.type === 'text')
-							.map((c) => c.text)
-							.join('\n')
+				const { tools: mcpTools } = await mcp.listTools()
+				const tools = Object.fromEntries(
+					mcpTools.map((t) => [
+						t.name,
+						ai.tool({
+							description: t.description,
+							inputSchema: ai.jsonSchema(t.inputSchema as never),
+							execute: async (args: unknown) => {
+								const result = await mcp.callTool({
+									name: t.name,
+									arguments: (args ?? {}) as Record<string, unknown>,
+								})
+								const content = result.content as Array<{
+									type: string
+									text?: string
+								}>
+								return content
+									.filter((c) => c.type === 'text')
+									.map((c) => c.text)
+									.join('\n')
+							},
+						}),
+					]),
+				)
+
+				const result = ai.streamText({
+					model: anthropic(modelId),
+					system: CHAT_SYSTEM,
+					messages: await ai.convertToModelMessages(messages),
+					tools,
+					stopWhen: ai.stepCountIs(8),
+					onFinish: async () => {
+						await mcp.close().catch(() => {})
 					},
-				}),
-			]),
-		)
+				})
 
-		const result = ai.streamText({
-			model: anthropic(modelId),
-			system: CHAT_SYSTEM,
-			messages: await ai.convertToModelMessages(messages),
-			tools,
-			stopWhen: ai.stepCountIs(8),
-			onFinish: async () => {
-				await mcp.close().catch(() => {})
+				return result.toUIMessageStreamResponse()
 			},
-		})
-
-		return result.toUIMessageStreamResponse()
+		},
 	},
 })

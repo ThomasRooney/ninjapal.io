@@ -1,9 +1,9 @@
 import { auth } from '@/lib/auth'
 import { getSql } from '@/server/db/client'
-import { getWebRequest } from '@tanstack/react-start/server'
+import { getRequest } from '@tanstack/react-start/server'
 
 async function requireSession(): Promise<{ id: string }> {
-	const request = getWebRequest()
+	const request = getRequest()
 	if (!request) throw new Error('No request')
 	const session = await auth.api.getSession({ headers: request.headers })
 	if (!session?.user) throw new Error('Not authenticated')

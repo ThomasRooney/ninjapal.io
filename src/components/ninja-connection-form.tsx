@@ -198,7 +198,12 @@ export function NinjaConnectionForm() {
 								<Button
 									type='button'
 									onClick={() =>
-										navigate({ search: (prev) => ({ ...prev, mode: 'edit' }) })
+										navigate({
+											search: (prev: { mode?: string }) => ({
+												...prev,
+												mode: 'edit',
+											}),
+										})
 									}
 									variant='outline'
 									data-testid='ninja-connection-form--edit-button'

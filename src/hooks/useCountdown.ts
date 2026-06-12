@@ -1,19 +1,15 @@
 import { useEffect, useState } from 'react'
 
 export const useCountdown = (targetDate: string | null | undefined) => {
-	// Handle null/undefined gracefully
-	if (!targetDate) {
-		return { hours: '00', minutes: '00', seconds: '00', formatted: '00:00:00' }
-	}
-
-	const countDownDate = new Date(targetDate).getTime()
+	// NaN when absent — hooks must run unconditionally (rules of hooks)
+	const countDownDate = targetDate ? new Date(targetDate).getTime() : Number.NaN
 
 	const [countDown, setCountDown] = useState(
-		countDownDate - new Date().getTime(),
+		Number.isNaN(countDownDate) ? 0 : countDownDate - new Date().getTime(),
 	)
 
 	useEffect(() => {
-		if (!targetDate || countDown <= 0) {
+		if (!targetDate || Number.isNaN(countDownDate) || countDown <= 0) {
 			setCountDown(0)
 			return
 		}

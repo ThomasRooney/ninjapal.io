@@ -17,7 +17,7 @@ import { createServerFn } from '@tanstack/react-start'
 const fetchUser = createServerFn({
 	method: 'GET',
 }).handler(async () => {
-	const [{ auth }, { signZeroToken }, { getWebRequest }, { provisionUser }] =
+	const [{ auth }, { signZeroToken }, { getRequest }, { provisionUser }] =
 		await Promise.all([
 			import('@/lib/auth'),
 			import('@/lib/zero-jwt'),
@@ -25,7 +25,7 @@ const fetchUser = createServerFn({
 			import('@/server/user-provision'),
 		])
 
-	const request = getWebRequest()
+	const request = getRequest()
 	if (!request) return null
 
 	// This runs during SSR of every shell: a thrown error here gets

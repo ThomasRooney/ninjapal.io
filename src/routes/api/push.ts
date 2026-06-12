@@ -8,7 +8,7 @@ import {
 	PushProcessor,
 	ZQLDatabase,
 } from '@rocicorp/zero/pg'
-import { createServerFileRoute } from '@tanstack/react-start/server'
+import { createFileRoute } from '@tanstack/react-router'
 
 // Create a single postgres client at module scope
 // This client will be reused across all requests
@@ -21,11 +21,11 @@ const database = sql
 	: null
 const processor = database ? new PushProcessor(database) : null
 
-export const ServerRoute = createServerFileRoute('/api/push').methods(
-	(api) => ({
-		POST: api
-			.middleware([corsMiddleware, authMiddleware])
-			.handler(async ({ request, context }) => {
+export const Route = createFileRoute('/api/push')({
+	server: {
+		middleware: [corsMiddleware, authMiddleware],
+		handlers: {
+			POST: async ({ request, context }) => {
 				try {
 					// 1) Read query params + body
 					const url = new URL(request.url)
@@ -71,8 +71,9 @@ export const ServerRoute = createServerFileRoute('/api/push').methods(
 						},
 					)
 				}
-			}),
-	}),
-)
+			},
+		},
+	},
+})
 
 export { processor, sql }
