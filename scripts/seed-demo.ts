@@ -76,6 +76,7 @@ export interface CookProfile {
 	stall: { at: number; until: number } | null // probe °C plateau bounds (hours)
 	lidDipsAtHours: number[]
 	durationHours: number
+	climbRate: number // probe approach-rate constant
 }
 
 export type CookPoint = {
@@ -129,7 +130,7 @@ function generateCookTelemetry(
 			probe >= stallLow
 		)
 			probeRate = 0.12 // the stall
-		else probeRate = (profile.probeFinal * 1.05 - probe) * 0.028
+		else probeRate = (profile.probeFinal * 1.05 - probe) * profile.climbRate
 		probe += probeRate * (stepMs / 600_000) * 2 + jitter(0.2)
 		probe = Math.min(probe, profile.probeFinal)
 
@@ -157,6 +158,7 @@ export const COOK_PROFILES: Record<string, CookProfile> = {
 		stall: { at: 3.5, until: 5.5 },
 		lidDipsAtHours: [3, 6],
 		durationHours: 8,
+		climbRate: 0.028,
 	},
 	ribs: {
 		name: 'Baby Back Ribs',
@@ -167,6 +169,7 @@ export const COOK_PROFILES: Record<string, CookProfile> = {
 		stall: { at: 2, until: 3 },
 		lidDipsAtHours: [2, 3.5], // wrap + sauce
 		durationHours: 5,
+		climbRate: 0.05,
 	},
 	chicken: {
 		name: 'Beer Can Chicken',
@@ -177,6 +180,7 @@ export const COOK_PROFILES: Record<string, CookProfile> = {
 		stall: null,
 		lidDipsAtHours: [1],
 		durationHours: 2,
+		climbRate: 0.12,
 	},
 }
 

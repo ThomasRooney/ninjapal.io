@@ -2,7 +2,15 @@
 
 import { useIsFetching } from '@tanstack/react-query'
 import { Link, useMatches } from '@tanstack/react-router'
-import { Activity, Cpu, Loader2, Mail, Unplug, UserIcon } from 'lucide-react'
+import {
+	Activity,
+	Cpu,
+	Flame,
+	Loader2,
+	Mail,
+	Unplug,
+	UserIcon,
+} from 'lucide-react'
 
 import {
 	SidebarGroup,
@@ -33,6 +41,11 @@ const items = [
 		title: 'Device Status',
 		url: '/app/status',
 		icon: Activity,
+	},
+	{
+		title: 'Cooks',
+		url: '/app/cooks',
+		icon: Flame,
 	},
 	{
 		title: 'Devices',

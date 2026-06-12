@@ -55,6 +55,22 @@ export function createSharedMutators(authData: AuthData) {
 				await tx.mutate.users.update(args)
 			},
 		},
+		cookSessions: {
+			async rename(
+				tx: Transaction<Schema>,
+				args: { id: string; name: string },
+			) {
+				if (!authData.sub) throw new Error('Not authenticated')
+
+				const session = await tx.query.cookSessions
+					.where('id', args.id)
+					.where('userId', authData.sub)
+					.one()
+					.run()
+				if (!session) throw new Error('Session not found')
+				await tx.mutate.cookSessions.update({ id: args.id, name: args.name })
+			},
+		},
 		ninjaConnections: {
 			async upsert(
 				tx: Transaction<Schema>,

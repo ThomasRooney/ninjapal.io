@@ -16,6 +16,11 @@ export function createServerMutators(
 	const sharedMutators = createSharedMutators(authData)
 
 	return {
+		cookSessions: {
+			async rename(tx, args: { id: string; name: string }) {
+				await sharedMutators.cookSessions.rename(tx, args)
+			},
+		},
 		users: {
 			async create(
 				tx: Transaction<Schema>,
