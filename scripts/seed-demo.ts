@@ -312,9 +312,9 @@ async function main() {
 	console.log(`Auth user ready: ${DEMO_EMAIL} (${userId})`)
 
 	await db.query(
-		`insert into users (id, email, name, prefers_celsius)
-		 values ($1, $2, $3, true)
-		 on conflict (id) do update set email = $2, name = $3`,
+		`insert into users (id, email, name, prefers_celsius, whitelisted)
+		 values ($1, $2, $3, true, true)
+		 on conflict (id) do update set email = $2, name = $3, whitelisted = true`,
 		[userId, DEMO_EMAIL, DEMO_NAME],
 	)
 

@@ -20,6 +20,8 @@ export default drizzleZeroConfig(drizzleSchema, {
       id: true,
       email: true,
       name: true,
+      whitelisted: true,
+      last_login_at: false, // server-side only
       prefers_celsius: true, // Enable for Zero sync
     },
     ninjaConnections: {
@@ -67,6 +69,10 @@ export default drizzleZeroConfig(drizzleSchema, {
       probe2_target_temp: true, // app-owned doneness target
       autopilot_enabled: true,
       autopilot_state: true,
+      is_simulated: true,
+      sim_state: false, // worker-internal
+      hopper_capacity_kg: true,
+      pellets_loaded_at: true,
       temp_smoke: true, // New column - enabled after migration complete
       
       // Cooking State
@@ -149,6 +155,19 @@ export default drizzleZeroConfig(drizzleSchema, {
       historyType: true,
       changedBy: true,
       changes: true,
+    },
+    appConfig: false,
+    pushSubscriptions: false,
+    cookPhotos: {
+      id: true,
+      userId: true,
+      deviceId: true,
+      sessionId: true,
+      url: true,
+      pathname: false,
+      contentType: true,
+      sizeBytes: true,
+      createdAt: true,
     },
     deviceCommands: {
       id: true,

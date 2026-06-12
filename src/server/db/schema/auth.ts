@@ -14,6 +14,11 @@ export const user = pgTable('user', {
 	image: text('image'),
 	createdAt: timestamp('created_at').notNull().defaultNow(),
 	updatedAt: timestamp('updated_at').notNull().defaultNow(),
+	// better-auth admin plugin
+	role: text('role'),
+	banned: boolean('banned'),
+	banReason: text('ban_reason'),
+	banExpires: timestamp('ban_expires'),
 })
 
 export const session = pgTable('session', {
@@ -27,6 +32,8 @@ export const session = pgTable('session', {
 	userId: text('user_id')
 		.notNull()
 		.references(() => user.id, { onDelete: 'cascade' }),
+	// better-auth admin plugin (impersonation)
+	impersonatedBy: text('impersonated_by'),
 })
 
 export const account = pgTable('account', {

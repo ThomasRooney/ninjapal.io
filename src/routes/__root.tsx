@@ -16,11 +16,13 @@ import { createServerFn } from '@tanstack/react-start'
 const fetchUser = createServerFn({
 	method: 'GET',
 }).handler(async () => {
-	const [{ auth }, { signZeroToken }, { getWebRequest }] = await Promise.all([
-		import('@/lib/auth'),
-		import('@/lib/zero-jwt'),
-		import('@tanstack/react-start/server'),
-	])
+	const [{ auth }, { signZeroToken }, { getWebRequest }, { provisionUser }] =
+		await Promise.all([
+			import('@/lib/auth'),
+			import('@/lib/zero-jwt'),
+			import('@tanstack/react-start/server'),
+			import('@/server/user-provision'),
+		])
 
 	const request = getWebRequest()
 	if (!request) return null
@@ -36,8 +38,15 @@ const fetchUser = createServerFn({
 		name: session.user.name || session.user.email.split('@')[0],
 	}
 
+	const provisioned = await provisionUser(user)
+
 	return {
 		...user,
+		whitelisted: provisioned.whitelisted,
+		isAdmin: provisioned.isAdmin,
+		impersonatedBy:
+			(session.session as { impersonatedBy?: string | null })?.impersonatedBy ??
+			null,
 		accessToken: await signZeroToken(user),
 	}
 })

@@ -11,6 +11,7 @@ import {
 	Flame,
 	Loader2,
 	Mail,
+	ShieldCheck,
 	Unplug,
 	UserIcon,
 } from 'lucide-react'
@@ -64,6 +65,10 @@ const items = [
 
 export function NavExamples() {
 	const matches = useMatches()
+	const rootMatch = matches[0] as
+		| { context?: { user?: { isAdmin?: boolean } } }
+		| undefined
+	const isAdmin = rootMatch?.context?.user?.isAdmin === true
 	const currentPath = matches[matches.length - 1]?.pathname
 	const isSyncing = useIsFetching({ queryKey: ['devices', 'syncPoller'] })
 	const z = useZero()
@@ -76,7 +81,18 @@ export function NavExamples() {
 			<SidebarGroupLabel>Examples</SidebarGroupLabel>
 			<SidebarGroupContent>
 				<SidebarMenu>
-					{items.map((item) => (
+					{[
+						...items,
+						...(isAdmin
+							? [
+									{
+										title: 'Admin',
+										url: '/app/admin' as const,
+										icon: ShieldCheck,
+									},
+								]
+							: []),
+					].map((item) => (
 						<SidebarMenuItem key={item.title}>
 							<SidebarMenuButton
 								asChild

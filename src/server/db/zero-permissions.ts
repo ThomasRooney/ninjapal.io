@@ -57,6 +57,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 			{ cmp }: ExpressionBuilder<Schema, 'cookSessions'>,
 		) => cmp('userId', authData.sub as string)
 
+		const allowIfSelfPhoto = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'cookPhotos'>,
+		) => cmp('userId', authData.sub as string)
+
 		const allowIfSelfCommand = (
 			authData: AuthData,
 			{ cmp }: ExpressionBuilder<Schema, 'deviceCommands'>,
@@ -113,6 +118,14 @@ export const permissions = definePermissions<AuthData, Schema>(
 						postMutation: [],
 					},
 					delete: [],
+				},
+			},
+			cookPhotos: {
+				row: {
+					select: [allowIfSelfPhoto],
+					insert: [], // server fn uploads
+					update: { preMutation: [], postMutation: [] },
+					delete: [allowIfSelfPhoto],
 				},
 			},
 			deviceCommands: {

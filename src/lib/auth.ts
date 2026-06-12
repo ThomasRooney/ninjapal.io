@@ -6,7 +6,7 @@ import {
 } from '@/server/email/auth-emails'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { magicLink } from 'better-auth/plugins'
+import { admin, magicLink } from 'better-auth/plugins'
 
 /**
  * Server-side better-auth instance. Sessions are cookie-based; the Zero JWT
@@ -50,6 +50,7 @@ export const auth = betterAuth({
 				await sendMagicLinkEmail(email, url)
 			},
 		}),
+		admin(),
 	],
 	user: {
 		deleteUser: {

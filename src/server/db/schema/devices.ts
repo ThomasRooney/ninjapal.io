@@ -63,6 +63,17 @@ export const devices = pgTable(
 		autopilot_enabled: boolean('autopilot_enabled').default(false),
 		autopilot_state: jsonb('autopilot_state'), // { baseSetpointC, nudgedAtMs, holdEngagedAtMs, announcedDone }
 
+		// Simulated grill (worker steps these instead of polling Ayla)
+		is_simulated: boolean('is_simulated').default(false),
+		sim_state: jsonb('sim_state'), // { setpointC, grillC, probe1C, probe2C, cooking, profile }
+
+		// Pellet hopper model
+		hopper_capacity_kg: numeric('hopper_capacity_kg', {
+			precision: 4,
+			scale: 1,
+		}),
+		pellets_loaded_at: timestamp('pellets_loaded_at', { withTimezone: true }),
+
 		// Cooking State
 		cook_state_raw: text('cook_state_raw'), // JSON string
 		cook_mode: varchar('cook_mode', { length: 50 }),
