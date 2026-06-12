@@ -6,73 +6,92 @@ import {
 	Heading,
 	Hr,
 	Html,
-	Img,
 	Link,
 	Preview,
 	Section,
 	Text,
 } from '@react-email/components'
 
-interface NinjaPalLoginCodeEmailProps {
+interface PitMinderLoginCodeEmailProps {
 	validationCode?: string
 	magicLink: string
 }
 
-// Use different base URL for production vs development
-const baseUrl =
-	process.env.NODE_ENV === 'production'
-		? process.env.BETTER_AUTH_URL
-			? `https://${process.env.BETTER_AUTH_URL}`
-			: ''
-		: ''
+// BETTER_AUTH_URL may or may not include the scheme depending on the env
+const rawBase = process.env.BETTER_AUTH_URL || 'https://app.pitminder.com'
+const baseUrl = rawBase.startsWith('http') ? rawBase : `https://${rawBase}`
 
-export const NinjaPalLoginCodeEmail = ({
+/**
+ * Magic-link login email. The logo is a styled-text wordmark on purpose:
+ * Gmail strips SVG and hides remote images until the user opts in, so
+ * text + emoji is the only mark that renders everywhere.
+ */
+export const PitMinderLoginCodeEmail = ({
 	validationCode,
 	magicLink,
-}: NinjaPalLoginCodeEmailProps) => (
+}: PitMinderLoginCodeEmailProps) => (
 	<Html>
 		<Head />
 		<Body style={main}>
-			<Preview>Your login code for PitMinder</Preview>
+			<Preview>Your login link for PitMinder</Preview>
 			<Container style={container}>
-				<Img
-					src={`${baseUrl}/static/logo.png`}
-					width='42'
-					height='42'
-					alt='PitMinder'
-					style={logo}
-				/>
-				<Heading style={heading}>Your login code for PitMinder</Heading>
+				<Text style={wordmark}>
+					<span style={wordmarkFlame}>🔥</span> Pit
+					<span style={wordmarkAccent}>Minder</span>
+				</Text>
+				<Heading style={heading}>Your login link for PitMinder</Heading>
 				<Section style={buttonContainer}>
 					<Button style={button} href={magicLink}>
 						Login to PitMinder
 					</Button>
 				</Section>
 				<Text style={paragraph}>
-					This link and code will only be valid for the next 5 minutes. If the
-					link does not work, you can use the login verification code directly:
+					This link is only valid for the next 5 minutes. If the button does not
+					work, copy this address into your browser:
 				</Text>
-				<code style={code}>{validationCode}</code>
+				<Text style={fallbackLink}>
+					<Link href={magicLink} style={fallbackLinkAnchor}>
+						{magicLink}
+					</Link>
+				</Text>
+				{validationCode && (
+					<>
+						<Text style={paragraph}>
+							Or use the login verification code directly:
+						</Text>
+						<code style={code}>{validationCode}</code>
+					</>
+				)}
 				<Hr style={hr} />
 				<Link href={baseUrl} style={reportLink}>
-					PitMinder
+					PitMinder — by Resilient Software Ltd
 				</Link>
 			</Container>
 		</Body>
 	</Html>
 )
 
-NinjaPalLoginCodeEmail.PreviewProps = {
-	validationCode: 'tt226-5398x',
-	magicLink: 'https://your-app.com/magic-link',
-} as NinjaPalLoginCodeEmailProps
+PitMinderLoginCodeEmail.PreviewProps = {
+	validationCode: undefined,
+	magicLink: 'https://app.pitminder.com/api/auth/magic-link/verify?token=…',
+} as PitMinderLoginCodeEmailProps
 
-export default NinjaPalLoginCodeEmail
+export default PitMinderLoginCodeEmail
 
-const logo = {
-	// borderRadius: 21,
-	width: 42,
-	height: 42,
+const wordmark = {
+	fontSize: '26px',
+	fontWeight: '800' as const,
+	letterSpacing: '-0.5px',
+	color: '#1c1917',
+	margin: '0',
+}
+
+const wordmarkFlame = {
+	fontSize: '24px',
+}
+
+const wordmarkAccent = {
+	color: '#ea580c',
 }
 
 const main = {
@@ -108,8 +127,8 @@ const buttonContainer = {
 }
 
 const button = {
-	backgroundColor: '#5e6ad2',
-	borderRadius: '3px',
+	backgroundColor: '#ea580c',
+	borderRadius: '6px',
 	fontWeight: '600',
 	color: '#fff',
 	fontSize: '15px',
@@ -117,6 +136,17 @@ const button = {
 	textAlign: 'center' as const,
 	display: 'block',
 	padding: '11px 23px',
+}
+
+const fallbackLink = {
+	margin: '0 0 15px',
+	fontSize: '13px',
+	lineHeight: '1.4',
+	wordBreak: 'break-all' as const,
+}
+
+const fallbackLinkAnchor = {
+	color: '#ea580c',
 }
 
 const reportLink = {

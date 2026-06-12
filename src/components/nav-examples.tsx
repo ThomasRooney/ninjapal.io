@@ -10,7 +10,6 @@ import {
 	Cpu,
 	Flame,
 	Loader2,
-	Mail,
 	ShieldCheck,
 	Unplug,
 	UserIcon,
@@ -26,11 +25,6 @@ import {
 } from '@/components/ui/sidebar.tsx'
 
 const items = [
-	{
-		title: 'Emails',
-		url: '/app/email-preview',
-		icon: Mail,
-	},
 	{
 		title: 'Account',
 		url: '/app/account',
