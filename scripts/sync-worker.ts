@@ -47,6 +47,7 @@ import {
 	deviceCommands,
 	deviceHistory,
 	devices,
+	directorRuns,
 	ninjaConnections,
 	pushSubscriptions,
 } from '@/server/db/schema'
@@ -886,11 +887,32 @@ async function runPitDirector(
 		console.log(
 			`[director] ${deviceRow.id} model=${model} iters=${result.iterations} setpoints=${result.setpointChanges} msgs=${result.messagesSent} :: ${result.summary.slice(0, 200)}`,
 		)
+		await db.insert(directorRuns).values({
+			userId,
+			deviceId: deviceRow.id,
+			model,
+			status: 'ok',
+			summary: result.summary || null,
+			iterations: result.iterations,
+			setpointChanges: result.setpointChanges,
+			messagesSent: result.messagesSent,
+			toolCalls: result.toolCalls,
+		})
 	} catch (error) {
 		console.error(
 			`[director] failed for device ${deviceRow.id}:`,
 			error instanceof Error ? error.message : error,
 		)
+		await db
+			.insert(directorRuns)
+			.values({
+				userId,
+				deviceId: deviceRow.id,
+				model,
+				status: 'error',
+				error: error instanceof Error ? error.message : String(error),
+			})
+			.catch(() => {})
 	}
 }
 

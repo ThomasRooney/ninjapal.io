@@ -59,3 +59,32 @@ export const cookPhotos = pgTable(
 		createdIdx: index('idx_cook_photos_created_at').on(table.createdAt),
 	}),
 )
+
+/**
+ * One row per pit-director check-in — the user-visible trace of what the
+ * AI observed and did each run ("thoughts"), success or failure.
+ */
+export const directorRuns = pgTable(
+	'director_runs',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		userId: uuid('user_id').notNull(),
+		deviceId: uuid('device_id').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+		model: varchar('model', { length: 100 }).notNull(),
+		status: varchar('status', { length: 20 }).notNull().default('ok'), // ok | error
+		summary: text('summary'),
+		error: text('error'),
+		iterations: integer('iterations').notNull().default(0),
+		setpointChanges: integer('setpoint_changes').notNull().default(0),
+		messagesSent: integer('messages_sent').notNull().default(0),
+		toolCalls: jsonb('tool_calls'), // string[] of tool names in call order
+	},
+	(table) => ({
+		deviceIdx: index('idx_director_runs_device_id').on(table.deviceId),
+		userIdx: index('idx_director_runs_user_id').on(table.userId),
+		createdIdx: index('idx_director_runs_created_at').on(table.createdAt),
+	}),
+)

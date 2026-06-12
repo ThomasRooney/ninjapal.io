@@ -42,3 +42,22 @@ test.describe('Messages', () => {
 		await expect(pending.getByTestId('message-steer-input')).toBeVisible()
 	})
 })
+
+test.describe('Director check-ins', () => {
+	test('every director run is visible in the feed with its thoughts', async ({
+		page,
+	}) => {
+		await page.goto('/auth/login')
+		await page.getByTestId('login-email').fill('demo@pitminder.com')
+		await page.getByTestId('login-password').fill('demo-smoker-2026')
+		await page.getByTestId('login-submit').click()
+		await page.waitForURL('**/app/**', { timeout: 15000 })
+		await page.goto('/app/messages')
+		const runs = page.getByTestId('director-run')
+		await expect(runs.first()).toBeVisible({ timeout: 20000 })
+		await expect(runs.first()).toContainText('Pit director check-in')
+		// thoughts (summary) and consulted tools are shown
+		await expect(page.getByText(/climbing/i).first()).toBeVisible()
+		await expect(page.getByText(/looked at:/i).first()).toBeVisible()
+	})
+})

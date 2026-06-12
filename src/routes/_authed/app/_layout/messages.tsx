@@ -196,12 +196,94 @@ function MessageCard({
 	)
 }
 
+/** A pit-director check-in: the AI's per-run observations, always visible. */
+function DirectorRunRow({
+	run,
+}: {
+	run: {
+		id: string | null
+		createdAt: number | null
+		status: string | null
+		summary: string | null
+		error: string | null
+		setpointChanges: number | null
+		messagesSent: number | null
+		toolCalls: unknown
+	}
+}) {
+	const tools = (Array.isArray(run.toolCalls) ? run.toolCalls : []) as string[]
+	const consulted = [...new Set(tools)].filter(
+		(t) => t !== 'send_message' && t !== 'set_pit_temp',
+	)
+	const failed = run.status === 'error'
+	return (
+		<div
+			className='flex gap-3 px-3 py-2 rounded-md border border-dashed border-border/70 bg-muted/30'
+			data-testid='director-run'
+		>
+			<Bot
+				className={cn(
+					'h-4 w-4 mt-0.5 shrink-0',
+					failed ? 'text-destructive' : 'text-muted-foreground',
+				)}
+			/>
+			<div className='flex-1 min-w-0'>
+				<div className='flex items-baseline justify-between gap-2'>
+					<p className='text-xs font-medium text-muted-foreground'>
+						Pit director check-in
+						{(run.setpointChanges ?? 0) > 0 && ' · adjusted the pit'}
+						{(run.messagesSent ?? 0) > 0 && ' · messaged you'}
+					</p>
+					<span className='text-[11px] text-muted-foreground font-mono shrink-0'>
+						{run.createdAt ? timeLabel(run.createdAt) : ''}
+					</span>
+				</div>
+				<p
+					className={cn(
+						'text-xs mt-0.5 whitespace-pre-wrap',
+						failed ? 'text-destructive' : 'text-muted-foreground',
+					)}
+				>
+					{failed
+						? `Check-in failed: ${run.error ?? 'unknown error'}`
+						: (run.summary ?? 'No notes.')}
+				</p>
+				{consulted.length > 0 && (
+					<p className='text-[10px] text-muted-foreground/70 mt-1'>
+						looked at:{' '}
+						{consulted
+							.map((t) => t.replace(/^(get_|list_)/, '').replace(/_/g, ' '))
+							.join(', ')}
+					</p>
+				)}
+			</div>
+		</div>
+	)
+}
+
 function MessagesPage() {
 	const z = useZero()
 	const [messages] = useQuery(z.query.cookMessages.orderBy('createdAt', 'desc'))
+	const [runs] = useQuery(
+		z.query.directorRuns.orderBy('createdAt', 'desc').limit(50),
+	)
 
 	const pendingCount =
 		messages?.filter((m) => m.requiresAck && m.ackedAt == null).length ?? 0
+
+	// One feed: messages and director check-ins, newest first
+	const feed = [
+		...(messages ?? []).map((m) => ({
+			type: 'message' as const,
+			at: m.createdAt ?? 0,
+			message: m,
+		})),
+		...(runs ?? []).map((r) => ({
+			type: 'run' as const,
+			at: r.createdAt ?? 0,
+			run: r,
+		})),
+	].sort((a, b) => b.at - a.at)
 
 	return (
 		<div className='container flex flex-col min-h-screen'>
@@ -217,7 +299,7 @@ function MessagesPage() {
 						: 'All caught up — the pit minds itself'}
 				</p>
 
-				{messages === undefined ? null : messages.length === 0 ? (
+				{messages === undefined ? null : feed.length === 0 ? (
 					<Card>
 						<CardContent className='py-12 text-center text-muted-foreground'>
 							No messages yet — they'll appear here as your cooks progress.
@@ -225,16 +307,27 @@ function MessagesPage() {
 					</Card>
 				) : (
 					<div className='flex flex-col gap-3'>
-						{messages.map((message) => (
-							<MessageCard
-								key={message.id}
-								message={
-									message as unknown as Parameters<
-										typeof MessageCard
-									>[0]['message']
-								}
-							/>
-						))}
+						{feed.map((entry) =>
+							entry.type === 'message' ? (
+								<MessageCard
+									key={entry.message.id}
+									message={
+										entry.message as unknown as Parameters<
+											typeof MessageCard
+										>[0]['message']
+									}
+								/>
+							) : (
+								<DirectorRunRow
+									key={entry.run.id}
+									run={
+										entry.run as unknown as Parameters<
+											typeof DirectorRunRow
+										>[0]['run']
+									}
+								/>
+							),
+						)}
 					</div>
 				)}
 			</div>

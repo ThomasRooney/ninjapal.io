@@ -491,6 +491,38 @@ async function main() {
 	await insertSession(db, smokerId, userId, points, brisket, true)
 
 	await db.query('delete from cook_messages where device_id = $1', [smokerId])
+	await db.query('delete from director_runs where device_id = $1', [smokerId])
+	// A couple of pit-director check-ins so the feed shows the AI's thinking
+	for (const run of [
+		{
+			hoursAgo: 1.2,
+			summary:
+				'Pit steady at 106.8°C against the 107°C setpoint. Probe 1 at 88.4°C climbing 1.9°C/h — through the stall, on pace for the 96°C target around 19:40. Pellets ~2.1 kg (≈4.5 h). No action needed.',
+			toolCalls: ['get_telemetry', 'get_recent_messages', 'get_cook_history', 'get_pellet_status'],
+		},
+		{
+			hoursAgo: 0.2,
+			summary:
+				'Probe 1 at 91.5°C and climbing hard, 4.5°C from target. Sent a final-spritz reminder to protect the bark before the hold-warm drop.',
+			toolCalls: ['get_telemetry', 'get_recent_messages', 'send_message'],
+			messagesSent: 1,
+		},
+	]) {
+		await db.query(
+			`insert into director_runs (device_id, user_id, model, status, summary, iterations, setpoint_changes, messages_sent, tool_calls, created_at)
+			 values ($1, $2, $3, 'ok', $4, $5, 0, $6, $7, to_timestamp($8 / 1000.0))`,
+			[
+				smokerId,
+				userId,
+				'claude-haiku-4-5-20251001',
+				run.summary,
+				run.toolCalls.length,
+				run.messagesSent ?? 0,
+				JSON.stringify(run.toolCalls),
+				now - run.hoursAgo * HOUR,
+			],
+		)
+	}
 	await insertMessage({
 		hoursAgo: 8,
 		kind: 'session_start',
