@@ -10,6 +10,7 @@ import {
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 
 // Import CSS as a URL
+import { getCachedUser, setCachedUser } from '@/lib/user-cache'
 import appCss from '@/styles.css?url'
 import { createServerFn } from '@tanstack/react-start'
 
@@ -55,7 +56,9 @@ function RootComponent() {
 	return (
 		<RootDocument>
 			<Outlet />
-			<TanStackRouterDevtools position='bottom-right' />
+			{import.meta.env.DEV && (
+				<TanStackRouterDevtools position='bottom-right' />
+			)}
 		</RootDocument>
 	)
 }
@@ -98,7 +101,15 @@ export const Route = createRootRoute({
 	}),
 
 	beforeLoad: async () => {
+		// Root beforeLoad runs on every navigation — only pay the server
+		// round-trip once per page load; auth flows clear the cache.
+		if (typeof window !== 'undefined') {
+			const cached = getCachedUser()
+			if (cached) return { user: cached.user }
+		}
+
 		const user = await fetchUser()
+		if (typeof window !== 'undefined') setCachedUser(user)
 
 		return {
 			user,

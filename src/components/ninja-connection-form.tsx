@@ -78,10 +78,6 @@ export function NinjaConnectionForm() {
 				...data,
 			})
 		},
-		onSuccess: () => {
-			// Clear edit mode from URL
-			navigate({ search: () => ({}) })
-		},
 	})
 
 	const testCredentialsMutation = useMutation({
@@ -98,8 +94,14 @@ export function NinjaConnectionForm() {
 		},
 	})
 
-	const onSubmit = (data: NinjaConnectionFormData) => {
-		upsertMutation.mutate(data)
+	const onSubmit = async (data: NinjaConnectionFormData) => {
+		await upsertMutation.mutateAsync(data)
+		// Only strip ?mode=edit when it's set: a same-href navigate sits in
+		// the router's commit queue and flushes on top of the NEXT real
+		// navigation (it was reverting the Edit click).
+		if (search?.mode === 'edit') {
+			navigate({ search: () => ({}) })
+		}
 	}
 
 	return (
