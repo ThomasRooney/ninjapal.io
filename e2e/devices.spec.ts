@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { insertTestDevice } from './lib/db'
+import { insertTestDevice, whitelistUser } from './lib/db'
 
 test.describe('Devices Navigation', () => {
 	test('should navigate to devices page and see device list', async ({ page }) => {
@@ -12,7 +12,10 @@ test.describe('Devices Navigation', () => {
 		await page.getByTestId('signup-password').fill(password)
 		await page.getByTestId('signup-submit').click()
 
-		// Should redirect to app after signup
+		// Private beta gate: whitelist the fresh account, then enter the app
+		await page.waitForURL('**/waitlist', { timeout: 10000 })
+		await whitelistUser(email)
+		await page.goto('/app')
 		await page.waitForURL('**/app/**', { timeout: 10000 })
 
 		// Click on Devices in the sidebar
@@ -41,6 +44,9 @@ test.describe('Devices Navigation', () => {
 		await page.getByTestId('signup-email').fill(email)
 		await page.getByTestId('signup-password').fill(password)
 		await page.getByTestId('signup-submit').click()
+		await page.waitForURL('**/waitlist', { timeout: 10000 })
+		await whitelistUser(email)
+		await page.goto('/app')
 		await page.waitForURL('**/app/**', { timeout: 10000 })
 
 		// Seed a device for this user directly (sync flows are covered in device-sync.spec)
@@ -83,6 +89,9 @@ test.describe('Devices Navigation', () => {
 		await page.getByTestId('signup-email').fill(email)
 		await page.getByTestId('signup-password').fill(password)
 		await page.getByTestId('signup-submit').click()
+		await page.waitForURL('**/waitlist', { timeout: 10000 })
+		await whitelistUser(email)
+		await page.goto('/app')
 		await page.waitForURL('**/app/**', { timeout: 10000 })
 
 		// Navigate directly to an invalid device ID

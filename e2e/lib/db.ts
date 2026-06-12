@@ -4,6 +4,19 @@ const DB_URL =
 	process.env.ZERO_UPSTREAM_DB ??
 	'postgresql://postgres:postgres@127.0.0.1:54332/postgres'
 
+/** Marks a signed-up user as whitelisted (private-beta gate bypass). */
+export async function whitelistUser(email: string) {
+	const client = new Client({ connectionString: DB_URL })
+	await client.connect()
+	try {
+		await client.query('update users set whitelisted = true where email = $1', [
+			email,
+		])
+	} finally {
+		await client.end()
+	}
+}
+
 /** One-shot parameterized query against the test database. */
 export async function query(
 	text: string,

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { whitelistUser } from './lib/db'
 
 test.describe('Authentication Flow', () => {
 	test('should create a new account', async ({ page }) => {
@@ -16,9 +17,15 @@ test.describe('Authentication Flow', () => {
 		// Submit the form
 		await page.getByTestId('signup-submit').click()
 
-		// better-auth auto-signs-in and the app redirects to /app/*
+		// Private beta: fresh signups land on the waitlist page
+		await page.waitForURL('**/waitlist', { timeout: 10000 })
+		expect(page.url()).toContain('/waitlist')
+
+		// Once whitelisted (admin dashboard), the same account reaches the app
+		await whitelistUser(uniqueEmail)
+		await page.goto('/app')
 		await page.waitForURL('**/app/**', { timeout: 10000 })
-		expect(page.url()).toContain('/app')
+		expect(page.url()).not.toContain('/waitlist')
 	})
 
 	test('should login with existing account', async ({ page, context }) => {
@@ -31,7 +38,8 @@ test.describe('Authentication Flow', () => {
 		await page.getByTestId('signup-email').fill(uniqueEmail)
 		await page.getByTestId('signup-password').fill(password)
 		await page.getByTestId('signup-submit').click()
-		await page.waitForURL('**/app/**', { timeout: 10000 })
+		await page.waitForURL('**/waitlist', { timeout: 10000 })
+		await whitelistUser(uniqueEmail)
 
 		// Clear the session so we can exercise login from scratch
 		await context.clearCookies()
@@ -59,7 +67,7 @@ test.describe('Authentication Flow', () => {
 		await page.getByTestId('signup-email').fill(uniqueEmail)
 		await page.getByTestId('signup-password').fill(password)
 		await page.getByTestId('signup-submit').click()
-		await page.waitForURL('**/app/**', { timeout: 10000 })
+		await page.waitForURL('**/waitlist', { timeout: 10000 })
 
 		await page.context().clearCookies()
 		await page.goto('/auth/login')

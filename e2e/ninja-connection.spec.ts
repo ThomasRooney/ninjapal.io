@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { whitelistUser } from './lib/db';
 
 test.describe('Ninja Connection Page', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,6 +13,9 @@ test.describe('Ninja Connection Page', () => {
     await page.getByTestId('signup-password').fill(password);
     await page.getByTestId('signup-submit').click();
     await expect(page.getByTestId('signup-submit')).not.toBeVisible();
+
+    // Private beta gate
+    await whitelistUser(uniqueEmail);
 
     // Login
     await page.goto('/auth/login');
