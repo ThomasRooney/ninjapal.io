@@ -61,3 +61,28 @@ test.describe('Director check-ins', () => {
 		await expect(page.getByText(/looked at:/i).first()).toBeVisible()
 	})
 })
+
+test.describe('Pit chat', () => {
+	test('steering chat answers from live tools', async ({ page }) => {
+		test.setTimeout(120_000)
+		await page.goto('/auth/login')
+		await page.getByTestId('login-email').fill('demo@pitminder.com')
+		await page.getByTestId('login-password').fill('demo-smoker-2026')
+		await page.getByTestId('login-submit').click()
+		await page.waitForURL('**/app/**', { timeout: 15000 })
+		await page.goto('/app/messages')
+
+		const input = page.getByTestId('pit-chat-input')
+		await expect(input).toBeVisible({ timeout: 20000 })
+		await input.fill(
+			'What is the current pit temperature? Reply with one short sentence including the °C number.',
+		)
+		await page.getByTestId('pit-chat-send').click()
+
+		// Agent must ground the answer in get_telemetry and mention a temp
+		const messages = page.getByTestId('chat-message')
+		await expect(messages.last()).toContainText(/°C|\bdegrees\b/i, {
+			timeout: 60000,
+		})
+	})
+})

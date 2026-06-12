@@ -1,4 +1,5 @@
 import NavApp from '@/components/nav-app.tsx'
+import { PitChat } from '@/components/pit-chat'
 import { PushToggle } from '@/components/push-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -293,11 +294,13 @@ function MessagesPage() {
 					<h1 className='text-3xl font-bold'>Messages</h1>
 					<PushToggle />
 				</div>
-				<p className='text-muted-foreground mt-2 mb-6'>
+				<p className='text-muted-foreground mt-2 mb-4'>
 					{pendingCount > 0
 						? `${pendingCount} thing${pendingCount > 1 ? 's' : ''} need${pendingCount > 1 ? '' : 's'} your attention`
 						: 'All caught up — the pit minds itself'}
 				</p>
+
+				<PitChat className='mb-6' />
 
 				{messages === undefined ? null : feed.length === 0 ? (
 					<Card>

@@ -37,4 +37,12 @@ export default defineConfig({
 			'@': resolve(__dirname, './src'),
 		},
 	},
+	// Playwright is lazy-loaded for the Ninja OAuth flow and must never be
+	// bundled (CLAUDE.md) — keep the optimizer/SSR pipeline away from it.
+	optimizeDeps: {
+		exclude: ['playwright', 'playwright-core'],
+	},
+	ssr: {
+		external: ['playwright', 'playwright-core', 'chromium-bidi'],
+	},
 })
