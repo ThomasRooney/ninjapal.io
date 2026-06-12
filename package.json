@@ -65,6 +65,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/router-plugin": "^1.121.34",
     "@tanstack/zod-form-adapter": "^0.42.1",
+    "@vercel/blob": "^2.4.0",
     "better-auth": "^1.2.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

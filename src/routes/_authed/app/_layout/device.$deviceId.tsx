@@ -1,3 +1,4 @@
+import { CookPhotos } from '@/components/cook-photos'
 import {
 	EtaLine,
 	PitControl,
@@ -389,6 +390,8 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 					</Card>
 				)}
 			</div>
+
+			<CookPhotos deviceId={device.id ?? ''} />
 
 			{/* Temperature History Graph */}
 			<TemperatureGraph

@@ -56,6 +56,7 @@ import { and, desc, eq, gt, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
+import { del as blobDel } from '@vercel/blob'
 
 const DB_URL = process.env.ZERO_UPSTREAM_DB
 if (!DB_URL) {
@@ -1334,7 +1335,36 @@ async function stepSimulatedDevices() {
 	}
 }
 
+const PHOTO_TTL_DAYS = 60
+let lastPhotoReapMs = 0
+
+/** Reaps cook photos past their 60-day TTL: blob first, then the row. */
+async function reapExpiredPhotos() {
+	if (Date.now() - lastPhotoReapMs < 6 * 3_600_000) return
+	lastPhotoReapMs = Date.now()
+	const cutoff = new Date(Date.now() - PHOTO_TTL_DAYS * 24 * 3_600_000)
+	const expired = await db
+		.select({ id: cookPhotos.id, url: cookPhotos.url })
+		.from(cookPhotos)
+		.where(lte(cookPhotos.createdAt, cutoff))
+		.limit(100)
+	for (const photo of expired) {
+		try {
+			if (process.env.BLOB_READ_WRITE_TOKEN) await blobDel(photo.url)
+			await db.delete(cookPhotos).where(eq(cookPhotos.id, photo.id))
+			console.log(`photos: reaped expired ${photo.id}`)
+		} catch (error) {
+			console.error(
+				`photos: failed to reap ${photo.id}:`,
+				error instanceof Error ? error.message : error,
+			)
+		}
+	}
+}
+
 async function cycle() {
+	await reapExpiredPhotos()
+
 	// Simulated grills first: cheap, high-value, and must never be starved
 	// by slow browser-auth attempts against stale real connections.
 	await stepSimulatedDevices()

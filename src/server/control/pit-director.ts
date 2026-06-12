@@ -229,7 +229,7 @@ export async function runDirectorLoop(opts: {
 			toolResults.push({
 				type: 'tool_result',
 				tool_use_id: use.id,
-				content: JSON.stringify(output ?? null),
+				content: toolResultContent(use.name, output, isError),
 				is_error: isError || undefined,
 			})
 		}
@@ -237,6 +237,33 @@ export async function runDirectorLoop(opts: {
 	}
 
 	return result
+}
+
+/**
+ * list_photos returns the actual images (URL source blocks) so the model
+ * can judge bark/smoke ring — capped at the 3 most recent to bound cost.
+ */
+function toolResultContent(
+	toolName: string,
+	output: unknown,
+	isError: boolean,
+): string | Anthropic.ToolResultBlockParam['content'] {
+	if (toolName === 'list_photos' && !isError && Array.isArray(output)) {
+		const photos = output.filter(
+			(p): p is { url: string } =>
+				typeof (p as { url?: unknown }).url === 'string',
+		)
+		if (photos.length > 0) {
+			return [
+				{ type: 'text' as const, text: JSON.stringify(output) },
+				...photos.slice(0, 3).map((p) => ({
+					type: 'image' as const,
+					source: { type: 'url' as const, url: p.url },
+				})),
+			]
+		}
+	}
+	return JSON.stringify(output ?? null)
 }
 
 async function dispatchTool(
