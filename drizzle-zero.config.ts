@@ -63,6 +63,8 @@ export default drizzleZeroConfig(drizzleSchema, {
       probe1_temp_b: true, // NEW - disabled for migration
       probe2_temp_a: true, // Renamed from probe2_temp - disabled for migration
       probe2_temp_b: true, // NEW - disabled for migration
+      probe1_target_temp: true, // app-owned doneness target
+      probe2_target_temp: true, // app-owned doneness target
       temp_smoke: true, // New column - enabled after migration complete
       
       // Cooking State
@@ -145,6 +147,22 @@ export default drizzleZeroConfig(drizzleSchema, {
       historyType: true,
       changedBy: true,
       changes: true,
+    },
+    cookSessions: {
+      id: true,
+      deviceId: true,
+      userId: true,
+      name: true,
+      cook_mode: true,
+      startedAt: true,
+      endedAt: true,
+      setpoint: true,
+      max_temp_grill: true,
+      avg_temp_grill: true,
+      max_probe1_temp: true,
+      stability_score: true,
+      stall_seconds: true,
+      lid_open_count: true,
     },
   },
 

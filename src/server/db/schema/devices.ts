@@ -49,6 +49,16 @@ export const devices = pgTable(
 		probe2_temp_a: numeric('probe2_temp_a', { precision: 5, scale: 1 }), // Renamed from probe2_temp
 		probe2_temp_b: numeric('probe2_temp_b', { precision: 5, scale: 1 }), // NEW
 
+		// Doneness targets (app-owned, user-set, °C)
+		probe1_target_temp: numeric('probe1_target_temp', {
+			precision: 5,
+			scale: 1,
+		}),
+		probe2_target_temp: numeric('probe2_target_temp', {
+			precision: 5,
+			scale: 1,
+		}),
+
 		// Cooking State
 		cook_state_raw: text('cook_state_raw'), // JSON string
 		cook_mode: varchar('cook_mode', { length: 50 }),

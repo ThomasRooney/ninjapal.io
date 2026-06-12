@@ -52,6 +52,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 			{ cmp }: ExpressionBuilder<Schema, 'devices'>,
 		) => cmp('userId', authData.sub as string)
 
+		const allowIfSelfSession = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'cookSessions'>,
+		) => cmp('userId', authData.sub as string)
+
 		return {
 			users: {
 				row: {
@@ -98,6 +103,19 @@ export const permissions = definePermissions<AuthData, Schema>(
 						postMutation: [],
 					},
 					delete: [],
+				},
+			},
+			cookSessions: {
+				row: {
+					select: [allowIfSelfSession],
+					// Sessions are created/ended server-side (sync worker / seed);
+					// clients may rename their own sessions.
+					insert: [],
+					update: {
+						preMutation: [allowIfSelfSession],
+						postMutation: [allowIfSelfSession],
+					},
+					delete: [allowIfSelfSession],
 				},
 			},
 		} satisfies PermissionsConfig<AuthData, Schema>
