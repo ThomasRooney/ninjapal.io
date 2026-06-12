@@ -146,7 +146,13 @@ export function stabilityScore(
 	setpointC: number,
 ): number | null {
 	if (points.length < 3 || !Number.isFinite(setpointC)) return null
-	const devs = points.map((p) => p.value - setpointC)
+	// Score the hold, not the climb: start from the first time the pit
+	// reaches ~97% of setpoint (preheat ramps would swamp the RMS).
+	const sorted = [...points].sort((a, b) => a.t - b.t)
+	const firstAt = sorted.findIndex((p) => p.value >= setpointC * 0.97)
+	const hold = firstAt === -1 ? sorted : sorted.slice(firstAt)
+	if (hold.length < 3) return null
+	const devs = hold.map((p) => p.value - setpointC)
 	const rms = Math.sqrt(devs.reduce((acc, d) => acc + d * d, 0) / devs.length)
 	const score = Math.round(100 * Math.exp(-rms / 14.4)) // e-folding ≈ 14.4°C
 	return Math.max(0, Math.min(100, score))

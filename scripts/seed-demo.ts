@@ -5,6 +5,11 @@
  *
  * Usage: bun scripts/seed-demo.ts   (requires the local dev stack: mise run dev)
  */
+import {
+	detectStall,
+	stabilityScore,
+	type TempPoint,
+} from '@/lib/cook-analysis'
 import { Client } from 'pg'
 
 const DEMO_EMAIL = 'demo@pitminder.com'
@@ -62,45 +67,71 @@ async function ensureAuthUser(db: Client): Promise<string> {
 	return rows[0].id as string
 }
 
-/**
- * Generates an ~8h "low and slow" brisket cook (all temps °C):
- * preheat → 107°C hold; probe1 climbs, stalls ~68°C, then pushes to ~88°C.
- */
-function generateCookTelemetry(startMs: number, stepMs: number, steps: number) {
-	const points: Array<{
-		t: number
-		temp_grill: number
-		temp_air: number
-		temp_smoke: number
-		probe1_temp_a: number
-		probe1_temp_b: number
-		cook_state: string
-	}> = []
+export interface CookProfile {
+	name: string
+	mode: string
+	setpoint: number // °C grill target
+	probeStart: number
+	probeFinal: number
+	stall: { at: number; until: number } | null // probe °C plateau bounds (hours)
+	lidDipsAtHours: number[]
+	durationHours: number
+}
 
-	const target = 107 // 225°F
+export type CookPoint = {
+	t: number
+	temp_grill: number
+	temp_air: number
+	temp_smoke: number
+	probe1_temp_a: number
+	probe1_temp_b: number
+	cook_state: string
+	is_lid_open: boolean
+}
+
+/** Generates telemetry for a cook (all temps °C, 5-min cadence). */
+function generateCookTelemetry(
+	startMs: number,
+	profile: CookProfile,
+): CookPoint[] {
+	const stepMs = 5 * 60 * 1000
+	const steps = Math.round((profile.durationHours * 3_600_000) / stepMs)
+	const points: CookPoint[] = []
+
+	const target = profile.setpoint
 	let grill = 18 // ambient start
-	let probe = 6 // fridge-cold brisket
+	let probe = profile.probeStart
 
 	for (let i = 0; i <= steps; i++) {
 		const t = startMs + i * stepMs
 		const hours = (i * stepMs) / 3_600_000
 
+		const lidOpen = profile.lidDipsAtHours.some(
+			(h) => Math.abs(hours - h) < 0.05,
+		)
 		if (hours < 0.5) {
-			// Preheat: rise toward target
 			grill += (target - grill) * 0.35 + jitter(1.5)
 		} else {
-			// Hold with lid-open dips around hours 3 and 6 (spritzing)
-			const dip = Math.abs(hours - 3) < 0.1 || Math.abs(hours - 6) < 0.1 ? -12 : 0
+			const dip = profile.lidDipsAtHours.some((h) => Math.abs(hours - h) < 0.1)
+				? -12
+				: 0
 			grill = target + dip + jitter(3)
 		}
 
-		// Brisket internal: climb, stall at ~68°C between h3.5 and h5.5, then climb
+		// Probe: climb toward final; optional stall plateau
 		let probeRate: number
+		const stallLow = profile.probeFinal * 0.72
 		if (hours < 0.5) probeRate = 0.5
-		else if (probe < 65) probeRate = (72 - probe) * 0.045
-		else if (hours < 5.5 && probe < 70) probeRate = 0.12 // the stall
-		else probeRate = (95 - probe) * 0.035
+		else if (
+			profile.stall &&
+			hours >= profile.stall.at &&
+			hours < profile.stall.until &&
+			probe >= stallLow
+		)
+			probeRate = 0.12 // the stall
+		else probeRate = (profile.probeFinal * 1.05 - probe) * 0.04
 		probe += probeRate * (stepMs / 600_000) * 2 + jitter(0.2)
+		probe = Math.min(probe, profile.probeFinal)
 
 		points.push({
 			t,
@@ -110,24 +141,58 @@ function generateCookTelemetry(startMs: number, stepMs: number, steps: number) {
 			probe1_temp_a: round1(probe),
 			probe1_temp_b: round1(probe - 1.5 + jitter(0.5)),
 			cook_state: hours < 0.5 ? 'preheating' : 'cooking',
+			is_lid_open: lidOpen,
 		})
 	}
 	return points
 }
 
-function deviceState(p: ReturnType<typeof generateCookTelemetry>[number]) {
+export const COOK_PROFILES: Record<string, CookProfile> = {
+	brisket: {
+		name: 'Saturday Brisket',
+		mode: 'smoker',
+		setpoint: 107, // 225°F low and slow
+		probeStart: 6,
+		probeFinal: 96,
+		stall: { at: 3.5, until: 5.5 },
+		lidDipsAtHours: [3, 6],
+		durationHours: 8,
+	},
+	ribs: {
+		name: 'Baby Back Ribs',
+		mode: 'smoker',
+		setpoint: 121, // 250°F
+		probeStart: 8,
+		probeFinal: 93,
+		stall: { at: 2, until: 3 },
+		lidDipsAtHours: [2, 3.5], // wrap + sauce
+		durationHours: 5,
+	},
+	chicken: {
+		name: 'Beer Can Chicken',
+		mode: 'grill',
+		setpoint: 180, // hot roast
+		probeStart: 7,
+		probeFinal: 74,
+		stall: null,
+		lidDipsAtHours: [1],
+		durationHours: 2,
+	},
+}
+
+function deviceState(p: CookPoint, profile: CookProfile) {
 	// Shape mirrors what syncRealDevices stores in history (drizzle field names)
 	return {
 		dsn: 'DEMO000000001',
-		productName: 'Demo Smoker (Brisket Cook)',
+		productName: 'Demo Smoker',
 		model: 'OG901UK',
 		connectionStatus: 'Online',
-		cook_mode: 'smoker',
+		cook_mode: profile.mode,
 		cook_state: p.cook_state,
-		cook_smoke_level: 1,
+		cook_smoke_level: profile.mode === 'smoker' ? 1 : 0,
 		power_state: 'on',
 		gs_state: p.cook_state,
-		is_lid_open: false,
+		is_lid_open: p.is_lid_open,
 		is_probe1_installed: true,
 		is_probe2_installed: false,
 		temp_grill: p.temp_grill,
@@ -136,6 +201,103 @@ function deviceState(p: ReturnType<typeof generateCookTelemetry>[number]) {
 		probe1_temp_a: p.probe1_temp_a,
 		probe1_temp_b: p.probe1_temp_b,
 	}
+}
+
+/** Inserts hourly snapshots + 5-min patches for a cook's points. */
+async function insertCookHistory(
+	db: Client,
+	deviceId: string,
+	points: CookPoint[],
+	profile: CookProfile,
+): Promise<number> {
+	let inserted = 0
+	let prevState: Record<string, unknown> | null = null
+	for (const [i, p] of points.entries()) {
+		const state = deviceState(p, profile)
+		const isSnapshot = i % 12 === 0
+		let changes: Record<string, unknown>
+		if (isSnapshot || !prevState) {
+			changes = state
+		} else {
+			changes = {}
+			for (const [k, v] of Object.entries(state)) {
+				if (prevState[k] !== v) changes[k] = v
+			}
+			if (Object.keys(changes).length === 0) continue
+		}
+		await db.query(
+			`insert into device_history (device_id, recorded_at, history_type, changes)
+			 values ($1, to_timestamp($2 / 1000.0), $3, $4)`,
+			[
+				deviceId,
+				p.t,
+				isSnapshot || !prevState ? 'snapshot' : 'patch',
+				JSON.stringify(changes),
+			],
+		)
+		prevState = state
+		inserted++
+	}
+	return inserted
+}
+
+/** Inserts a cook_sessions row; computes end-of-cook stats for finished cooks. */
+async function insertSession(
+	db: Client,
+	deviceId: string,
+	userId: string,
+	points: CookPoint[],
+	profile: CookProfile,
+	active: boolean,
+): Promise<void> {
+	const grill: TempPoint[] = points.map((p) => ({ t: p.t, value: p.temp_grill }))
+	const probe: TempPoint[] = points.map((p) => ({
+		t: p.t,
+		value: p.probe1_temp_a,
+	}))
+	const startedAt = points[0].t
+	const endedAt = points[points.length - 1].t
+
+	if (active) {
+		await db.query(
+			`insert into cook_sessions (device_id, user_id, name, cook_mode, started_at, setpoint)
+			 values ($1, $2, $3, $4, to_timestamp($5 / 1000.0), $6)`,
+			[deviceId, userId, profile.name, profile.mode, startedAt, profile.setpoint],
+		)
+		return
+	}
+
+	const stall = detectStall(probe)
+	const stallTotal = stall.regions.reduce(
+		(acc, r) => acc + (r.end - r.start),
+		0,
+	)
+	let lidOpens = 0
+	for (let i = 1; i < points.length; i++) {
+		if (points[i].is_lid_open && !points[i - 1].is_lid_open) lidOpens++
+	}
+	await db.query(
+		`insert into cook_sessions (
+			device_id, user_id, name, cook_mode, started_at, ended_at, setpoint,
+			max_temp_grill, avg_temp_grill, max_probe1_temp,
+			stability_score, stall_seconds, lid_open_count
+		) values ($1, $2, $3, $4, to_timestamp($5 / 1000.0), to_timestamp($6 / 1000.0), $7, $8, $9, $10, $11, $12, $13)`,
+		[
+			deviceId,
+			userId,
+			profile.name,
+			profile.mode,
+			startedAt,
+			endedAt,
+			profile.setpoint,
+			Math.max(...grill.map((p) => p.value)).toFixed(1),
+			(grill.reduce((a, p) => a + p.value, 0) / grill.length).toFixed(1),
+			Math.max(...probe.map((p) => p.value)).toFixed(1),
+			stabilityScore(grill, profile.setpoint),
+			Math.round(stallTotal / 1000),
+			lidOpens,
+		],
+	)
 }
 
 async function main() {
@@ -156,11 +318,22 @@ async function main() {
 	await db.query(`delete from devices where user_id = $1 and dsn like 'DEMO%'`, [userId])
 
 	const now = Date.now()
-	const stepMs = 5 * 60 * 1000
-	const steps = 96 // 8 hours
-	const startMs = now - steps * stepMs
-	const points = generateCookTelemetry(startMs, stepMs, steps)
+	const HOUR = 3_600_000
+
+	// Active brisket cook: started 8h ago, still going
+	const brisket = COOK_PROFILES.brisket
+	const brisketStart = now - brisket.durationHours * HOUR
+	const points = generateCookTelemetry(brisketStart, brisket)
 	const latest = points[points.length - 1]
+
+	// Two finished historical cooks (well-separated windows)
+	const ribs = COOK_PROFILES.ribs
+	const ribsStart = now - 2 * 24 * HOUR - ribs.durationHours * HOUR
+	const ribsPoints = generateCookTelemetry(ribsStart, ribs)
+
+	const chicken = COOK_PROFILES.chicken
+	const chickenStart = now - 1 * 24 * HOUR - chicken.durationHours * HOUR
+	const chickenPoints = generateCookTelemetry(chickenStart, chicken)
 
 	// Raw JSON blobs the overview/status pages parse (mirrors GET_GrillState shape)
 	const grillStateRaw = JSON.stringify({
@@ -219,7 +392,7 @@ async function main() {
 			grill_state_raw, probe_state_raw,
 			ota_fw_version, device_serial_num, created_at, updated_at
 		) values (
-			$1, 'DEMO000000001', 'Demo Smoker (Brisket Cook)', 'OG901UK', 'DE:MO:00:00:00:01', '192.168.1.42', 'Online',
+			$1, 'DEMO000000001', 'Demo Smoker', 'OG901UK', 'DE:MO:00:00:00:01', '192.168.1.42', 'Online',
 			-52, 'smoker', $2, 1, 'on', $2,
 			false, true, false,
 			$3, $4, $5, $6, $7,
@@ -236,7 +409,7 @@ async function main() {
 			latest.probe1_temp_a,
 			latest.probe1_temp_b,
 			now + 4 * 3_600_000,
-			startMs,
+			brisketStart,
 			grillStateRaw,
 			probeStateRaw,
 		],
@@ -250,32 +423,18 @@ async function main() {
 		[userId],
 	)
 
-	// History: snapshot at each hour boundary, patches every 5 minutes between
+	// Telemetry + sessions for all three cooks (ribs/chicken finished, brisket live)
 	let inserted = 0
-	let prevState: Record<string, unknown> | null = null
-	for (const [i, p] of points.entries()) {
-		const state = deviceState(p)
-		const isSnapshot = i % 12 === 0 // every hour
-		let changes: Record<string, unknown>
-		if (isSnapshot || !prevState) {
-			changes = state
-		} else {
-			changes = {}
-			for (const [k, v] of Object.entries(state)) {
-				if (prevState[k] !== v) changes[k] = v
-			}
-			if (Object.keys(changes).length === 0) continue
-		}
-		await db.query(
-			`insert into device_history (device_id, recorded_at, history_type, changes)
-			 values ($1, to_timestamp($2 / 1000.0), $3, $4)`,
-			[smokerId, p.t, isSnapshot || !prevState ? 'snapshot' : 'patch', JSON.stringify(changes)],
-		)
-		prevState = state
-		inserted++
-	}
+	inserted += await insertCookHistory(db, smokerId, ribsPoints, ribs)
+	await insertSession(db, smokerId, userId, ribsPoints, ribs, false)
+	inserted += await insertCookHistory(db, smokerId, chickenPoints, chicken)
+	await insertSession(db, smokerId, userId, chickenPoints, chicken, false)
+	inserted += await insertCookHistory(db, smokerId, points, brisket)
+	await insertSession(db, smokerId, userId, points, brisket, true)
 
-	console.log(`Seeded ${inserted} history records over 8h for device ${smokerId}`)
+	console.log(
+		`Seeded ${inserted} history records across 3 cooks for device ${smokerId}`,
+	)
 	console.log('')
 	console.log('Demo login:')
 	console.log(`  email:    ${DEMO_EMAIL}`)

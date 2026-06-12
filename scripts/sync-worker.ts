@@ -9,16 +9,23 @@
  *
  * Usage: bun scripts/sync-worker.ts
  */
+import {
+	detectStall,
+	stabilityScore,
+	type TempPoint,
+} from '@/lib/cook-analysis'
+import { reconstructHistorySnapshots } from '@/lib/historyUtils'
 import { NinjaAuthManager } from '@/ninjaAuth/ninja-auth-manager'
 import type { EnhancedAuthState } from '@/ninjaAuth/types'
 import { type AylaDevice, buildDeviceData } from '@/server/db/build-device-data'
 import {
+	cookSessions,
 	deviceHistory,
 	devices,
 	ninjaConnections,
 } from '@/server/db/schema'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
-import { and, eq, gte } from 'drizzle-orm'
+import { and, eq, gte, isNull, lte } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
@@ -68,6 +75,128 @@ function toHistoryState(
 		state[k] = v instanceof Date ? v.toISOString() : v
 	}
 	return state
+}
+
+const COOKING_STATES = new Set(['preheating', 'cooking'])
+
+function isCooking(state: unknown): boolean {
+	return typeof state === 'string' && COOKING_STATES.has(state.toLowerCase())
+}
+
+function autoSessionName(mode: unknown, when: Date): string {
+	const day = when.toLocaleDateString('en-GB', { weekday: 'long' })
+	const m = typeof mode === 'string' && mode ? mode : 'cook'
+	return `${day} ${m}`
+}
+
+function parseSetpoint(deviceData: Record<string, unknown>): number | null {
+	try {
+		const gs = deviceData.grill_state_raw
+		if (typeof gs === 'string') {
+			const parsed = JSON.parse(gs)
+			if (typeof parsed.setpoint === 'number') return parsed.setpoint
+		}
+	} catch {}
+	return null
+}
+
+/** Creates/ends cook_sessions on cook_state transitions. */
+async function handleSessionTransition(
+	deviceId: string,
+	userId: string,
+	prevState: unknown,
+	deviceData: Record<string, unknown>,
+) {
+	const nowCooking = isCooking(deviceData.cook_state)
+	const wasCooking = isCooking(prevState)
+	if (nowCooking === wasCooking) return
+
+	if (nowCooking) {
+		const now = new Date()
+		await db.insert(cookSessions).values({
+			deviceId,
+			userId,
+			name: autoSessionName(deviceData.cook_mode, now),
+			cook_mode: (deviceData.cook_mode as string) ?? null,
+			startedAt: now,
+			setpoint: parseSetpoint(deviceData)?.toString() ?? null,
+		})
+		console.log(`session started for device ${deviceId}`)
+		return
+	}
+
+	// Cook ended: close the active session and compute stats from history
+	const [active] = await db
+		.select()
+		.from(cookSessions)
+		.where(
+			and(eq(cookSessions.deviceId, deviceId), isNull(cookSessions.endedAt)),
+		)
+		.limit(1)
+	if (!active) return
+
+	const endedAt = new Date()
+	const rows = await db
+		.select()
+		.from(deviceHistory)
+		.where(
+			and(
+				eq(deviceHistory.deviceId, deviceId),
+				gte(deviceHistory.recordedAt, active.startedAt),
+				lte(deviceHistory.recordedAt, endedAt),
+			),
+		)
+	const snapshots = reconstructHistorySnapshots(
+		rows
+			.map((r) => ({
+				id: Number(r.id),
+				historyType: r.historyType,
+				recordedAt: r.recordedAt?.getTime() ?? null,
+				changedBy: r.changedBy,
+				changes: r.changes as never,
+			}))
+			.sort((a, b) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0)),
+	)
+	const seriesOf = (key: string): TempPoint[] =>
+		snapshots
+			.filter((s) => typeof s.state[key] === 'number' && s.recordedAt)
+			.map((s) => ({ t: s.recordedAt as number, value: s.state[key] as number }))
+			.sort((a, b) => a.t - b.t)
+
+	const grill = seriesOf('temp_grill')
+	const probe = seriesOf('probe1_temp_a')
+	const setpoint = active.setpoint ? Number(active.setpoint) : null
+	const stall = detectStall(probe)
+	const stallTotal = stall.regions.reduce((acc, r) => acc + (r.end - r.start), 0)
+	let lidOpens = 0
+	let prevOpen = false
+	for (const s of [...snapshots].sort(
+		(a, b) => (a.recordedAt ?? 0) - (b.recordedAt ?? 0),
+	)) {
+		const open = s.state.is_lid_open === true
+		if (open && !prevOpen) lidOpens++
+		prevOpen = open
+	}
+
+	await db
+		.update(cookSessions)
+		.set({
+			endedAt,
+			max_temp_grill: grill.length
+				? Math.max(...grill.map((p) => p.value)).toFixed(1)
+				: null,
+			avg_temp_grill: grill.length
+				? (grill.reduce((a, p) => a + p.value, 0) / grill.length).toFixed(1)
+				: null,
+			max_probe1_temp: probe.length
+				? Math.max(...probe.map((p) => p.value)).toFixed(1)
+				: null,
+			stability_score: setpoint ? stabilityScore(grill, setpoint) : null,
+			stall_seconds: Math.round(stallTotal / 1000),
+			lid_open_count: lidOpens,
+		})
+		.where(eq(cookSessions.id, active.id))
+	console.log(`session ${active.id} ended for device ${deviceId}`)
 }
 
 async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
@@ -156,6 +285,12 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 
 		if (existing) {
 			await db.update(devices).set(row).where(eq(devices.id, existing.id))
+			await handleSessionTransition(
+				existing.id,
+				conn.userId,
+				existing.cook_state,
+				deviceData,
+			)
 
 			// Hourly snapshot, otherwise a merge patch against the previous state
 			const hourStart = new Date()
@@ -206,6 +341,12 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 					historyType: 'snapshot',
 					changes: historyState,
 				})
+				await handleSessionTransition(
+					inserted.id,
+					conn.userId,
+					null,
+					deviceData,
+				)
 			}
 			console.log(`new device ${device.dsn} for user ${conn.userId}`)
 		}
