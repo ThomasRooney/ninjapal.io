@@ -3,126 +3,105 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PitMinder — your smoker, minded</title>
-<meta name="description" content="PitMinder watches your Ninja Woodfire grill so you don't have to. Live temperatures, beautiful cook graphs, and a full history of every brisket." />
+<title>PitMinder — the AI pitmaster for your Ninja Woodfire</title>
+<meta name="description" content="Tell PitMinder when you want to eat. It plans the cook, runs the pit, coaches you through the stall, and drops to hold-warm at perfect juiciness." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23dc2626'/%3E%3Cpath d='M10 20 L14 13 L18 17 L23 9' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 <style>
   :root {
-    --bg: #0c0a09;
-    --panel: #1c1917;
-    --border: #292524;
-    --text: #fafaf9;
-    --muted: #a8a29e;
-    --ember: #dc2626;
-    --flame: #f59e0b;
-    --sky: #3b82f6;
+    --bg: #0c0a09; --panel: #1c1917; --border: #292524; --text: #fafaf9;
+    --muted: #a8a29e; --ember: #dc2626; --flame: #f59e0b; --sky: #3b82f6; --ok: #22c55e;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-  }
+  body { background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; -webkit-font-smoothing: antialiased; }
   .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 22px 0;
-  }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
   .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
-  .logo svg { display: block; }
-  nav a.login {
-    color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600;
-    border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px;
-    transition: border-color .15s ease;
-  }
+  nav a.login { color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600; border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; transition: border-color .15s ease; }
   nav a.login:hover { border-color: var(--muted); }
-  .hero { padding: 72px 0 40px; text-align: center; }
-  .hero h1 {
-    font-size: clamp(40px, 7vw, 64px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05;
-  }
+
+  .hero { padding: 64px 0 40px; text-align: center; }
+  .hero h1 { font-size: clamp(38px, 7vw, 62px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
   .hero h1 .ember { color: var(--ember); }
-  .hero p.sub {
-    margin: 22px auto 0; max-width: 560px; color: var(--muted); font-size: 19px;
-  }
-  .cta-row { margin-top: 36px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-  .cta {
-    background: var(--ember); color: white; text-decoration: none; font-weight: 700;
-    padding: 14px 28px; border-radius: 10px; font-size: 16px;
-    transition: transform .1s ease, background .15s ease;
-  }
+  .hero p.sub { margin: 22px auto 0; max-width: 640px; color: var(--muted); font-size: 19px; }
+  .hero p.sub strong { color: var(--text); font-weight: 600; }
+  .cta-row { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .cta { background: var(--ember); color: white; text-decoration: none; font-weight: 700; padding: 14px 28px; border-radius: 10px; font-size: 16px; transition: transform .1s ease, background .15s ease; }
   .cta:hover { background: #b91c1c; transform: translateY(-1px); }
   .cta.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 600; }
   .cta.ghost:hover { background: var(--panel); }
-  .graph-card {
-    margin: 64px auto 0; max-width: 860px; background: var(--panel);
-    border: 1px solid var(--border); border-radius: 16px; padding: 28px 28px 16px;
-    text-align: left;
-  }
-  .graph-card .gc-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 14px; }
-  .graph-card h3 { font-size: 15px; font-weight: 600; }
-  .graph-card .live { color: var(--muted); font-size: 13px; }
-  .live .dot { display: inline-block; width: 8px; height: 8px; background: #22c55e; border-radius: 50%; margin-right: 6px; animation: pulse 2s infinite; }
-  @keyframes pulse { 50% { opacity: .35; } }
-  .legend { display: flex; gap: 20px; padding: 10px 4px 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+
+  .graph-card { margin: 56px auto 0; max-width: 880px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 26px 26px 14px; text-align: left; }
+  .gc-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 12px; flex-wrap: wrap; gap: 6px; }
+  .gc-head h3 { font-size: 15px; font-weight: 600; }
+  .phase { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; padding: 3px 10px; border-radius: 999px; background: #29252480; color: var(--flame); border: 1px solid var(--border); transition: color .6s ease; }
+  .legend { display: flex; gap: 18px; padding: 10px 4px 6px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
   .legend .key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-right: 7px; vertical-align: middle; }
-  section.features { padding: 88px 0; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 26px;
-  }
-  .card .icon { font-size: 26px; }
-  .card h3 { margin: 14px 0 8px; font-size: 17px; letter-spacing: -0.01em; }
-  .card p { color: var(--muted); font-size: 15px; }
-  .stall {
-    margin: 0 auto; max-width: 720px; text-align: center; padding: 0 0 88px;
-  }
-  .stall h2 { font-size: clamp(26px, 4vw, 34px); letter-spacing: -0.02em; }
-  .stall p { color: var(--muted); margin-top: 14px; font-size: 17px; }
-  section.showcase { padding: 0 0 88px; }
-  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: stretch; }
-  .mock-panel, .mock-phone {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px;
-  }
-  .mp-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-  .mp-title { font-weight: 700; }
-  .chip {
-    display: inline-block; font-size: 12px; padding: 4px 10px; border-radius: 999px;
-    border: 1px solid var(--border); color: var(--muted); margin-left: 6px;
-  }
-  .chip.active { background: var(--ember); border-color: var(--ember); color: white; font-weight: 600; }
-  .mp-set { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 26px 0 10px; }
-  .mp-btn {
-    width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: transparent;
-    color: var(--text); font-size: 22px; cursor: pointer; transition: background .15s ease;
-  }
-  .mp-btn:hover { background: rgba(255,255,255,0.06); }
-  .mp-temp { font-size: 44px; font-weight: 800; letter-spacing: -0.02em; text-align: center; }
-  .mp-sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
-  .mp-smoke { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0 20px; color: var(--muted); font-size: 13px; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--border); display: inline-block; cursor: pointer; }
-  .dot.on { background: var(--flame); }
-  .mp-start {
-    width: 100%; padding: 12px; border-radius: 10px; border: none; background: #16653422; color: #22c55e;
-    font-weight: 700; font-size: 14px; cursor: pointer; border: 1px solid #22c55e44;
-  }
-  .mock-phone { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
-  .notif {
-    background: #292524; border: 1px solid #3b3835; border-radius: 14px; padding: 12px 14px;
-    display: flex; flex-direction: column; gap: 2px;
-  }
-  .notif.dim { opacity: 0.65; }
+
+  section.story { padding: 80px 0 8px; }
+  .story h2, .coach-wrap h2 { font-size: clamp(26px, 4vw, 34px); letter-spacing: -0.02em; text-align: center; }
+  .story .lead, .coach-wrap .lead { color: var(--muted); text-align: center; max-width: 620px; margin: 12px auto 36px; font-size: 17px; }
+
+  .chat { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; min-height: 460px; }
+  .bubble { max-width: 86%; padding: 12px 16px; border-radius: 16px; font-size: 14.5px; opacity: 0; transform: translateY(8px); transition: opacity .45s ease, transform .45s ease; }
+  .bubble.show { opacity: 1; transform: none; }
+  .bubble.user { align-self: flex-end; background: var(--ember); color: white; border-bottom-right-radius: 4px; }
+  .bubble.ai { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .bubble.ai .who { font-size: 11px; color: var(--flame); font-weight: 700; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .typing { align-self: flex-start; display: none; gap: 4px; padding: 14px 18px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; border-bottom-left-radius: 4px; }
+  .typing.show { display: flex; }
+  .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .plan { list-style: none; margin-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+  .plan li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; opacity: 0; transform: translateX(-6px); transition: opacity .4s ease, transform .4s ease; }
+  .plan li.show { opacity: 1; transform: none; }
+  .plan .t { font-family: ui-monospace, monospace; color: var(--flame); font-size: 12.5px; min-width: 50px; }
+  .plan .check { color: var(--ok); opacity: 0; transition: opacity .3s ease; }
+  .plan li.done .check { opacity: 1; }
+  .plan li.done { color: var(--muted); }
+  .steer { margin-top: 8px; font-size: 12.5px; color: var(--muted); font-style: italic; }
+
+  .coach-wrap { padding: 80px 0 8px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: stretch; max-width: 880px; margin: 0 auto; }
+  .mock-phone { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 10px; justify-content: flex-start; min-height: 330px; }
+  .notif { background: #292524; border: 1px solid #3b3835; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; opacity: 0; transform: translateY(-10px) scale(.98); transition: opacity .5s ease, transform .5s ease; }
+  .notif.show { opacity: 1; transform: none; }
+  .notif.old { opacity: .55; }
   .n-app { font-size: 11px; color: var(--muted); }
   .notif strong { font-size: 14px; }
   .n-sub { font-size: 12px; color: var(--muted); }
-  footer {
-    border-top: 1px solid var(--border); padding: 30px 0 44px; color: var(--muted); font-size: 14px;
-    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-  }
+  .mock-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
+  .mp-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .mp-title { font-weight: 700; }
+  .chip { display: inline-block; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; }
+  .chip.active { background: var(--ember); border-color: var(--ember); color: white; font-weight: 600; }
+  .mp-set { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 24px 0 8px; }
+  .mp-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 22px; cursor: pointer; }
+  .mp-btn:hover { background: rgba(255,255,255,0.06); }
+  .mp-temp { font-size: 44px; font-weight: 800; letter-spacing: -0.02em; text-align: center; transition: color .5s ease; }
+  .mp-sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+  .mp-note { text-align: center; font-size: 12.5px; color: var(--muted); min-height: 36px; padding: 0 6px; }
+  .mp-note .ai-tag { color: var(--flame); font-weight: 700; }
+  .mp-start { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #22c55e44; background: #16653422; color: #22c55e; font-weight: 700; font-size: 14px; cursor: pointer; margin-top: 12px; }
+
+  section.features { padding: 84px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 26px; }
+  .card .icon { font-size: 26px; }
+  .card h3 { margin: 14px 0 8px; font-size: 17px; letter-spacing: -0.01em; }
+  .card p { color: var(--muted); font-size: 15px; }
+
+  .stall { margin: 0 auto; max-width: 720px; text-align: center; padding: 0 0 88px; }
+  .stall h2 { font-size: clamp(26px, 4vw, 34px); letter-spacing: -0.02em; }
+  .stall p { color: var(--muted); margin-top: 14px; font-size: 17px; }
+  footer { border-top: 1px solid var(--border); padding: 30px 0 44px; color: var(--muted); font-size: 14px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   footer a { color: var(--muted); text-decoration: none; margin-left: 18px; }
   footer a:hover { color: var(--text); }
   footer .note { max-width: 560px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bubble, .plan li, .notif { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -136,9 +115,10 @@
   </header>
 
   <section class="hero">
-    <h1>Your smoker, <span class="ember">minded.</span></h1>
-    <p class="sub">PitMinder watches your Ninja Woodfire grill so you don't have to.
-    Live temperatures, beautiful cook graphs, and a record of every brisket — synced in real time, anywhere you are.</p>
+    <h1>The <span class="ember">AI pitmaster</span><br/>for your Ninja Woodfire.</h1>
+    <p class="sub"><strong>Tell it when you want to eat.</strong> PitMinder plans the cook, runs the pit,
+    coaches you through the stall — and when your brisket hits perfect juiciness, it drops the
+    temperature and holds it warm until you're ready to slice.</p>
     <div class="cta-row">
       <a class="cta" href="https://app.pitminder.com/auth/signup">Start minding your pit</a>
       <a class="cta ghost" href="https://app.pitminder.com/auth/login">I have an account</a>
@@ -146,11 +126,10 @@
 
     <div class="graph-card">
       <div class="gc-head">
-        <h3>Sunday brisket — hour 6 of 12</h3>
-        <span class="live"><span class="dot"></span>Live</span>
+        <h3>Saturday brisket — dinner at 19:00</h3>
+        <span class="phase" id="phase">PREHEAT</span>
       </div>
-      <!-- Live-drawn cook graph from real PitMinder demo telemetry -->
-      <svg id="cookviz" viewBox="0 0 760 230" width="100%" role="img" aria-label="Temperature graph of a brisket cook drawing itself: grill temperature holding steady while the meat climbs through the stall">
+      <svg id="cookviz" viewBox="0 0 760 240" width="100%" role="img" aria-label="A 12-hour AI-managed brisket cook: the pit holds 107°C through the stall, then PitMinder drops it to 65°C hold-warm at perfect doneness">
         <g stroke="#292524" stroke-width="1">
           <line x1="40" y1="30" x2="740" y2="30"/><line x1="40" y1="80" x2="740" y2="80"/>
           <line x1="40" y1="130" x2="740" y2="130"/><line x1="40" y1="180" x2="740" y2="180"/>
@@ -159,19 +138,100 @@
           <text x="6" y="34">120&#176;</text><text x="12" y="84">90&#176;</text>
           <text x="12" y="134">60&#176;</text><text x="12" y="184">30&#176;</text>
         </g>
+        <polyline id="line-set" fill="none" stroke="#fafaf9" stroke-width="1.5" stroke-dasharray="5 5" opacity="0.5" points=""/>
         <polyline id="line-grill" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points=""/>
         <polyline id="line-air" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9" points=""/>
         <polyline id="line-probe" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points=""/>
-        <g id="stall-note" font-size="12" font-family="ui-sans-serif, system-ui" fill="#a8a29e" opacity="0">
-          <text x="395" y="120" font-style="italic">the stall &#128548;</text>
-          <path d="M440 125 q 20 14 30 9" stroke="#57534e" fill="none" stroke-width="1"/>
+        <g id="stall-note" font-size="12" font-family="ui-sans-serif, system-ui" fill="#a8a29e" opacity="0" style="transition: opacity 1s ease">
+          <text x="300" y="118" font-style="italic">the stall &#128548;</text>
         </g>
-        <text id="hour-note" x="740" y="220" text-anchor="end" font-size="11" fill="#57534e" font-family="ui-monospace, monospace"></text>
+        <g id="hold-note" font-size="12" font-family="ui-sans-serif, system-ui" opacity="0" style="transition: opacity 1s ease">
+          <text x="568" y="44" fill="#22c55e" font-weight="700">perfect juiciness</text>
+          <text x="568" y="59" fill="#a8a29e">AI drops pit &#8594; hold-warm</text>
+          <line x1="563" y1="36" x2="563" y2="185" stroke="#22c55e" stroke-width="1" stroke-dasharray="3 4" opacity="0.6"/>
+        </g>
+        <g font-size="11" font-family="ui-monospace, monospace">
+          <text x="738" y="225" text-anchor="end" fill="#dc2626" font-weight="700">&#127869;&#65039; dinner 19:00</text>
+        </g>
+        <text id="hour-note" x="40" y="225" font-size="11" fill="#57534e" font-family="ui-monospace, monospace"></text>
       </svg>
       <div class="legend">
-        <span><span class="key" style="background:#dc2626"></span>Grill <span id="v-grill">—</span></span>
-        <span><span class="key" style="background:#3b82f6"></span>Chamber <span id="v-air">—</span></span>
-        <span><span class="key" style="background:#f59e0b"></span>Brisket <span id="v-probe">—</span></span>
+        <span><span class="key" style="background:#dc2626"></span>Grill <span id="v-grill">&#8212;</span></span>
+        <span><span class="key" style="background:#3b82f6"></span>Chamber <span id="v-air">&#8212;</span></span>
+        <span><span class="key" style="background:#f59e0b"></span>Brisket <span id="v-probe">&#8212;</span></span>
+        <span><span class="key" style="background:#fafaf9;opacity:.5"></span>AI setpoint <span id="v-set">&#8212;</span></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="story">
+    <h2>Start with a sentence, not a spreadsheet</h2>
+    <p class="lead">Tell PitMinder what you're cooking and when you want to eat. It builds the
+    plan, adjusts as reality happens, and you just ack each step — or steer.</p>
+    <div class="chat" id="chat">
+      <div class="bubble user" data-step="0">Want to eat at <strong>19:00</strong>. I've got a 4kg brisket and two racks of baby backs.</div>
+      <div class="typing" id="typing"><i></i><i></i><i></i></div>
+      <div class="bubble ai" data-step="1">
+        <div class="who">PITMINDER</div>
+        Lovely. Brisket needs ~10h at 107&#176;C plus rest; ribs join later. Here's your Saturday:
+        <ul class="plan">
+          <li data-plan="0"><span class="t">06:30</span> Fire up &#8212; pit to 107&#176;C <span class="check">&#10003;</span></li>
+          <li data-plan="1"><span class="t">07:00</span> Brisket on, probe 1 in <span class="check">&#10003;</span></li>
+          <li data-plan="2"><span class="t">~11:30</span> Stall begins &#8212; I'll tell you when to wrap <span class="check">&#10003;</span></li>
+          <li data-plan="3"><span class="t">14:30</span> Ribs on, probe 2 in <span class="check">&#10003;</span></li>
+          <li data-plan="4"><span class="t">~17:45</span> Brisket at 96&#176;C &#8594; I drop pit to 65&#176;C hold <span class="check">&#10003;</span></li>
+          <li data-plan="5"><span class="t">18:30</span> Pull &amp; rest. Slice at 19:00 <span class="check">&#10003;</span></li>
+        </ul>
+      </div>
+      <div class="bubble user" data-step="2">Guests are running 45 min late&#8230;</div>
+      <div class="bubble ai" data-step="3">
+        <div class="who">PITMINDER</div>
+        No drama &#8212; that's what hold-warm is for. I'll keep the brisket at 65&#176;C and push the
+        ribs back 30 minutes. New slice time: <strong>19:45</strong>. &#128522;
+      </div>
+      <div class="steer" data-step="4">Every step pings your phone. Ack it, snooze it, or change the plan in plain English.</div>
+    </div>
+  </section>
+
+  <section class="coach-wrap">
+    <h2>Coached in real time, run automatically</h2>
+    <p class="lead">Alerts tell you what to <em>do</em>, not just what happened — and the pit
+    adjusts itself when no action is needed from you.</p>
+    <div class="grid2">
+      <div class="mock-phone" id="alerts">
+        <div class="notif" data-alert="0">
+          <span class="n-app">&#128276; PitMinder &#183; 09:40</span>
+          <strong>Spritz baby, spritz &#128166;</strong>
+          <span class="n-sub">Bark's drying out &#8212; surface temp climbing fast at hour 3</span>
+        </div>
+        <div class="notif" data-alert="1">
+          <span class="n-app">&#128276; PitMinder &#183; 11:20</span>
+          <strong>The stall has begun &#128548;</strong>
+          <span class="n-sub">Wrap now in butcher paper, or ride it out &#8212; reply 'wrap' or 'ride'</span>
+        </div>
+        <div class="notif" data-alert="2">
+          <span class="n-app">&#128276; PitMinder &#183; 14:25</span>
+          <strong>Ribs on in 5 minutes</strong>
+          <span class="n-sub">Second shelf, probe 2 in the thickest rack</span>
+        </div>
+        <div class="notif" data-alert="3">
+          <span class="n-app">&#128276; PitMinder &#183; 17:42</span>
+          <strong>We lowered the pit to 65&#176;C. It's ready. &#127881;</strong>
+          <span class="n-sub">Brisket hit perfect juiciness &#8212; holding warm until you are</span>
+        </div>
+      </div>
+      <div class="mock-panel">
+        <div class="mp-head">
+          <span class="mp-title">Demo Smoker</span>
+          <span class="mp-mode"><span class="chip active">AI managed</span><span class="chip">Manual</span></span>
+        </div>
+        <div class="mp-set">
+          <button class="mp-btn" id="set-minus" type="button">&#8722;</button>
+          <div class="mp-temp"><span id="mock-setpoint">107</span>&#176;C<span class="mp-sub">setpoint</span></div>
+          <button class="mp-btn" id="set-plus" type="button">+</button>
+        </div>
+        <p class="mp-note" id="mp-note">pit steady &#183; brisket 82&#176;C and climbing</p>
+        <button class="mp-start" type="button">&#9679; Cooking &#8212; AI at the wheel</button>
       </div>
     </div>
   </section>
@@ -179,108 +239,59 @@
   <section class="features">
     <div class="grid">
       <div class="card">
-        <div class="icon">🌡️</div>
-        <h3>Live, from the couch</h3>
-        <p>Radial gauges for grill, chamber, and exhaust — color-coded against your setpoint, with trend sparklines. The lid stays closed; you stay seated.</p>
+        <div class="icon">&#127869;&#65039;</div>
+        <h3>"I want to eat at seven"</h3>
+        <p>One sentence — what meat, how much, when you're eating — becomes a full fire-up-to-resting plan with times for every move you'll make.</p>
       </div>
       <div class="card">
-        <div class="icon">😤</div>
+        <div class="icon">&#129302;</div>
+        <h3>It runs the pit</h3>
+        <p>PitMinder manages the setpoint through preheat, the long hold, the stall, and the push — then drops to hold-warm the moment doneness lands. No babysitting.</p>
+      </div>
+      <div class="card">
+        <div class="icon">&#129385;</div>
+        <h3>Multi-meat choreography</h3>
+        <p>Brisket and ribs finishing together is a scheduling problem. Each probe gets its own doneness target, timeline, and hold decision.</p>
+      </div>
+      <div class="card">
+        <div class="icon">&#128166;</div>
+        <h3>Coaching, not noise</h3>
+        <p>"Spritz now." "Wrap or ride — your call." "We lowered the temp, it's ready." Every alert is an action or a decision, never a data dump.</p>
+      </div>
+      <div class="card">
+        <div class="icon">&#128548;</div>
         <h3>The Stall Detector</h3>
-        <p>PitMinder spots the moment your brisket flatlines, badges it live with a running count, and shades every stall on the graph. Misery loves data.</p>
+        <p>Detects the flatline live, badges it with a running count, and shades it on the graph. Misery loves data.</p>
       </div>
       <div class="card">
-        <div class="icon">⏱️</div>
-        <h3>"When do we eat?"</h3>
-        <p>Set a doneness target and PitMinder fits your probe's climb to project the finish — a dotted line into the future and an ETA on the dashboard.</p>
+        <div class="icon">&#9201;&#65039;</div>
+        <h3>Honest ETAs</h3>
+        <p>The probe's real climb rate projects your finish time as a dotted line into the future — recalculated as the cook breathes.</p>
       </div>
       <div class="card">
-        <div class="icon">📈</div>
-        <h3>Graphs worth bragging about</h3>
-        <p>Zoom and pan any window, see setpoint and target lines, lid-open dips, and stall regions shaded in. Every cook recorded down to the minute.</p>
+        <div class="icon">&#129534;</div>
+        <h3>Every cook remembered</h3>
+        <p>Auto-logged sessions with a 0&#8211;100 pit stability score, temperature histograms, and a replay you can scrub. Settle arguments with receipts.</p>
       </div>
       <div class="card">
-        <div class="icon">📜</div>
-        <h3>Cook sessions &amp; replay</h3>
-        <p>Every cook is logged automatically — then scrub through a replay and watch the gauges relive it. Settle arguments about last summer's ribs with receipts.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🏆</div>
-        <h3>Pit stability score</h3>
-        <p>A 0–100 score for how steady you held the fire, plus a temperature histogram per cook. Your fire management, finally quantified.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🎯</div>
-        <h3>Doneness targets</h3>
-        <p>Per-probe targets with progress rings — 93% done means 93% done, not a guess.</p>
-      </div>
-      <div class="card">
-        <div class="icon">⚡</div>
-        <h3>Instant everything</h3>
-        <p>Built on real-time sync — no refresh button, no polling delay. The graph moves when your fire does.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🎛️</div>
-        <h3>Remote control</h3>
-        <p>Adjust the setpoint, bump the smoke level, or start a cook from anywhere your phone gets signal.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔔</div>
-        <h3>Alerts that save the bark</h3>
-        <p>Probe-target pings, pit temperature drops, lid-open nags, and the all-important "it's done" — pushed before anything dries out.</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="showcase">
-    <div class="grid2">
-      <div class="mock-panel">
-        <div class="mp-head">
-          <span class="mp-title">Demo Smoker</span>
-          <span class="mp-mode"><span class="chip active">Smoker</span><span class="chip">Grill</span><span class="chip">Roast</span></span>
-        </div>
-        <div class="mp-body">
-          <div class="mp-set">
-            <button class="mp-btn" id="set-minus" type="button">−</button>
-            <div class="mp-temp"><span id="mock-setpoint">107</span>°C<span class="mp-sub">setpoint</span></div>
-            <button class="mp-btn" id="set-plus" type="button">+</button>
-          </div>
-          <div class="mp-smoke">
-            <span class="mp-label">smoke</span>
-            <span class="dot on"></span><span class="dot on"></span><span class="dot" id="smoke3"></span>
-          </div>
-          <button class="mp-start" type="button">● Cooking — tap to stop</button>
-        </div>
-      </div>
-      <div class="mock-phone">
-        <div class="notif">
-          <span class="n-app">🔔 PitMinder · now</span>
-          <strong>Brisket hit 96°C — time to wrap 🎉</strong>
-          <span class="n-sub">Probe 1 reached your doneness target</span>
-        </div>
-        <div class="notif dim">
-          <span class="n-app">🔔 PitMinder · 41m ago</span>
-          <strong>Pit dropped 14°C below setpoint</strong>
-          <span class="n-sub">Check your pellets — grill at 93°C, falling</span>
-        </div>
-        <div class="notif dim">
-          <span class="n-app">🔔 PitMinder · 2h ago</span>
-          <strong>The stall has begun 😤</strong>
-          <span class="n-sub">Probe 1 flat at 68°C for 22 minutes</span>
-        </div>
+        <div class="icon">&#127918;&#65039;</div>
+        <h3>You can always grab the wheel</h3>
+        <p>One tap flips to manual: your setpoints, your smoke levels, your calls. The AI takes notes and stays out of the way.</p>
       </div>
     </div>
   </section>
 
   <section class="stall">
     <h2>Built by someone who's also stared at the stall at 2am</h2>
-    <p>PitMinder talks directly to your Ninja account — connect once, and every Woodfire grill on it shows up. No extra hardware, no replacement probes, no subscription.</p>
+    <p>PitMinder talks directly to your Ninja account — connect once, and every Woodfire grill
+    on it shows up. No extra hardware, no replacement probes, no subscription.</p>
     <div class="cta-row">
       <a class="cta" href="https://app.pitminder.com/auth/signup">Get started free</a>
     </div>
   </section>
 
   <footer>
-    <div class="note">© 2026 Resilient Software Ltd. PitMinder is not affiliated with SharkNinja. Ninja and Woodfire are trademarks of their respective owners.</div>
+    <div class="note">&#169; 2026 Resilient Software Ltd. PitMinder is not affiliated with SharkNinja. Ninja and Woodfire are trademarks of their respective owners.</div>
     <div>
       <a href="https://app.pitminder.com/privacy-policy">Privacy</a>
       <a href="https://app.pitminder.com/terms-of-service">Terms</a>
@@ -289,65 +300,144 @@
 </div>
 <script>
 (function () {
-  // Real telemetry from the PitMinder demo brisket cook: [hours, grill, chamber, probe] °C
-  var DATA = [[0,49.5,46.9,6.5],[0.08,69.7,66.2,6.9],[0.17,82,79,7.5],[0.25,90.7,87.2,8.1],[0.33,97.4,93.8,8.4],[0.42,99.5,96.6,8.8],[0.5,105,101,11.5],[0.58,106.7,100.9,13.8],[0.67,105.5,100.3,16.3],[0.75,109.2,104,18.7],[0.83,104.4,101.2,21.1],[0.92,104.5,100.3,23.5],[1,104.7,100.1,25.4],[1.08,109.4,106.3,27.4],[1.17,108.2,104.3,29.3],[1.25,110,107.6,31.3],[1.33,106,101.3,33.3],[1.42,106.7,103.5,35.3],[1.5,106.6,101.8,37.2],[1.58,105.9,103.5,39.1],[1.67,108.9,106.8,40.7],[1.75,108.2,103.8,42.2],[1.83,106,102.5,43.8],[1.92,108.8,103.3,45.3],[2,104.1,100.6,47],[2.08,105.3,101.2,48.5],[2.17,108.2,103.4,50.1],[2.25,104.2,102.1,51.4],[2.33,105,101.2,52.6],[2.42,106.6,103.4,53.9],[2.5,109.4,105.4,55.2],[2.58,107.5,102.8,56.4],[2.67,108,102.7,57.5],[2.75,104.7,98.9,58.6],[2.83,106.9,103.7,59.8],[2.92,94.6,92.1,60.8],[3,97.4,92,61.9],[3.08,93.3,89.4,62.9],[3.17,109.2,106.1,64.1],[3.25,105,101.7,65.1],[3.33,108.9,106.2,66.2],[3.42,106.1,103.6,67.1],[3.5,109.6,104.9,68.1],[3.58,106.2,100.5,68.9],[3.67,109.7,105.6,69.9],[3.75,105.6,99.8,69.9],[3.83,107.4,104.6,70.1],[3.92,108,103.8,70.2],[4,106.6,101.8,70.3],[4.08,105.6,101.8,70.4],[4.17,104.8,99.4,70.3],[4.25,109.2,105.2,70.4],[4.33,104.3,99.3,70.5],[4.42,104.6,101.6,70.8],[4.5,107.3,103.4,71],[4.58,104.6,99.6,71],[4.67,107.4,101.5,71.3],[4.75,105.7,101.9,71.5],[4.83,109.7,105.8,71.6],[4.92,108.1,105.3,71.7],[5,108.5,105.3,71.9],[5.08,109.8,106.9,72.2],[5.17,108,103.6,72.4],[5.25,109.3,104.6,72.5],[5.33,107.7,104.5,72.8],[5.42,109.8,104.9,72.9],[5.5,108.4,103.2,73.8],[5.58,107.3,101.6,74.5],[5.67,108.1,103.8,75.2],[5.75,107.1,101.8,75.8],[5.83,106.3,103.6,76.6],[5.92,92.2,89,77.2],[6,95.8,93.3,78],[6.08,95.8,91.7,78.5],[6.17,108.3,104.3,79.2],[6.25,108.7,106.4,79.8],[6.33,104.2,99.2,80.4],[6.42,107.5,102.9,81.1],[6.5,108.4,103.9,81.7],[6.58,107,101.4,82.1],[6.67,109.2,105.2,82.8],[6.75,104.9,101.6,83.3],[6.83,105.4,102.1,83.6],[6.92,105.2,101.3,84.3],[7,109.7,104.9,84.8],[7.08,108.3,103.3,85.3],[7.17,105.1,101.1,85.8],[7.25,104.5,102.5,86.1],[7.33,107.1,103,86.6],[7.42,109.9,105.3,87.1],[7.5,108.6,104.5,87.5],[7.58,104.2,99.7,88],[7.67,107,103.7,88.1],[7.75,108.6,105.8,88.6],[7.83,107.3,103.3,88.9],[7.92,107.5,104.3,89],[8,105.1,102,89.3]];
-  var X0 = 40, X1 = 740, Y_TOP = 30, Y_BOT = 213; // 120°C .. ~7°C linear-ish
-  var T_MAX = DATA[DATA.length - 1][0];
+  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- Hero: self-drawing AI-managed cook [hours, grill, air, probe, setpoint]
+  var DATA = [[0,49.5,46.9,6.5,107],[0.08,69.7,66.2,6.9,107],[0.17,82,79,7.5,107],[0.25,90.7,87.2,8.1,107],[0.33,97.4,93.8,8.4,107],[0.42,99.5,96.6,8.8,107],[0.5,105,101,12.2,107],[0.58,106.7,100.9,15.1,107],[0.67,105.5,100.3,18.1,107],[0.75,109.2,104,21,107],[0.83,104.4,101.2,23.9,107],[0.92,104.5,100.3,26.8,107],[1,104.7,100.1,29.2,107],[1.08,109.4,106.3,31.5,107],[1.17,108.2,104.3,33.8,107],[1.25,110,107.6,36.2,107],[1.33,106,101.3,38.5,107],[1.42,106.7,103.5,40.8,107],[1.5,106.6,101.8,42.9,107],[1.58,105.9,103.5,45,107],[1.67,108.9,106.8,46.8,107],[1.75,108.2,103.8,48.6,107],[1.83,106,102.5,50.3,107],[1.92,108.8,103.3,52.1,107],[2,104.1,100.6,53.9,107],[2.08,105.3,101.2,55.5,107],[2.17,108.2,103.4,57.2,107],[2.25,104.2,102.1,58.6,107],[2.33,105,101.2,60,107],[2.42,106.6,103.4,61.4,107],[2.5,109.4,105.4,62.7,107],[2.58,107.5,102.8,63.9,107],[2.67,108,102.7,65.1,107],[2.75,104.7,98.9,66.3,107],[2.83,106.9,103.7,67.4,107],[2.92,94.6,92.1,68.5,107],[3,97.4,92,69.6,107],[3.08,93.3,89.4,70.6,107],[3.17,109.2,106.1,71.8,107],[3.25,105,101.7,72.8,107],[3.33,108.9,106.2,73.9,107],[3.42,106.1,103.6,74.8,107],[3.5,109.6,104.9,74.9,107],[3.58,106.2,100.5,74.9,107],[3.67,109.7,105.6,75.1,107],[3.75,105.6,99.8,75.1,107],[3.83,107.4,104.6,75.3,107],[3.92,108,103.8,75.5,107],[4,106.6,101.8,75.5,107],[4.08,105.6,101.8,75.6,107],[4.17,104.8,99.4,75.6,107],[4.25,109.2,105.2,75.7,107],[4.33,104.3,99.3,75.7,107],[4.42,104.6,101.6,76,107],[4.5,107.3,103.4,76.3,107],[4.58,104.6,99.6,76.2,107],[4.67,107.4,101.5,76.5,107],[4.75,105.7,101.9,76.8,107],[4.83,109.7,105.8,76.8,107],[4.92,108.1,105.3,77,107],[5,108.5,105.3,77.1,107],[5.08,109.8,106.9,77.4,107],[5.17,108,103.6,77.7,107],[5.25,109.3,104.6,77.8,107],[5.33,107.7,104.5,78,107],[5.42,109.8,104.9,78.1,107],[5.5,108.4,103.2,79,107],[5.58,107.3,101.6,79.8,107],[5.67,108.1,103.8,80.5,107],[5.75,107.1,101.8,81,107],[5.83,106.3,103.6,81.8,107],[5.92,92.2,89,82.4,107],[6,95.8,93.3,83.2,107],[6.08,95.8,91.7,83.7,107],[6.17,108.3,104.3,84.3,107],[6.25,108.7,106.4,85,107],[6.33,104.2,99.2,85.5,107],[6.42,107.5,102.9,86.1,107],[6.5,108.4,103.9,86.8,107],[6.58,107,101.4,87.1,107],[6.67,109.2,105.2,87.7,107],[6.75,104.9,101.6,88.2,107],[6.83,105.4,102.1,88.5,107],[6.92,105.2,101.3,89.1,107],[7,109.7,104.9,89.5,107],[7.08,108.3,103.3,90,107],[7.17,105.1,101.1,90.5,107],[7.25,104.5,102.5,90.7,107],[7.33,107.1,103,91.1,107],[7.42,109.9,105.3,91.6,107],[7.5,108.6,104.5,91.9,107],[7.58,104.2,99.7,92.3,107],[7.67,107,103.7,92.4,107],[7.75,108.6,105.8,92.8,107],[7.83,107.3,103.3,93.1,107],[7.92,107.5,104.3,93.1,107],[8,105.1,102,93.3,107],[8.08,107.7,103.6,93.8,107],[8.17,107,102.8,94,107],[8.25,108.3,106.1,94.3,107],[8.33,104,98.3,94.7,107],[8.42,108.1,104.5,94.9,107],[8.5,109.9,107.8,95.3,107],[8.58,108.9,103.2,95.4,107],[8.67,106.9,103.7,95.7,107],[8.75,109,106.7,95.9,107],[8.83,104.9,101.8,96,107],[8.92,105.4,100.9,96,107],[9,106.5,103.4,96,107],[9.08,109.3,105.6,96,107],[9.17,106.3,102.8,96,107],[9.25,107.2,101.9,96,107],[9.33,107.9,103.6,96,107],[9.41,100.5,97,95.9,65],[9.5,93.6,91.3,95.8,65],[9.58,88.7,86.2,95.6,65],[9.66,84,80.6,95.5,65],[9.75,80.4,77.8,95.4,65],[9.83,77.2,74.2,95.3,65],[9.91,74.8,71.6,95.2,65],[10,73.5,70.5,95,65],[10.08,72,68.5,94.9,65],[10.16,70.8,67.5,94.8,65],[10.25,69.2,65.9,94.7,65],[10.33,68.9,65.3,94.6,65],[10.41,68.5,65.1,94.4,65],[10.5,68.1,65.6,94.3,65],[10.58,67,64.1,94.2,65],[10.66,66.4,63.5,94.1,65],[10.75,65.9,63.1,94,65],[10.83,65.6,62.9,93.8,65],[10.91,65.5,63,93.7,65],[11,65.7,62.2,93.6,65],[11.08,66,63,93.5,65],[11.16,66.3,63.3,93.4,65],[11.25,65.7,62.4,93.2,65],[11.33,65.4,62.2,93.1,65],[11.41,65.2,62.5,93,65],[11.5,65.2,61.8,92.9,65],[11.58,65.2,62.4,92.8,65],[11.66,65.3,62.3,92.6,65],[11.75,65,62.4,92.5,65],[11.83,65.2,62.5,92.4,65],[11.91,65.6,61.9,92.3,65],[12,65.4,62,92.2,65]];
+  var X0 = 40, X1 = 740, T_MAX = 12;
   function x(h) { return X0 + (h / T_MAX) * (X1 - X0); }
   function y(c) { return 180 - ((c - 30) / 30) * 50; }
-  var grill = document.getElementById('line-grill');
-  var air = document.getElementById('line-air');
-  var probe = document.getElementById('line-probe');
-  var stall = document.getElementById('stall-note');
-  var hourNote = document.getElementById('hour-note');
-  var vG = document.getElementById('v-grill'), vA = document.getElementById('v-air'), vP = document.getElementById('v-probe');
-  if (!grill) return;
+  var grill = document.getElementById('line-grill'), air = document.getElementById('line-air'),
+      probe = document.getElementById('line-probe'), setl = document.getElementById('line-set'),
+      stallN = document.getElementById('stall-note'), holdN = document.getElementById('hold-note'),
+      hourNote = document.getElementById('hour-note'), phase = document.getElementById('phase');
+  var vG = document.getElementById('v-grill'), vA = document.getElementById('v-air'),
+      vP = document.getElementById('v-probe'), vS = document.getElementById('v-set');
+
+  function phaseFor(d) {
+    if (d[0] < 0.6) return ['PREHEAT', '#3b82f6'];
+    if (d[4] <= 70) return ['HOLD-WARM \u2014 READY', '#22c55e'];
+    if (d[0] >= 3.5 && d[0] < 5.6) return ['THE STALL \ud83d\ude24', '#8b5cf6'];
+    if (d[3] > 80) return ['THE PUSH', '#f59e0b'];
+    return ['SMOKING', '#f59e0b'];
+  }
 
   function render(n) {
-    var pg = [], pa = [], pp = [];
+    var pg = [], pa = [], pp = [], ps = [];
     for (var i = 0; i < n; i++) {
       var d = DATA[i];
       pg.push(x(d[0]) + ',' + y(d[1]));
       pa.push(x(d[0]) + ',' + y(d[2]));
       pp.push(x(d[0]) + ',' + y(d[3]));
+      ps.push(x(d[0]) + ',' + y(d[4]));
     }
     grill.setAttribute('points', pg.join(' '));
     air.setAttribute('points', pa.join(' '));
     probe.setAttribute('points', pp.join(' '));
+    setl.setAttribute('points', ps.join(' '));
     var last = DATA[Math.max(0, n - 1)];
     vG.textContent = last[1].toFixed(1) + '\u00b0C';
     vA.textContent = last[2].toFixed(1) + '\u00b0C';
     vP.textContent = last[3].toFixed(1) + '\u00b0C';
+    vS.textContent = last[4].toFixed(0) + '\u00b0C';
     hourNote.textContent = 'hour ' + last[0].toFixed(1) + ' of 12';
-    stall.style.opacity = last[0] >= 3.5 ? '1' : '0';
-    stall.style.transition = 'opacity 1.2s ease';
+    stallN.style.opacity = last[0] >= 3.5 ? '1' : '0';
+    holdN.style.opacity = last[4] <= 70 ? '1' : '0';
+    var ph = phaseFor(last);
+    phase.textContent = ph[0];
+    phase.style.color = ph[1];
   }
 
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    render(DATA.length);
-    return;
+  if (REDUCED) { render(DATA.length); }
+  else {
+    var DURATION = 18000, HOLD = 3500, start = null;
+    (function tick(now) {
+      if (start === null) start = now || performance.now();
+      var t = ((now || performance.now()) - start) % (DURATION + HOLD);
+      render(Math.max(2, Math.round(Math.min(1, t / DURATION) * DATA.length)));
+      requestAnimationFrame(tick);
+    })();
   }
 
-  var DURATION = 14000, HOLD = 2600;
-  var start = null;
-  function tick(now) {
-    if (start === null) start = now;
-    var t = (now - start) % (DURATION + HOLD);
-    var frac = Math.min(1, t / DURATION);
-    render(Math.max(2, Math.round(frac * DATA.length)));
-    requestAnimationFrame(tick);
+  // ---- Chat plan: timed reveal loop
+  var steps = document.querySelectorAll('[data-step]');
+  var planItems = document.querySelectorAll('[data-plan]');
+  var typing = document.getElementById('typing');
+  var TIMELINE = [
+    [400,  function () { show(0); }],
+    [1300, function () { typing.classList.add('show'); }],
+    [2600, function () { typing.classList.remove('show'); show(1); }],
+    [3100, function () { plan(0); }], [3500, function () { plan(1); }],
+    [3900, function () { plan(2); }], [4300, function () { plan(3); }],
+    [4700, function () { plan(4); }], [5100, function () { plan(5); }],
+    [6200, function () { done(0); done(1); }],
+    [7200, function () { show(2); }],
+    [8000, function () { typing.classList.add('show'); }],
+    [9000, function () { typing.classList.remove('show'); show(3); }],
+    [9800, function () { show(4); }],
+    [15000, function () { reset(); }]
+  ];
+  function show(i) { for (var s of steps) if (s.dataset.step == i) s.classList.add('show'); }
+  function plan(i) { for (var s of planItems) if (s.dataset.plan == i) s.classList.add('show'); }
+  function done(i) { for (var s of planItems) if (s.dataset.plan == i) s.classList.add('done'); }
+  function reset() {
+    for (var s of steps) s.classList.remove('show');
+    for (var p of planItems) { p.classList.remove('show'); p.classList.remove('done'); }
   }
-  requestAnimationFrame(tick);
-})();
-(function () {
+  function runChat() {
+    for (var [delay, fn] of TIMELINE) setTimeout(fn, delay);
+    setTimeout(runChat, 15600);
+  }
+  if (REDUCED) {
+    for (var s of steps) s.classList.add('show');
+    for (var p of planItems) p.classList.add('show');
+  } else { runChat(); }
+
+  // ---- Alerts: sequential slide-in loop
+  var alerts = document.querySelectorAll('[data-alert]');
+  function runAlerts() {
+    alerts.forEach(function (a) { a.classList.remove('show'); a.classList.remove('old'); });
+    alerts.forEach(function (a, i) {
+      setTimeout(function () {
+        a.classList.add('show');
+        alerts.forEach(function (b, j) { if (j < i) b.classList.add('old'); });
+      }, 700 + i * 2300);
+    });
+    setTimeout(runAlerts, 700 + alerts.length * 2300 + 3500);
+  }
+  if (REDUCED) { alerts.forEach(function (a) { a.classList.add('show'); }); }
+  else { runAlerts(); }
+
+  // ---- Control mock: AI nudges the setpoint; manual buttons still work
   var sp = document.getElementById('mock-setpoint');
-  var minus = document.getElementById('set-minus'), plus = document.getElementById('set-plus');
-  var s3 = document.getElementById('smoke3');
-  if (!sp) return;
-  var v = 107;
-  minus.addEventListener('click', function () { v = Math.max(60, v - 1); sp.textContent = v; });
-  plus.addEventListener('click', function () { v = Math.min(300, v + 1); sp.textContent = v; });
-  if (s3) s3.addEventListener('click', function () { s3.classList.toggle('on'); });
+  var note = document.getElementById('mp-note');
+  var v = 107, manualUntil = 0;
+  document.getElementById('set-minus').addEventListener('click', function () {
+    v = Math.max(60, v - 1); sp.textContent = v; manualUntil = Date.now() + 6000;
+    note.innerHTML = 'manual override \u2014 the AI takes notes and stays out of the way';
+  });
+  document.getElementById('set-plus').addEventListener('click', function () {
+    v = Math.min(300, v + 1); sp.textContent = v; manualUntil = Date.now() + 6000;
+    note.innerHTML = 'manual override \u2014 the AI takes notes and stays out of the way';
+  });
+  if (!REDUCED) {
+    var aiStates = [
+      [107, 'pit steady \u00b7 brisket 82\u00b0C and climbing'],
+      [107, 'stall detected \u2014 holding the line, no action needed'],
+      [110, '<span class="ai-tag">AI</span> nudged +3\u00b0C to push through the stall'],
+      [107, '<span class="ai-tag">AI</span> back to 107\u00b0C \u2014 stall broken \ud83d\udcaa'],
+      [65,  '<span class="ai-tag">AI</span> dropped to hold-warm \u2014 it\u2019s ready when you are \ud83c\udf89']
+    ];
+    var si = 0;
+    setInterval(function () {
+      if (Date.now() < manualUntil) return;
+      si = (si + 1) % aiStates.length;
+      v = aiStates[si][0];
+      sp.textContent = v;
+      sp.parentElement.style.color = v <= 70 ? '#22c55e' : '';
+      note.innerHTML = aiStates[si][1];
+    }, 3800);
+  }
 })();
 </script>
 </body>
