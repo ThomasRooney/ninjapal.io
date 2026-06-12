@@ -48,12 +48,14 @@ import {
 	deviceHistory,
 	devices,
 	ninjaConnections,
+	pushSubscriptions,
 } from '@/server/db/schema'
 import Anthropic from '@anthropic-ai/sdk'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
 import { and, desc, eq, gt, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
+import webPush from 'web-push'
 
 const DB_URL = process.env.ZERO_UPSTREAM_DB
 if (!DB_URL) {
@@ -352,6 +354,59 @@ function parseSetpoint(deviceData: Record<string, unknown>): number | null {
 	return null
 }
 
+const pushEnabled = !!(
+	process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
+)
+if (pushEnabled) {
+	webPush.setVapidDetails(
+		process.env.VAPID_SUBJECT ?? 'mailto:thomas@resilientsoftware.co.uk',
+		process.env.VAPID_PUBLIC_KEY as string,
+		process.env.VAPID_PRIVATE_KEY as string,
+	)
+}
+
+/** Pushes a message to every browser the user subscribed. Best-effort. */
+async function sendPush(userId: string, title: string, body: string) {
+	if (!pushEnabled) return
+	const subs = await db
+		.select()
+		.from(pushSubscriptions)
+		.where(eq(pushSubscriptions.userId, userId))
+	const payload = JSON.stringify({ title, body, url: '/app/messages' })
+	for (const sub of subs) {
+		try {
+			await webPush.sendNotification(
+				{
+					endpoint: sub.endpoint,
+					keys: { p256dh: sub.p256dh, auth: sub.auth },
+				},
+				payload,
+				{ TTL: 3600 },
+			)
+			if (sub.failCount > 0) {
+				await db
+					.update(pushSubscriptions)
+					.set({ failCount: 0 })
+					.where(eq(pushSubscriptions.id, sub.id))
+			}
+		} catch (error) {
+			const statusCode = (error as { statusCode?: number }).statusCode
+			// Gone/expired endpoints get pruned; transient failures accumulate
+			if (statusCode === 404 || statusCode === 410 || sub.failCount >= 4) {
+				await db
+					.delete(pushSubscriptions)
+					.where(eq(pushSubscriptions.id, sub.id))
+				console.log(`push: pruned dead subscription ${sub.id}`)
+			} else {
+				await db
+					.update(pushSubscriptions)
+					.set({ failCount: sub.failCount + 1 })
+					.where(eq(pushSubscriptions.id, sub.id))
+			}
+		}
+	}
+}
+
 async function emitMessage(args: {
 	deviceId: string
 	userId: string
@@ -371,6 +426,7 @@ async function emitMessage(args: {
 		actions: args.actions ?? null,
 	})
 	console.log(`message [${args.kind}] for device ${args.deviceId}`)
+	await sendPush(args.userId, args.title, args.body)
 }
 
 async function hasRecentUnacked(deviceId: string, kind: string) {

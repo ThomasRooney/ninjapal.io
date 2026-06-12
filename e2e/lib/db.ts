@@ -4,6 +4,21 @@ const DB_URL =
 	process.env.ZERO_UPSTREAM_DB ??
 	'postgresql://postgres:postgres@127.0.0.1:54332/postgres'
 
+/** One-shot parameterized query against the test database. */
+export async function query(
+	text: string,
+	params: unknown[] = [],
+): Promise<Record<string, unknown>[]> {
+	const client = new Client({ connectionString: DB_URL })
+	await client.connect()
+	try {
+		const res = await client.query(text, params)
+		return res.rows
+	} finally {
+		await client.end()
+	}
+}
+
 /**
  * Inserts a device for the user with the given email (must exist already).
  * Returns the device id.

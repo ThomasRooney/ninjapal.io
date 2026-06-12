@@ -1,4 +1,5 @@
 import NavApp from '@/components/nav-app.tsx'
+import { PushToggle } from '@/components/push-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -206,7 +207,10 @@ function MessagesPage() {
 		<div className='container flex flex-col min-h-screen'>
 			<NavApp title='Messages' />
 			<div className='p-4 md:p-8 max-w-2xl w-full mx-auto'>
-				<h1 className='text-3xl font-bold'>Messages</h1>
+				<div className='flex items-center justify-between'>
+					<h1 className='text-3xl font-bold'>Messages</h1>
+					<PushToggle />
+				</div>
 				<p className='text-muted-foreground mt-2 mb-6'>
 					{pendingCount > 0
 						? `${pendingCount} thing${pendingCount > 1 ? 's' : ''} need${pendingCount > 1 ? '' : 's'} your attention`
