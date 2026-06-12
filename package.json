@@ -100,6 +100,7 @@
     "@biomejs/biome": "1.9.4",
     "@faker-js/faker": "^9.7.0",
     "@playwright/test": "^1.53.1",
+    "@tanstack/nitro-v2-vite-plugin": "^1.155.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@types/pg": "^8.12.0",
