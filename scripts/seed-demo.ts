@@ -129,7 +129,7 @@ function generateCookTelemetry(
 			probe >= stallLow
 		)
 			probeRate = 0.12 // the stall
-		else probeRate = (profile.probeFinal * 1.05 - probe) * 0.04
+		else probeRate = (profile.probeFinal * 1.05 - probe) * 0.028
 		probe += probeRate * (stepMs / 600_000) * 2 + jitter(0.2)
 		probe = Math.min(probe, profile.probeFinal)
 
@@ -388,6 +388,7 @@ async function main() {
 			rssi, cook_mode, cook_state, cook_smoke_level, power_state, gs_state,
 			is_lid_open, is_probe1_installed, is_probe2_installed,
 			temp_grill, temp_air, temp_smoke, probe1_temp_a, probe1_temp_b,
+			probe1_target_temp,
 			seconds_left_on_timer, estimated_end_at,
 			grill_state_raw, probe_state_raw,
 			ota_fw_version, device_serial_num, created_at, updated_at
@@ -396,6 +397,7 @@ async function main() {
 			-52, 'smoker', $2, 1, 'on', $2,
 			false, true, false,
 			$3, $4, $5, $6, $7,
+			96,
 			14400, to_timestamp($8 / 1000.0),
 			$10, $11,
 			'2.1.4', 'DEMO-SN-0001', to_timestamp($9 / 1000.0), now()

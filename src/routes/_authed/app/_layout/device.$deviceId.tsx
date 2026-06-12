@@ -386,6 +386,18 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 			<TemperatureGraph
 				deviceId={device.id ?? ''}
 				prefersCelsius={zeroUser?.prefers_celsius ?? false}
+				setpointC={
+					typeof grillState?.setpoint === 'number' ? grillState.setpoint : null
+				}
+				probeTargetC={
+					device.probe1_target_temp != null
+						? Number(device.probe1_target_temp)
+						: null
+				}
+				live={
+					typeof grillState?.state === 'string' &&
+					['cooking', 'preheating'].includes(grillState.state.toLowerCase())
+				}
 				series={[
 					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
 					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
