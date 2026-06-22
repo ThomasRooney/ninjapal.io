@@ -334,8 +334,8 @@ export function PitControl({
 					<p className='text-sm font-medium'>AI pitmaster</p>
 					<p className='text-xs text-muted-foreground'>
 						{autopilotEnabled
-							? 'Managing the pit: hold-warm at doneness, stall nudges'
-							: 'Off — manual control only'}
+							? 'AI at the wheel: hold-warm at doneness, stall nudges'
+							: 'Manual mode — ask PitMinder above or switch on automation'}
 					</p>
 				</div>
 				<Switch

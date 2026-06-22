@@ -44,6 +44,13 @@ describe('detectStall', () => {
 		expect(detectStall(pts).inStall).toBe(false)
 	})
 
+	it('ignores flatness at finishing temperatures', () => {
+		const pts = series(() => 98.5, 60)
+		const result = detectStall(pts)
+		expect(result.inStall).toBe(false)
+		expect(result.regions).toHaveLength(0)
+	})
+
 	it('handles empty/short series', () => {
 		expect(detectStall([]).inStall).toBe(false)
 		expect(detectStall([{ t: T0, value: 60 }]).regions).toHaveLength(0)

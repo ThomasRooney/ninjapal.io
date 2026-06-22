@@ -54,8 +54,8 @@ function AppContent() {
 				</div>
 			)}
 			<AppSidebar variant='inset' />
-			<div className='flex-1 p-2'>
-				<main className='h-full border border-border bg-background rounded flex flex-col overflow-y-auto'>
+			<div className='min-w-0 flex-1 p-2'>
+				<main className='flex h-full min-w-0 flex-col overflow-y-auto rounded border border-border bg-background'>
 					<Outlet />
 				</main>
 			</div>

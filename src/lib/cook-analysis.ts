@@ -20,6 +20,8 @@ export interface StallResult {
 const STALL_RATE_C_PER_15MIN = 1.0
 /** Only consider the stall once the meat is genuinely cooking. */
 const STALL_MIN_TEMP_C = 50
+/** Real evaporative stalls happen mid-cook, not at finishing temperatures. */
+const STALL_MAX_TEMP_C = 82
 /** Require this much sustained flatness before calling it a stall. */
 const STALL_MIN_DURATION_MS = 20 * 60 * 1000
 
@@ -47,6 +49,7 @@ export function detectStall(points: TempPoint[]): StallResult {
 		const stalled =
 			rate !== null &&
 			p.value >= STALL_MIN_TEMP_C &&
+			p.value <= STALL_MAX_TEMP_C &&
 			rate < STALL_RATE_C_PER_15MIN
 		if (stalled && regionStart === null) {
 			regionStart = past.t

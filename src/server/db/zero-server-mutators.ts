@@ -418,23 +418,25 @@ export function createServerMutators(
 								.run()
 
 							if (currentDevice) {
-								// Check if we already have a snapshot for this hour
-								const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+								// Check if we already have a snapshot for this minute. Local
+								// validation commonly relies on one sample per worker cycle.
+								const currentMinute = new Date()
+								currentMinute.setSeconds(0, 0)
 								const recentHistory = await tx.query.deviceHistory
 									.where('deviceId', existingDevice.id)
 									.orderBy('recordedAt', 'desc')
 									.limit(120)
 									.run()
 
-								// Find if there's already a snapshot in the current hour
-								const currentHourSnapshot = recentHistory.find(
+								// Find if there's already a snapshot in the current minute.
+								const currentMinuteSnapshot = recentHistory.find(
 									(h) =>
 										h.historyType === 'snapshot' &&
 										h.recordedAt &&
-										new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
+										new Date(h.recordedAt).getTime() >= currentMinute.getTime(),
 								)
 
-								if (currentHourSnapshot) {
+								if (currentMinuteSnapshot) {
 									// We have a snapshot, so create a patch from the old state to the new state.
 									const patch = createJsonMergePatch(
 										existingDevice as Record<string, unknown>,
@@ -552,20 +554,21 @@ export function createServerMutators(
 				// Delegate to shared mutator for permission checks and update
 				await sharedMutators.devices.update(tx, args)
 
-				// Check if we already have a snapshot for this hour
-				const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+				// Check if we already have a snapshot for this minute.
+				const currentMinute = new Date()
+				currentMinute.setSeconds(0, 0)
 				const recentHistory = await tx.query.deviceHistory
 					.where('deviceId', args.id)
 					.orderBy('recordedAt', 'desc')
-					.limit(10)
+					.limit(120)
 					.run()
 
-				// Find if there's already a snapshot in the current hour
-				const currentHourSnapshot = recentHistory.find(
+				// Find if there's already a snapshot in the current minute.
+				const currentMinuteSnapshot = recentHistory.find(
 					(h) =>
 						h.historyType === 'snapshot' &&
 						h.recordedAt &&
-						new Date(h.recordedAt).getTime() > oneHourAgo.getTime(),
+						new Date(h.recordedAt).getTime() >= currentMinute.getTime(),
 				)
 
 				// Merge current state with updates to get the new state
@@ -575,8 +578,8 @@ export function createServerMutators(
 					updatedAt: Date.now(),
 				}
 
-				if (currentHourSnapshot) {
-					// We already have a snapshot for this hour, create a patch
+				if (currentMinuteSnapshot) {
+					// We already have a snapshot for this minute, create a patch.
 					const patch = createJsonMergePatch(
 						currentDevice as Record<string, unknown>,
 						newState as Record<string, unknown>,
@@ -597,7 +600,7 @@ export function createServerMutators(
 						)
 					}
 				} else {
-					// First update of the hour, create a snapshot
+					// First update of the minute, create a snapshot.
 					await tx.mutate.deviceHistory.insert(
 						// id is DB-generated (identity); zero insert type wrongly requires it
 						{
@@ -612,7 +615,7 @@ export function createServerMutators(
 				}
 
 				console.log(
-					`[Server] Device ${args.id} updated with hourly snapshot/patch pattern`,
+					`[Server] Device ${args.id} updated with minute snapshot/patch pattern`,
 				)
 			},
 		},

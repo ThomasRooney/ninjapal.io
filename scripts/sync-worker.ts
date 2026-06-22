@@ -65,6 +65,7 @@ if (!DB_URL) {
 	process.exit(1)
 }
 const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS ?? 60_000)
+const REAL_DEVICES_ONLY = process.env.PITMINDER_REAL_DEVICES_ONLY === 'true'
 
 const sql = postgres(DB_URL, {
 	max: 5,
@@ -948,9 +949,16 @@ async function handleSessionTransition(
 ) {
 	const nowCooking = isCooking(deviceData.cook_state)
 	const wasCooking = isCooking(prevState)
-	if (nowCooking === wasCooking) return
+	const [active] = await db
+		.select()
+		.from(cookSessions)
+		.where(
+			and(eq(cookSessions.deviceId, deviceId), isNull(cookSessions.endedAt)),
+		)
+		.limit(1)
 
 	if (nowCooking) {
+		if (active) return
 		const now = new Date()
 		await db.insert(cookSessions).values({
 			deviceId,
@@ -972,17 +980,12 @@ async function handleSessionTransition(
 		return
 	}
 
+	if (!wasCooking && !active) return
+
 	// Cook ended: any still-pending decision is moot now
 	await skipPendingMessages(deviceId)
 
 	// Cook ended: close the active session and compute stats from history
-	const [active] = await db
-		.select()
-		.from(cookSessions)
-		.where(
-			and(eq(cookSessions.deviceId, deviceId), isNull(cookSessions.endedAt)),
-		)
-		.limit(1)
 	if (!active) return
 
 	const endedAt = new Date()
@@ -1152,22 +1155,22 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 			await runAutopilot(existing, conn.userId, deviceData, headers)
 			await runPitDirector(existing, conn.userId, deviceData, headers)
 
-			// Hourly snapshot, otherwise a merge patch against the previous state
-			const hourStart = new Date()
-			hourStart.setMinutes(0, 0, 0)
-			const [snapshotThisHour] = await db
+			// Minute snapshot, otherwise a merge patch against the previous state.
+			const minuteStart = new Date()
+			minuteStart.setSeconds(0, 0)
+			const [snapshotThisMinute] = await db
 				.select({ id: deviceHistory.id })
 				.from(deviceHistory)
 				.where(
 					and(
 						eq(deviceHistory.deviceId, existing.id),
 						eq(deviceHistory.historyType, 'snapshot'),
-						gte(deviceHistory.recordedAt, hourStart),
+						gte(deviceHistory.recordedAt, minuteStart),
 					),
 				)
 				.limit(1)
 
-			if (snapshotThisHour) {
+			if (snapshotThisMinute) {
 				const previousState = toHistoryState(
 					existing as unknown as Record<string, unknown>,
 				)
@@ -1324,21 +1327,21 @@ async function stepSimulatedDevices() {
 			const historyState = toHistoryState(deviceData)
 			await db.update(devices).set(row).where(eq(devices.id, device.id))
 
-			// Hourly snapshot / per-cycle patch (same scheme as real devices)
-			const hourStart = new Date()
-			hourStart.setMinutes(0, 0, 0)
-			const [snapshotThisHour] = await db
+			// Minute snapshot / per-cycle patch (same scheme as real devices)
+			const minuteStart = new Date()
+			minuteStart.setSeconds(0, 0)
+			const [snapshotThisMinute] = await db
 				.select({ id: deviceHistory.id })
 				.from(deviceHistory)
 				.where(
 					and(
 						eq(deviceHistory.deviceId, device.id),
 						eq(deviceHistory.historyType, 'snapshot'),
-						gte(deviceHistory.recordedAt, hourStart),
+						gte(deviceHistory.recordedAt, minuteStart),
 					),
 				)
 				.limit(1)
-			if (snapshotThisHour) {
+			if (snapshotThisMinute) {
 				const previousState = toHistoryState(
 					device as unknown as Record<string, unknown>,
 				)
@@ -1441,10 +1444,19 @@ async function cycle() {
 
 	// Simulated grills first: cheap, high-value, and must never be starved
 	// by slow browser-auth attempts against stale real connections.
-	await stepSimulatedDevices()
+	if (!REAL_DEVICES_ONLY) {
+		await stepSimulatedDevices()
+	}
 
 	const connections = await db.select().from(ninjaConnections)
 	for (const conn of connections) {
+		if (
+			REAL_DEVICES_ONLY &&
+			!conn.aylaAccessToken &&
+			!conn.aylaRefreshToken
+		) {
+			continue
+		}
 		// Back off connections that keep failing auth (e2e leftovers, changed
 		// passwords). attempts resets when the user re-saves credentials.
 		if ((conn.attempts ?? 0) >= 3) continue

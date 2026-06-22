@@ -1,4 +1,5 @@
 import { CookPhotos } from '@/components/cook-photos'
+import { PitChat } from '@/components/pit-chat'
 import {
 	EtaLine,
 	PitControl,
@@ -30,12 +31,15 @@ import {
 } from '@tanstack/react-router'
 import {
 	AlertCircle,
+	Bot,
 	CheckCircle2,
 	Clock,
 	CloudSnow,
 	DoorOpen,
 	Loader2,
+	MessageSquareText,
 	Thermometer,
+	Utensils,
 	Wifi,
 	WifiOff,
 } from 'lucide-react'
@@ -110,6 +114,170 @@ function CookTimeDisplay({ device, grillState }: CookTimeDisplayProps) {
 	)
 }
 
+function formatClockFromSeconds(secondsLeft: number | undefined) {
+	if (!secondsLeft || secondsLeft <= 0) return null
+	const end = new Date(Date.now() + secondsLeft * 1000)
+	return end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function numberOrNull(value: unknown) {
+	return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function PitmasterCommandBand({
+	device,
+	grillState,
+	probeState,
+	prefersCelsius,
+}: {
+	device: DeviceOverviewPageProps['device']
+	grillState: GrillState | null
+	probeState: ProbeState | null
+	prefersCelsius: boolean
+}) {
+	const grillC = numberOrNull(grillState?.inputs?.temps?.grill)
+	const airC = numberOrNull(grillState?.inputs?.temps?.air)
+	const probeC =
+		device.probe1_temp_a != null ? Number(device.probe1_temp_a) : null
+	const setpointC = numberOrNull(grillState?.setpoint)
+	const finishAt = formatClockFromSeconds(grillState?.['seconds left'])
+	const connectedProbes =
+		probeState?.probes.filter((probe) => probe['plugged in'] === 1).length ?? 0
+	const autopilotEnabled = device.autopilot_enabled === true
+
+	const phase = autopilotEnabled
+		? 'AI managed'
+		: grillState?.state?.toLowerCase() === 'cooking'
+			? 'Manual cook'
+			: 'Ready'
+
+	return (
+		<section
+			className='grid min-w-0 gap-4 rounded-lg border border-stone-800 bg-stone-950 p-4 text-stone-100 shadow-sm sm:p-5 lg:grid-cols-[1fr_420px]'
+			data-testid='pitmaster-command-band'
+		>
+			<div className='min-w-0 space-y-4 sm:space-y-5'>
+				<div className='flex flex-wrap items-start justify-between gap-3'>
+					<div>
+						<div className='mb-2 inline-flex items-center gap-2 rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-400'>
+							<Bot className='h-3.5 w-3.5' />
+							PitMinder
+						</div>
+						<h2 className='text-2xl font-bold leading-tight sm:text-3xl'>
+							Tell it what is cooking and when you want to eat.
+						</h2>
+						<p className='mt-2 max-w-2xl text-sm leading-6 text-stone-400'>
+							PitMinder turns that sentence into a cook plan, watches the stall,
+							projects the finish, and can drop the pit to hold-warm when the
+							meat lands.
+						</p>
+					</div>
+					<span
+						className={`rounded-full px-3 py-1 text-xs font-bold ${
+							autopilotEnabled
+								? 'bg-red-600 text-white'
+								: 'border border-stone-700 bg-stone-900 text-stone-300'
+						}`}
+					>
+						{phase}
+					</span>
+				</div>
+
+				<div className='grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4'>
+					<BriefStat
+						label='Pit'
+						value={formatTemperature(grillC, prefersCelsius)}
+						sub={
+							setpointC != null
+								? `set ${formatTemperature(setpointC, prefersCelsius)}`
+								: 'setpoint --'
+						}
+						color='text-red-400'
+					/>
+					<BriefStat
+						label='Chamber'
+						value={formatTemperature(airC, prefersCelsius)}
+						sub='live air'
+						color='text-blue-400'
+					/>
+					<BriefStat
+						label='Probe 1'
+						value={formatTemperature(probeC, prefersCelsius)}
+						sub={
+							connectedProbes
+								? `${connectedProbes} probe connected`
+								: 'no probe'
+						}
+						color='text-amber-400'
+					/>
+					<BriefStat
+						label='Timer'
+						value={finishAt ?? '--'}
+						sub='estimated finish'
+						color='text-emerald-400'
+					/>
+				</div>
+
+				<div className='hidden gap-3 text-sm text-stone-300 lg:grid lg:grid-cols-3'>
+					<div className='flex items-start gap-2 rounded border border-stone-800 bg-stone-900/70 p-3'>
+						<Utensils className='mt-0.5 h-4 w-4 text-red-400' />
+						<span>
+							Say “beef short-rib, bark first, eat at 2pm” and steer from there.
+						</span>
+					</div>
+					<div className='flex items-start gap-2 rounded border border-stone-800 bg-stone-900/70 p-3'>
+						<Thermometer className='mt-0.5 h-4 w-4 text-amber-400' />
+						<span>
+							Stall and ETA come from the real probe climb rate, not a canned
+							timer.
+						</span>
+					</div>
+					<div className='flex items-start gap-2 rounded border border-stone-800 bg-stone-900/70 p-3'>
+						<MessageSquareText className='mt-0.5 h-4 w-4 text-blue-400' />
+						<span>
+							Coaching appears as action cards: spritz, wrap, refill, hold, or
+							grab the wheel.
+						</span>
+					</div>
+				</div>
+			</div>
+			<div className='min-w-0 space-y-3'>
+				<div>
+					<p className='text-sm font-semibold text-stone-100'>
+						Steer this cook
+					</p>
+					<p className='hidden text-xs text-stone-500 sm:block'>
+						Ask for a plan, change dinner time, or tell it what you just did.
+					</p>
+				</div>
+				<PitChat variant='dark' />
+			</div>
+		</section>
+	)
+}
+
+function BriefStat({
+	label,
+	value,
+	sub,
+	color,
+}: {
+	label: string
+	value: string
+	sub: string
+	color: string
+}) {
+	return (
+		<div className='rounded border border-stone-800 bg-stone-900/80 p-2.5 sm:p-3'>
+			<p className='text-xs uppercase tracking-wide text-stone-500'>{label}</p>
+			<p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>
+				{value}
+			</p>
+			<p className='mt-0.5 text-xs text-stone-500'>{sub}</p>
+		</div>
+	)
+}
+
 interface DeviceOverviewPageProps {
 	device: {
 		id: string | null
@@ -157,6 +325,46 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 
 	return (
 		<div className='space-y-4 pb-8'>
+			<PitmasterCommandBand
+				device={device}
+				grillState={grillState}
+				probeState={probeState}
+				prefersCelsius={zeroUser?.prefers_celsius ?? false}
+			/>
+
+			{/* Live cook graph mirrors the homepage's primary cook timeline. */}
+			<TemperatureGraph
+				deviceId={device.id ?? ''}
+				prefersCelsius={zeroUser?.prefers_celsius ?? false}
+				setpointC={
+					typeof grillState?.setpoint === 'number' ? grillState.setpoint : null
+				}
+				probeTargetC={
+					device.probe1_target_temp != null
+						? Number(device.probe1_target_temp)
+						: null
+				}
+				live={
+					typeof grillState?.state === 'string' &&
+					['cooking', 'preheating'].includes(grillState.state.toLowerCase())
+				}
+				title='Live cook timeline'
+				series={[
+					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
+					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
+					{
+						attributeName: 'probe1_temp_a',
+						name: 'Probe 1',
+						color: '#f59e0b',
+					},
+					{
+						attributeName: 'probe2_temp_a',
+						name: 'Probe 2',
+						color: '#8b5cf6',
+					},
+				]}
+			/>
+
 			{/* Primary cards row */}
 			<div className='grid gap-4 md:grid-cols-2'>
 				{/* Cook Status Card - Enhanced */}
@@ -324,7 +532,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 							<div className='flex items-center justify-between'>
 								<div className='flex items-center gap-2'>
 									<Thermometer className='h-4 w-4 text-muted-foreground' />
-									<span className='text-sm font-medium'>Active Probes</span>
+									<span className='text-sm font-medium'>Connected Probes</span>
 								</div>
 								<span className='text-sm font-medium'>
 									{viewModel?.deviceStatus === 'Offline'
@@ -371,7 +579,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 											key={probe.name}
 											deviceId={device.id ?? ''}
 											probeIndex={probeIndex}
-											name={probe.name.replace('probe', 'Probe ')}
+											name={`Probe ${probeIndex}`}
 											active={probe.active === 1}
 											tempC={
 												device[tempKey] != null ? Number(device[tempKey]) : null
@@ -392,39 +600,6 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 			</div>
 
 			<CookPhotos deviceId={device.id ?? ''} />
-
-			{/* Temperature History Graph */}
-			<TemperatureGraph
-				deviceId={device.id ?? ''}
-				prefersCelsius={zeroUser?.prefers_celsius ?? false}
-				setpointC={
-					typeof grillState?.setpoint === 'number' ? grillState.setpoint : null
-				}
-				probeTargetC={
-					device.probe1_target_temp != null
-						? Number(device.probe1_target_temp)
-						: null
-				}
-				live={
-					typeof grillState?.state === 'string' &&
-					['cooking', 'preheating'].includes(grillState.state.toLowerCase())
-				}
-				series={[
-					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
-					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
-					{
-						attributeName: 'probe1_temp_a',
-						name: 'Probe 1',
-						color: '#f59e0b',
-					},
-					{
-						attributeName: 'probe2_temp_a',
-						name: 'Probe 2',
-						color: '#8b5cf6',
-					},
-				]}
-				className='mt-4 mb-8'
-			/>
 		</div>
 	)
 }
@@ -458,18 +633,18 @@ function DeviceDetailLayout() {
 	}
 
 	return (
-		<div className='container mx-auto p-6 max-w-6xl'>
+		<div className='mx-auto w-full max-w-6xl min-w-0 px-4 py-4 sm:px-6 sm:py-6'>
 			{/* Shared Header */}
 			<div className='mb-6'>
-				<div className='flex items-center justify-between mb-2'>
-					<h1 className='text-3xl font-bold'>
+				<div className='mb-2 flex flex-wrap items-start justify-between gap-3'>
+					<h1 className='min-w-0 text-3xl font-bold break-words'>
 						{device.productName || 'Unnamed Device'}
 					</h1>
 					<Badge
 						variant={
 							device.connectionStatus === 'Online' ? 'default' : 'secondary'
 						}
-						className='text-base px-3 py-1'
+						className='shrink-0 px-3 py-1 text-base'
 					>
 						{device.connectionStatus === 'Online' ? (
 							<Wifi className='h-4 w-4 mr-1' />
@@ -479,14 +654,14 @@ function DeviceDetailLayout() {
 						{device.connectionStatus || 'Unknown'}
 					</Badge>
 				</div>
-				<p className='text-muted-foreground'>
+				<p className='break-words text-muted-foreground'>
 					Model: {device.model || 'Unknown'} • DSN: {device.dsn}
 				</p>
 			</div>
 
 			{/* Navigation (replaces TabsList) */}
-			<div className='mb-4'>
-				<div className='inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground'>
+			<div className='mb-4 max-w-full overflow-x-auto pb-1'>
+				<div className='inline-flex h-10 min-w-max items-center justify-center rounded-md bg-muted p-1 text-muted-foreground'>
 					<Link
 						to='/app/device/$deviceId'
 						params={{ deviceId }}

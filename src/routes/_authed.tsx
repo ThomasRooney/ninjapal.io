@@ -14,8 +14,5 @@ export const Route = createFileRoute('/_authed')({
 })
 
 function AuthWrapper() {
-	const { user } = Route.useRouteContext()
-	console.log('🔐 _authed route context:', { user })
-
 	return <Outlet />
 }

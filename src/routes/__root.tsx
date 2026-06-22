@@ -73,9 +73,10 @@ function RootComponent() {
 	return (
 		<RootDocument>
 			<Outlet />
-			{import.meta.env.DEV && (
-				<TanStackRouterDevtools position='bottom-right' />
-			)}
+			{import.meta.env.DEV &&
+				import.meta.env.VITE_SHOW_ROUTER_DEVTOOLS === 'true' && (
+					<TanStackRouterDevtools position='bottom-right' />
+				)}
 		</RootDocument>
 	)
 }
@@ -147,12 +148,6 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	const ctx = Route.useRouteContext()
-
-	const user = ctx.user
-
-	console.log('Server-side route context:', { user })
-
 	return (
 		<html lang='en'>
 			<head>

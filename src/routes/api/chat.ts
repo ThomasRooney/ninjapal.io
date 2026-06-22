@@ -93,10 +93,44 @@ export const Route = createFileRoute('/api/chat')({
 					onFinish: async () => {
 						await mcp.close().catch(() => {})
 					},
+					onError: async ({ error }: { error: unknown }) => {
+						console.error('pit chat stream failed:', chatErrorForLog(error))
+						await mcp.close().catch(() => {})
+					},
 				})
 
-				return result.toUIMessageStreamResponse()
+				return result.toUIMessageStreamResponse({
+					onError: chatErrorForUser,
+				})
 			},
 		},
 	},
 })
+
+function chatErrorForUser(error: unknown) {
+	const statusCode = errorStatusCode(error)
+	if (statusCode === 401 || statusCode === 403) {
+		return 'PitMinder chat is offline locally: the AI provider rejected the configured API key. Update ANTHROPIC_API_KEY and retry.'
+	}
+	return 'PitMinder chat failed while contacting the AI provider. Check the local server log for details and retry.'
+}
+
+function chatErrorForLog(error: unknown) {
+	if (error instanceof Error) {
+		return {
+			name: error.name,
+			message: error.message,
+			statusCode: errorStatusCode(error),
+		}
+	}
+	return error
+}
+
+function errorStatusCode(error: unknown) {
+	return typeof error === 'object' &&
+		error !== null &&
+		'statusCode' in error &&
+		typeof error.statusCode === 'number'
+		? error.statusCode
+		: null
+}

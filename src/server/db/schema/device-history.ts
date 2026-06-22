@@ -45,13 +45,13 @@ export const deviceHistory = pgTable(
 		deviceIdIdx: index('idx_device_history_device_id').on(table.deviceId),
 		recordedAtIdx: index('idx_device_history_recorded_at').on(table.recordedAt),
 
-		// Ensure only one snapshot per device per hour.
+		// Ensure only one snapshot per device per minute.
 		// AT TIME ZONE 'UTC' makes the expression immutable (date_trunc on a
 		// bare timestamptz is only stable, which Postgres rejects in indexes).
-		oneSnapshotPerHourIdx: uniqueIndex('one_snapshot_per_hour_idx')
+		oneSnapshotPerMinuteIdx: uniqueIndex('one_snapshot_per_minute_idx')
 			.on(
 				table.deviceId,
-				sql`date_trunc('hour', ${table.recordedAt} AT TIME ZONE 'UTC')`,
+				sql`date_trunc('minute', ${table.recordedAt} AT TIME ZONE 'UTC')`,
 			)
 			.where(sql`${table.historyType} = 'snapshot'`),
 	}),

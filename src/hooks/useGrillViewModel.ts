@@ -86,7 +86,7 @@ export function useGrillViewModel(
 			deviceStatus,
 			errorStatus,
 			connectedProbes,
-			activeProbeCount: connectedProbes.filter((p) => p.active === 1).length,
+			activeProbeCount: connectedProbes.length,
 		}
 	}, [grillState, probeState, connectionStatus])
 }

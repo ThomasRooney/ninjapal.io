@@ -10,6 +10,100 @@ export interface AylaDevice {
 	[key: string]: unknown
 }
 
+const REAL_GRILL_FAHRENHEIT_KEYS = [
+	'grill',
+	'air',
+	'smoke',
+	'probe0_a',
+	'probe0_b',
+	'probe1_a',
+	'probe1_b',
+] as const
+
+const round1 = (value: number) => Math.round(value * 10) / 10
+
+function fahrenheitToCelsius(value: number): number {
+	return round1(((value - 32) * 5) / 9)
+}
+
+function parseJsonValue(value: unknown): Record<string, unknown> | null {
+	if (!value) return null
+	if (typeof value === 'string') {
+		try {
+			const parsed = JSON.parse(value)
+			return parsed && typeof parsed === 'object'
+				? (parsed as Record<string, unknown>)
+				: null
+		} catch {
+			return null
+		}
+	}
+	return typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function cloneJsonRecord(
+	value: Record<string, unknown>,
+): Record<string, unknown> {
+	return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function normalizeRealGrillStateTemperatures(
+	grillState: Record<string, unknown>,
+): Record<string, unknown> {
+	const normalized = cloneJsonRecord(grillState)
+	const isSimulated = normalized.sim === 1
+	if (isSimulated) return normalized
+
+	const inputs = normalized.inputs as Record<string, unknown> | undefined
+	const temps = inputs?.temps as Record<string, unknown> | undefined
+	if (!temps) return normalized
+
+	for (const key of REAL_GRILL_FAHRENHEIT_KEYS) {
+		const value = temps[key]
+		if (typeof value === 'number') {
+			temps[key] = fahrenheitToCelsius(value)
+		}
+	}
+
+	return normalized
+}
+
+function setIfNumber(
+	deviceData: Record<string, unknown>,
+	key: string,
+	value: unknown,
+) {
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		deviceData[key] = round1(value)
+	}
+}
+
+function setIfSaneTemperature(
+	deviceData: Record<string, unknown>,
+	key: string,
+	value: unknown,
+) {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return
+	if (value < -50 || value > 350) {
+		deviceData[key] = null
+		return
+	}
+	deviceData[key] = round1(value)
+}
+
+function setIfMeaningfulNumber(
+	deviceData: Record<string, unknown>,
+	key: string,
+	value: unknown,
+) {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return
+	if (value <= 0) {
+		deviceData[key] = null
+		return
+	}
+	deviceData[key] = round1(value)
+}
+
 /**
  * Builds the devices-row payload from a raw Ayla device + its properties:
  * maps known properties to columns (GET_GrillState first so canonical
@@ -139,49 +233,65 @@ export function buildDeviceData(
 			}
 
 			// Set the value in deviceData only if column is enabled
-			deviceData[columnName] = convertedValue
+			// Some Ayla devices send null standalone GET_Temp_* properties while
+			// GET_GrillState/GET_ProbeState contains useful readings. Do not let a
+			// null mapped property erase a better fallback extracted earlier.
+			if (convertedValue !== null || deviceData[columnName] === undefined) {
+				deviceData[columnName] = convertedValue
+			}
 
 			// Special handling for GET_GrillState - flatten the JSON structure
 			if (propName === 'GET_GrillState' && propValue) {
 				try {
+					const parsedGrillState = parseJsonValue(propValue)
+					if (!parsedGrillState) continue
 					const grillState =
-						typeof propValue === 'string' ? JSON.parse(propValue) : propValue
+						normalizeRealGrillStateTemperatures(parsedGrillState)
+					deviceData.grill_state_raw = JSON.stringify(grillState, null, '\t')
 
 					// Flatten top-level grill state fields
 					if (grillState.state !== undefined)
 						deviceData.gs_state = grillState.state
+					if (grillState.mode !== undefined)
+						deviceData.cook_mode = grillState.mode
 					if (grillState.message !== undefined)
 						deviceData.gs_message = grillState.message
 					if (grillState.eventmask !== undefined)
 						deviceData.gs_eventmask = grillState.eventmask
 					if (grillState.sim !== undefined) deviceData.gs_sim = grillState.sim
+					if (grillState.state !== undefined)
+						deviceData.cook_state = grillState.state
+					if (grillState.smoke !== undefined)
+						deviceData.cook_smoke_level = grillState.smoke
+					if (grillState.error !== undefined)
+						deviceData.error_code = grillState.error
+					if (grillState['seconds left'] !== undefined)
+						deviceData.seconds_left_on_timer = grillState['seconds left']
 
 					// Extract nested temperature data
-					if (grillState.inputs?.temps) {
-						const temps = grillState.inputs.temps
-
+					const inputs = grillState.inputs as
+						| Record<string, unknown>
+						| undefined
+					const temps = inputs?.temps as Record<string, unknown> | undefined
+					if (temps) {
 						// IMPORTANT: The temperature values set here are preliminary fallbacks.
 						// They will be overwritten by the more accurate GET_Temp_* properties
 						// processed later in this loop. This dual-write approach ensures we have
 						// some data even if individual temperature properties are missing.
-						if (temps.grill !== undefined) deviceData.temp_grill = temps.grill
-						if (temps.air !== undefined) deviceData.temp_air = temps.air
-						if (temps.smoke !== undefined) deviceData.temp_smoke = temps.smoke
-						if (temps.probe0_a !== undefined)
-							deviceData.probe1_temp_a = temps.probe0_a
-						if (temps.probe0_b !== undefined)
-							deviceData.probe1_temp_b = temps.probe0_b
-						if (temps.probe1_a !== undefined)
-							deviceData.probe2_temp_a = temps.probe1_a
-						if (temps.probe1_b !== undefined)
-							deviceData.probe2_temp_b = temps.probe1_b
-						if (temps.main !== undefined) deviceData.temp_mainpcb = temps.main
-						if (temps.ui !== undefined) deviceData.temp_uipcb = temps.ui
+						setIfNumber(deviceData, 'temp_grill', temps.grill)
+						setIfNumber(deviceData, 'temp_air', temps.air)
+						setIfNumber(deviceData, 'temp_smoke', temps.smoke)
+						setIfMeaningfulNumber(deviceData, 'probe1_temp_a', temps.probe0_a)
+						setIfMeaningfulNumber(deviceData, 'probe1_temp_b', temps.probe0_b)
+						setIfMeaningfulNumber(deviceData, 'probe2_temp_a', temps.probe1_a)
+						setIfMeaningfulNumber(deviceData, 'probe2_temp_b', temps.probe1_b)
+						setIfSaneTemperature(deviceData, 'temp_mainpcb', temps.main)
+						setIfSaneTemperature(deviceData, 'temp_uipcb', temps.ui)
 					}
 
 					// Extract IO data
-					if (grillState.inputs?.io) {
-						const io = grillState.inputs.io
+					const io = inputs?.io as Record<string, unknown> | undefined
+					if (io) {
 						if (io['lid open'] !== undefined) {
 							deviceData.is_lid_open = io['lid open'] === 1
 						}
@@ -191,6 +301,27 @@ export function buildDeviceData(
 						`Failed to parse grill_state for device ${device.dsn}:`,
 						error,
 					)
+				}
+			}
+
+			if (propName === 'GET_ProbeState' && propValue) {
+				const probeState = parseJsonValue(propValue)
+				const probes = probeState?.probes
+				if (Array.isArray(probes)) {
+					probes.slice(0, 2).forEach((probe, index) => {
+						if (!probe || typeof probe !== 'object') return
+						const probeRecord = probe as Record<string, unknown>
+						const probeNumber = index + 1
+						const installedKey = `is_probe${probeNumber}_installed`
+						const tempKey = `probe${probeNumber}_temp_a`
+						const isInstalled = probeRecord['plugged in'] === 1
+						deviceData[installedKey] = isInstalled
+						if (isInstalled) {
+							setIfMeaningfulNumber(deviceData, tempKey, probeRecord.temp)
+						} else {
+							deviceData[tempKey] = null
+						}
+					})
 				}
 			}
 		}

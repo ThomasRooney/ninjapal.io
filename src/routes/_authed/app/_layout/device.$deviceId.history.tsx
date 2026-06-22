@@ -119,7 +119,7 @@ function DeviceHistoryPage() {
 					<CardHeader className='pb-3'>
 						<div className='flex items-center justify-between'>
 							<CardTitle className='text-base'>
-								{entry.historyType === 'snapshot' && 'Hourly Snapshot'}
+								{entry.historyType === 'snapshot' && 'Minute Snapshot'}
 								{entry.historyType === 'patch' && 'Device State Updated'}
 							</CardTitle>
 							<span className='text-sm text-muted-foreground'>

@@ -283,22 +283,31 @@ function MessagesPage() {
 	const [runs] = useQuery(
 		z.query.directorRuns.orderBy('createdAt', 'desc').limit(50),
 	)
+	const [sessions] = useQuery(
+		z.query.cookSessions.orderBy('startedAt', 'desc').limit(50),
+	)
 
 	const pendingCount =
-		messages?.filter((m) => m.requiresAck && m.ackedAt == null).length ?? 0
+		messages
+			?.filter((m) => isCurrentCookMessage(m, sessions))
+			.filter((m) => m.requiresAck && m.ackedAt == null).length ?? 0
 
 	// One feed: messages and director check-ins, newest first
 	const feed = [
-		...(messages ?? []).map((m) => ({
-			type: 'message' as const,
-			at: m.createdAt ?? 0,
-			message: m,
-		})),
-		...(runs ?? []).map((r) => ({
-			type: 'run' as const,
-			at: r.createdAt ?? 0,
-			run: r,
-		})),
+		...(messages ?? [])
+			.filter((m) => isCurrentCookMessage(m, sessions))
+			.map((m) => ({
+				type: 'message' as const,
+				at: m.createdAt ?? 0,
+				message: m,
+			})),
+		...(runs ?? [])
+			.filter((r) => isCurrentCookRun(r, sessions))
+			.map((r) => ({
+				type: 'run' as const,
+				at: r.createdAt ?? 0,
+				run: r,
+			})),
 	].sort((a, b) => b.at - a.at)
 
 	return (
@@ -351,4 +360,51 @@ function MessagesPage() {
 			</div>
 		</div>
 	)
+}
+
+type CookSessionForFeed = {
+	id: string | null
+	deviceId: string | null
+	startedAt: number | null
+	endedAt: number | null
+}
+
+function activeCookContext(sessions: CookSessionForFeed[] | undefined) {
+	const active = (sessions ?? []).filter((s) => s.endedAt == null)
+	const activeSessionIds = new Set(active.map((s) => s.id).filter(Boolean))
+	const activeStartedByDevice = new Map<string, number>()
+	for (const session of active) {
+		if (!session.deviceId || !session.startedAt) continue
+		const previous = activeStartedByDevice.get(session.deviceId)
+		if (previous == null || session.startedAt > previous) {
+			activeStartedByDevice.set(session.deviceId, session.startedAt)
+		}
+	}
+	return { activeSessionIds, activeStartedByDevice }
+}
+
+function isCurrentCookMessage(
+	message: {
+		sessionId: string | null
+		deviceId: string | null
+		createdAt: number | null
+	},
+	sessions: CookSessionForFeed[] | undefined,
+) {
+	const { activeSessionIds, activeStartedByDevice } =
+		activeCookContext(sessions)
+	if (message.sessionId) return activeSessionIds.has(message.sessionId)
+	if (!message.deviceId || !message.createdAt) return false
+	const activeStartedAt = activeStartedByDevice.get(message.deviceId)
+	return activeStartedAt != null && message.createdAt >= activeStartedAt
+}
+
+function isCurrentCookRun(
+	run: { deviceId: string | null; createdAt: number | null },
+	sessions: CookSessionForFeed[] | undefined,
+) {
+	const { activeStartedByDevice } = activeCookContext(sessions)
+	if (!run.deviceId || !run.createdAt) return false
+	const activeStartedAt = activeStartedByDevice.get(run.deviceId)
+	return activeStartedAt != null && run.createdAt >= activeStartedAt
 }
