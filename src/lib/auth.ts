@@ -21,6 +21,15 @@ export const MCP_RESOURCE =
 	process.env.PITMINDER_MCP_RESOURCE ?? 'https://app.pitminder.com/api/mcp'
 
 /**
+ * OAuth issuer — better-auth's baseURL (origin + basePath). Must match the
+ * `iss` claim the jwt plugin signs into access tokens.
+ */
+export function getAuthIssuer(): string {
+	const origin = process.env.BETTER_AUTH_URL ?? new URL(MCP_RESOURCE).origin
+	return `${origin.replace(/\/+$/, '')}/api/auth`
+}
+
+/**
  * Server-side better-auth instance. Sessions are cookie-based; the Zero JWT
  * is minted separately (see zero-jwt.ts) so zero-cache keeps validating with
  * ZERO_AUTH_SECRET exactly as before.
