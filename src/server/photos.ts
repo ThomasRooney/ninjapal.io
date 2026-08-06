@@ -1,5 +1,13 @@
 import { auth } from '@/lib/auth'
 import { getSql } from '@/server/db/client'
+import {
+	deleteStoredPhotoObject,
+	makePhotoKey,
+	photosBucket,
+	putPhotoObject,
+	resolveStoredPhotoUrl,
+	s3PhotoUrl,
+} from '@/server/photo-storage'
 import { getRequest } from '@tanstack/react-start/server'
 import { del, put } from '@vercel/blob'
 
@@ -27,9 +35,15 @@ export interface UploadedPhoto {
 }
 
 /**
- * Stores a cook photo in Vercel Blob (public, unguessable random-suffix
- * URL, namespaced per user) and records it in cook_photos. Photos older
- * than 60 days are reaped by the worker.
+ * Stores a cook photo and records it in cook_photos. Photos older than 60
+ * days are reaped by the worker (S3 additionally has a lifecycle rule).
+ *
+ * Backend selection (env-gated, per infra/aws/ARCHITECTURE.md):
+ *  - PHOTOS_BUCKET set → private S3 object (per-user namespace + random
+ *    suffix key in `pathname`, `s3://bucket/key` marker in `url`), served
+ *    via presigned GETs minted on demand.
+ *  - unset (Vercel/local today) → Vercel Blob, public unguessable URL,
+ *    exactly as before.
  */
 export async function uploadCookPhoto(args: {
 	bytes: ArrayBuffer
@@ -55,12 +69,31 @@ export async function uploadCookPhoto(args: {
 		throw new Error('Photo limit reached — delete some older photos first')
 	}
 
-	const ext = args.contentType.split('/')[1].replace('jpeg', 'jpg')
-	const blob = await put(`cook-photos/${user.id}/photo.${ext}`, args.bytes, {
-		access: 'public',
-		contentType: args.contentType,
-		addRandomSuffix: true,
-	})
+	const bucket = photosBucket()
+	let storedUrl: string
+	let pathname: string
+	let displayUrl: string
+	if (bucket) {
+		const key = makePhotoKey(user.id, args.contentType)
+		await putPhotoObject({
+			key,
+			bytes: args.bytes,
+			contentType: args.contentType,
+		})
+		storedUrl = s3PhotoUrl(bucket, key)
+		pathname = key
+		displayUrl = await resolveStoredPhotoUrl(storedUrl)
+	} else {
+		const ext = args.contentType.split('/')[1].replace('jpeg', 'jpg')
+		const blob = await put(`cook-photos/${user.id}/photo.${ext}`, args.bytes, {
+			access: 'public',
+			contentType: args.contentType,
+			addRandomSuffix: true,
+		})
+		storedUrl = blob.url
+		pathname = blob.pathname
+		displayUrl = blob.url
+	}
 
 	const [row] = await sql`
 		insert into cook_photos (user_id, device_id, session_id, url, pathname, content_type, size_bytes)
@@ -68,17 +101,17 @@ export async function uploadCookPhoto(args: {
 			${user.id}::uuid,
 			${args.deviceId ?? null},
 			${args.sessionId ?? null},
-			${blob.url},
-			${blob.pathname},
+			${storedUrl},
+			${pathname},
 			${args.contentType},
 			${args.bytes.byteLength}
 		)
 		returning id
 	`
-	return { id: row.id as string, url: blob.url }
+	return { id: row.id as string, url: displayUrl }
 }
 
-/** Deletes a photo the user owns: blob first, then the row. */
+/** Deletes a photo the user owns: stored object first, then the row. */
 export async function deleteCookPhoto(photoId: string): Promise<void> {
 	const user = await requireSession()
 	const sql = getSql()
@@ -87,6 +120,38 @@ export async function deleteCookPhoto(photoId: string): Promise<void> {
 		where id = ${photoId} and user_id = ${user.id}::uuid
 	`
 	if (!photo) throw new Error('Photo not found')
-	await del(photo.url as string)
+	const url = photo.url as string
+	// S3 rows carry an s3:// marker; anything else is a Vercel Blob URL.
+	const wasS3 = await deleteStoredPhotoObject(url)
+	if (!wasS3) await del(url)
 	await sql`delete from cook_photos where id = ${photoId}`
+}
+
+/**
+ * Resolves stored photo URLs (only the caller's own rows) to fetchable
+ * ones: s3:// markers become 60-min presigned GETs; Blob https URLs pass
+ * through. The client calls this for rows whose synced `url` is an s3://
+ * marker.
+ */
+export async function resolveCookPhotoUrls(
+	photoIds: string[],
+): Promise<Record<string, string>> {
+	const user = await requireSession()
+	if (photoIds.length === 0) return {}
+	const sql = getSql()
+	const rows = await sql`
+		select id, url from cook_photos
+		where user_id = ${user.id}::uuid and id = any(${photoIds}::uuid[])
+	`
+	const resolved: Record<string, string> = {}
+	for (const row of rows) {
+		try {
+			resolved[row.id as string] = await resolveStoredPhotoUrl(
+				row.url as string,
+			)
+		} catch {
+			// Presign failure for one photo must not sink the batch.
+		}
+	}
+	return resolved
 }

@@ -64,6 +64,10 @@ import postgres from 'postgres'
 import webPush from 'web-push'
 import { del as blobDel } from '@vercel/blob'
 import {
+	deleteStoredPhotoObject,
+	resolveStoredPhotoUrl,
+} from '@/server/photo-storage'
+import {
 	assertSafeUpstream,
 	backoffOnFailure,
 	backoffOnSuccess,
@@ -878,10 +882,23 @@ async function runPitDirector(
 				.where(eq(cookPhotos.userId, userId))
 				.orderBy(desc(cookPhotos.createdAt))
 				.limit(10)
-			return rows.map((p) => ({
-				url: p.url,
-				at: p.createdAt.toISOString(),
-			}))
+			// S3-backed rows store an s3:// marker — the model needs a
+			// fetchable presigned URL; unresolvable photos are skipped.
+			const photos: Array<{ url: string; at: string }> = []
+			for (const p of rows) {
+				try {
+					photos.push({
+						url: await resolveStoredPhotoUrl(p.url),
+						at: p.createdAt.toISOString(),
+					})
+				} catch (error) {
+					console.warn(
+						'[director] skipping unresolvable photo:',
+						error instanceof Error ? error.message : error,
+					)
+				}
+			}
+			return photos
 		},
 		set_pit_temp: async ({ setpointC, reason }) => {
 			const verdict = validateIntent(
@@ -1470,7 +1487,10 @@ async function reapExpiredPhotos() {
 		.limit(100)
 	for (const photo of expired) {
 		try {
-			if (process.env.BLOB_READ_WRITE_TOKEN) await blobDel(photo.url)
+			// S3 rows (s3:// marker) delete their object here too — idempotent
+			// with the bucket lifecycle rule; Blob rows keep the old path.
+			const wasS3 = await deleteStoredPhotoObject(photo.url)
+			if (!wasS3 && process.env.BLOB_READ_WRITE_TOKEN) await blobDel(photo.url)
 			await db.delete(cookPhotos).where(eq(cookPhotos.id, photo.id))
 			console.log(`photos: reaped expired ${photo.id}`)
 		} catch (error) {
