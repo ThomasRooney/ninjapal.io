@@ -144,51 +144,15 @@ export function createSharedMutators(authData: AuthData) {
 					throw new Error("Cannot modify another user's connection.")
 				}
 
+				// The password is intentionally NOT written here: it is excluded
+				// from the Zero schema so it never syncs to browsers. The server
+				// mutator persists it with direct SQL; this optimistic write only
+				// covers the safe status columns.
 				await tx.mutate.ninjaConnections.upsert({
-					...args,
+					userId: args.userId,
+					username: args.username,
 					attempts: args.attempts ?? 0,
 					updatedAt: Date.now(),
-				})
-			},
-			async updateTokens(
-				tx: Transaction<Schema>,
-				args: {
-					userId: string
-					oauthAccessToken?: string | null
-					oauthRefreshToken?: string | null
-					oauthExpiresAt?: number | null
-					aylaAccessToken?: string | null
-					aylaRefreshToken?: string | null
-					aylaExpiresAt?: number | null
-				},
-			) {
-				if (!authData.sub) throw new Error('Not authenticated')
-
-				// Ensure users can only update their own tokens
-				if (args.userId !== authData.sub)
-					throw new Error("Cannot modify another user's tokens")
-
-				const updates: Record<string, string | number | null> = {
-					updatedAt: Date.now(),
-				}
-
-				// Only include defined values in the update
-				if (args.oauthAccessToken !== undefined)
-					updates.oauthAccessToken = args.oauthAccessToken
-				if (args.oauthRefreshToken !== undefined)
-					updates.oauthRefreshToken = args.oauthRefreshToken
-				if (args.oauthExpiresAt !== undefined)
-					updates.oauthExpiresAt = args.oauthExpiresAt
-				if (args.aylaAccessToken !== undefined)
-					updates.aylaAccessToken = args.aylaAccessToken
-				if (args.aylaRefreshToken !== undefined)
-					updates.aylaRefreshToken = args.aylaRefreshToken
-				if (args.aylaExpiresAt !== undefined)
-					updates.aylaExpiresAt = args.aylaExpiresAt
-
-				await tx.mutate.ninjaConnections.update({
-					userId: args.userId,
-					...updates,
 				})
 			},
 			async incrementAttempts(

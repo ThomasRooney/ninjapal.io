@@ -1,10 +1,127 @@
+import { createLogger } from '@/lib/log.ts'
 import type { EnhancedAuthState } from '@/ninjaAuth/types.ts'
 import { buildDeviceData } from '@/server/db/build-device-data'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
 import type { AuthData } from '@/server/db/zero-permissions.ts'
 import type { Schema } from '@/server/db/zero-schema.gen'
 import { createSharedMutators } from '@/server/db/zero-shared-mutators.ts'
-import type { CustomMutatorDefs, Transaction } from '@rocicorp/zero'
+import type {
+	CustomMutatorDefs,
+	ServerTransaction,
+	Transaction,
+} from '@rocicorp/zero'
+
+const log = createLogger('zero-server-mutators')
+
+/**
+ * Narrows a mutator transaction to the server transaction so we can run raw
+ * SQL against the upstream Postgres. Ninja credentials and cloud tokens are
+ * excluded from the Zero schema (they must never sync to browsers), so all
+ * server-side reads/writes of those columns go through this escape hatch.
+ */
+function asServerTx(
+	tx: Transaction<Schema>,
+): ServerTransaction<Schema, unknown> {
+	if (tx.location !== 'server') {
+		throw new Error('This mutator only runs on the server')
+	}
+	return tx
+}
+
+type NinjaCredentialRow = {
+	username: string
+	password: string
+	attempts: number
+	oauthAccessToken: string | null
+	oauthRefreshToken: string | null
+	oauthExpiresAt: number | null
+	aylaAccessToken: string | null
+	aylaRefreshToken: string | null
+	aylaExpiresAt: number | null
+}
+
+/** Epoch millis from a Postgres timestamptz value (Date or string), else null. */
+function toMillis(value: unknown): number | null {
+	if (value == null) return null
+	const ms = new Date(value as string | Date).getTime()
+	return Number.isNaN(ms) ? null : ms
+}
+
+/**
+ * Reads the full credential row (including the Zero-excluded password/token
+ * columns) with raw SQL inside the mutator's transaction.
+ */
+async function readNinjaCredentials(
+	tx: Transaction<Schema>,
+	userId: string,
+): Promise<NinjaCredentialRow | null> {
+	const rows = await asServerTx(tx).dbTransaction.query(
+		`select username, password, attempts,
+		        oauth_access_token, oauth_refresh_token, oauth_expires_at,
+		        ayla_access_token, ayla_refresh_token, ayla_expires_at
+		   from ninja_connections
+		  where user_id = $1`,
+		[userId],
+	)
+	const row = [...rows][0]
+	if (!row) return null
+	return {
+		username: row.username as string,
+		password: row.password as string,
+		attempts: (row.attempts as number | null) ?? 0,
+		oauthAccessToken: (row.oauth_access_token as string | null) ?? null,
+		oauthRefreshToken: (row.oauth_refresh_token as string | null) ?? null,
+		oauthExpiresAt: toMillis(row.oauth_expires_at),
+		aylaAccessToken: (row.ayla_access_token as string | null) ?? null,
+		aylaRefreshToken: (row.ayla_refresh_token as string | null) ?? null,
+		aylaExpiresAt: toMillis(row.ayla_expires_at),
+	}
+}
+
+const TOKEN_COLUMNS = {
+	oauthAccessToken: { column: 'oauth_access_token', timestamp: false },
+	oauthRefreshToken: { column: 'oauth_refresh_token', timestamp: false },
+	oauthExpiresAt: { column: 'oauth_expires_at', timestamp: true },
+	aylaAccessToken: { column: 'ayla_access_token', timestamp: false },
+	aylaRefreshToken: { column: 'ayla_refresh_token', timestamp: false },
+	aylaExpiresAt: { column: 'ayla_expires_at', timestamp: true },
+} as const
+
+type NinjaTokenUpdate = {
+	[K in keyof typeof TOKEN_COLUMNS]?: (typeof TOKEN_COLUMNS)[K] extends {
+		timestamp: true
+	}
+		? number | null
+		: string | null
+}
+
+/**
+ * Writes OAuth/Ayla tokens with raw SQL. Only keys present in `updates` are
+ * written; expiry values are epoch millis. Replaces the old shared-mutator
+ * `updateTokens` path — tokens are no longer part of the Zero schema.
+ */
+async function writeNinjaTokens(
+	tx: Transaction<Schema>,
+	userId: string,
+	updates: NinjaTokenUpdate,
+): Promise<void> {
+	const sets: string[] = ['updated_at = now()']
+	const params: (string | number | null)[] = [userId]
+	for (const [key, spec] of Object.entries(TOKEN_COLUMNS)) {
+		const value = updates[key as keyof NinjaTokenUpdate]
+		if (value === undefined) continue
+		params.push(value)
+		sets.push(
+			spec.timestamp
+				? `${spec.column} = to_timestamp($${params.length} / 1000.0)`
+				: `${spec.column} = $${params.length}`,
+		)
+	}
+	await asServerTx(tx).dbTransaction.query(
+		`update ninja_connections set ${sets.join(', ')} where user_id = $1`,
+		params,
+	)
+}
 
 /**
  * Server mutators that extend shared mutators with server-specific logic
@@ -95,31 +212,28 @@ export function createServerMutators(
 					attempts?: number
 				},
 			) {
-				// Delegate to shared mutator
-				await sharedMutators.ninjaConnections.upsert(tx, args)
+				if (!authData.sub) throw new Error('Not authenticated')
 
-				// Add server-specific logic
-				console.log(
-					`[Server] Ninja connection upserted for user: ${args.userId}`,
+				// Ensure users can only upsert their own connection
+				if (args.userId !== authData.sub) {
+					throw new Error("Cannot modify another user's connection.")
+				}
+
+				// The password column is excluded from the Zero schema (never
+				// synced to browsers), so the whole upsert happens with raw SQL —
+				// a ZQL insert without the NOT NULL password would fail anyway.
+				await asServerTx(tx).dbTransaction.query(
+					`insert into ninja_connections (user_id, username, password, attempts, updated_at)
+					 values ($1, $2, $3, $4, now())
+					 on conflict (user_id) do update
+					    set username = excluded.username,
+					        password = excluded.password,
+					        attempts = excluded.attempts,
+					        updated_at = now()`,
+					[args.userId, args.username, args.password, args.attempts ?? 0],
 				)
-			},
-			async updateTokens(
-				tx: Transaction<Schema>,
-				args: {
-					userId: string
-					oauthAccessToken?: string | null
-					oauthRefreshToken?: string | null
-					oauthExpiresAt?: number | null
-					aylaAccessToken?: string | null
-					aylaRefreshToken?: string | null
-					aylaExpiresAt?: number | null
-				},
-			) {
-				// Delegate to shared mutator
-				await sharedMutators.ninjaConnections.updateTokens(tx, args)
 
-				// Add server-specific logic
-				console.log(`[Server] Ninja tokens updated for user: ${args.userId}`)
+				log.info('ninja connection upserted', { userId: args.userId })
 			},
 			async incrementAttempts(
 				tx: Transaction<Schema>,
@@ -137,16 +251,20 @@ export function createServerMutators(
 				tx: Transaction<Schema>,
 				args: { userId: string },
 			) {
+				// Delegate to shared mutator for the own-connection permission check
+				await sharedMutators.ninjaConnections.validateAndRefreshCredentials(
+					tx,
+					args,
+				)
+
 				// Import the NinjaAuthManager
 				const { NinjaAuthManager } = await import(
 					'@/ninjaAuth/ninja-auth-manager.ts'
 				)
 
-				// Get the connection from the database
-				const connection = await tx.query.ninjaConnections
-					.where('userId', args.userId)
-					.one()
-					.run()
+				// Credentials are excluded from the Zero schema, so read them with
+				// raw SQL inside this transaction.
+				const connection = await readNinjaCredentials(tx, args.userId)
 				if (!connection) {
 					throw new Error('No connection found for user')
 				}
@@ -170,8 +288,7 @@ export function createServerMutators(
 
 					// Login credentials work! Save OAuth tokens
 					let authState = authManager.getState()
-					await sharedMutators.ninjaConnections.updateTokens(tx, {
-						userId: args.userId,
+					await writeNinjaTokens(tx, args.userId, {
 						oauthAccessToken: authState.oauthTokens?.accessToken || null,
 						oauthRefreshToken: authState.oauthTokens?.refreshToken || null,
 						oauthExpiresAt: authState.oauthTokens?.expiresAt || null,
@@ -182,7 +299,6 @@ export function createServerMutators(
 						userId: args.userId,
 						attempts: 0,
 					})
-					await tx.query.ninjaConnections.one()
 
 					// If ID token succeeds, then try to get API token
 					try {
@@ -192,22 +308,21 @@ export function createServerMutators(
 						authState = authManager.getState()
 
 						// Save Ayla tokens
-						await sharedMutators.ninjaConnections.updateTokens(tx, {
-							userId: args.userId,
+						await writeNinjaTokens(tx, args.userId, {
 							aylaAccessToken: authState.aylaToken?.accessToken || null,
 							aylaRefreshToken: authState.aylaToken?.refreshToken || null,
 							aylaExpiresAt: authState.aylaToken?.expiresAt || null,
 						})
 					} catch (aylaError) {
 						// Log Ayla error but don't fail - OAuth login still worked
-						console.warn(
-							`[Server] Ayla token acquisition failed for user ${args.userId}, but OAuth succeeded`,
+						log.warn(
+							`Ayla token acquisition failed for user ${args.userId}, but OAuth succeeded`,
 							aylaError,
 						)
 					}
 
-					console.log(
-						`[Server] Ninja connection tested successfully for user: ${args.userId}`,
+					log.info(
+						`ninja connection tested successfully for user: ${args.userId}`,
 					)
 				} catch (error) {
 					// Increment attempts on failure
@@ -217,8 +332,8 @@ export function createServerMutators(
 						updatedAt: Date.now(),
 					})
 
-					console.error(
-						`[Server] Ninja connection test failed for user: ${args.userId}`,
+					log.error(
+						`ninja connection test failed for user: ${args.userId}`,
 						error,
 					)
 
@@ -243,11 +358,9 @@ export function createServerMutators(
 				const userId = authData.sub // TypeScript now knows this is not null
 
 				try {
-					// Get the connection from the database
-					const connection = await tx.query.ninjaConnections
-						.where('userId', userId)
-						.one()
-						.run()
+					// Get the connection from the database. Credentials/tokens are
+					// excluded from the Zero schema, so read them with raw SQL.
+					const connection = await readNinjaCredentials(tx, userId)
 
 					if (!connection) {
 						throw new Error('No connection found for user')
@@ -303,8 +416,7 @@ export function createServerMutators(
 						newState.aylaToken?.accessToken !== connection.aylaAccessToken ||
 						newState.aylaToken?.expiresAt !== connection.aylaExpiresAt
 					) {
-						await sharedMutators.ninjaConnections.updateTokens(tx, {
-							userId: userId,
+						await writeNinjaTokens(tx, userId, {
 							aylaAccessToken: newState.aylaToken?.accessToken || null,
 							aylaRefreshToken: newState.aylaToken?.refreshToken || null,
 							aylaExpiresAt: newState.aylaToken?.expiresAt || null,
@@ -518,12 +630,11 @@ export function createServerMutators(
 						errorMessage.includes('Invalid refresh token')
 
 					if (isPermanentAuthError) {
-						console.log(
-							'[Server] Permanent auth error detected, clearing tokens',
-						)
+						log.info('permanent auth error detected, clearing tokens', {
+							userId,
+						})
 						// Clear the tokens to stop future polling attempts
-						await sharedMutators.ninjaConnections.updateTokens(tx, {
-							userId: userId,
+						await writeNinjaTokens(tx, userId, {
 							aylaAccessToken: null,
 							aylaRefreshToken: null,
 							aylaExpiresAt: null,
