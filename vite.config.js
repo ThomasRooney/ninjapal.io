@@ -58,6 +58,7 @@ export default defineConfig({
 			'tests/**/*.spec.ts',
 			'node_modules/**',
 			'.claude/**', // agent worktrees carry their own copies of the suite
+			'infra/**', // infra/aws runs its own vitest suite with its own deps
 		],
 	},
 	// The nitro bridge builds its server entry through this target too —

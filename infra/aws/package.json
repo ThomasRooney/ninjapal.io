@@ -1,0 +1,32 @@
+{
+	"name": "pitminder-infra-aws",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "biome check && tsc --noEmit",
+		"check:fix": "biome check --fix",
+		"test": "vitest run",
+		"synth": "cdk synth",
+		"diff": "cdk diff",
+		"deploy:data": "cdk deploy pitminder-data --require-approval never"
+	},
+	"devDependencies": {
+		"@aws-sdk/client-acm": "^3.750.0",
+		"@aws-sdk/client-dynamodb": "^3.750.0",
+		"@aws-sdk/client-lambda": "^3.750.0",
+		"@aws-sdk/client-rds": "^3.750.0",
+		"@aws-sdk/client-route-53": "^3.750.0",
+		"@aws-sdk/client-ssm": "^3.750.0",
+		"@aws-sdk/lib-dynamodb": "^3.750.0",
+		"@biomejs/biome": "1.9.4",
+		"@types/aws-lambda": "^8.10.145",
+		"@types/node": "^22.10.0",
+		"aws-cdk": "^2.1000.0",
+		"aws-cdk-lib": "^2.190.0",
+		"aws-sdk-client-mock": "^4.1.0",
+		"constructs": "^10.4.2",
+		"esbuild": "^0.25.0",
+		"typescript": "^5.8.3",
+		"vitest": "^3.1.3"
+	}
+}
