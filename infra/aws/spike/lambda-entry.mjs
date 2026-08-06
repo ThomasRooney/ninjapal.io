@@ -1,6 +1,5 @@
-// Custom nitro entry for AWS Lambda response streaming (validated on
-// spike/lambda-streaming behind Regional REST API Gateway with
-// responseTransferMode=STREAM). Accepts BOTH event shapes:
+// Spike: custom nitro entry for AWS Lambda response streaming that accepts
+// BOTH event shapes:
 //   - API Gateway REST proxy integration (payload format v1.0: event.path,
 //     event.httpMethod, multiValueHeaders) — what responseTransferMode=STREAM sends
 //   - Lambda Function URL (payload format v2.0: event.rawPath,
@@ -22,26 +21,14 @@ import {
 	normalizeLambdaIncomingHeaders,
 	normalizeLambdaOutgoingHeaders,
 } from 'nitropack/runtime/internal'
-import { withQuery } from 'ufo'
+import { parseLambdaEvent } from './lambda-event.mjs'
 
 const nitroApp = useNitroApp()
 
 export const handler = awslambda.streamifyResponse(
 	async (event, responseStream, context) => {
-		const isV2 = 'rawPath' in event && !!event.rawPath
-		const path = isV2 ? event.rawPath : event.path
-		const method = isV2
-			? event.requestContext?.http?.method || 'get'
-			: event.httpMethod || 'get'
-		const query = {
-			...(event.multiValueQueryStringParameters || {}),
-			...(event.queryStringParameters || {}),
-		}
-		const headers = { ...(event.headers || {}) }
-		if (isV2 && event.cookies) {
-			headers.cookie = event.cookies.join(';')
-		}
-		const url = withQuery(path, query)
+		// Pure, unit-tested parsing (v1.0 + v2.0): infra/aws/spike/lambda-event.mjs
+		const { url, method, query, headers, body } = parseLambdaEvent(event)
 
 		const r = await nitroApp.localCall({
 			event,
@@ -50,9 +37,7 @@ export const handler = awslambda.streamifyResponse(
 			headers: normalizeLambdaIncomingHeaders(headers),
 			method,
 			query,
-			body: event.isBase64Encoded
-				? Buffer.from(event.body || '', 'base64').toString('utf8')
-				: event.body,
+			body,
 		})
 
 		const cookies = normalizeCookieHeader(r.headers['set-cookie'])
@@ -67,7 +52,7 @@ export const handler = awslambda.streamifyResponse(
 			},
 		}
 
-		const body =
+		const resBody =
 			r.body ??
 			new ReadableStream({
 				start(controller) {
@@ -81,16 +66,16 @@ export const handler = awslambda.streamifyResponse(
 			httpResponseMetadata,
 		)
 
-		if (!body.getReader) {
+		if (!resBody.getReader) {
 			// Non-stream bodies (nitro serves static assets as Buffers): write raw
 			// bytes. Coercing via String() UTF-8-mangles binary payloads (measured:
 			// favicon.ico 4286B -> 6608B with U+FFFD replacements).
-			writer.write(typeof body === 'string' ? Buffer.from(body) : body)
+			writer.write(typeof resBody === 'string' ? Buffer.from(resBody) : resBody)
 			writer.end()
 			return
 		}
 
-		const reader = body.getReader()
+		const reader = resBody.getReader()
 		let readResult = await reader.read()
 		while (!readResult.done) {
 			writer.write(readResult.value)
