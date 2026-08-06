@@ -1,3 +1,4 @@
+import { createLogger } from '@/lib/log'
 import type { EnhancedAuthState } from '@/ninjaAuth/types.ts'
 import { buildDeviceData } from '@/server/db/build-device-data'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
@@ -5,6 +6,9 @@ import type { AuthData } from '@/server/db/zero-permissions.ts'
 import type { Schema } from '@/server/db/zero-schema.gen'
 import { createSharedMutators } from '@/server/db/zero-shared-mutators.ts'
 import type { CustomMutatorDefs, Transaction } from '@rocicorp/zero'
+
+/** Manual "Refresh Status" path — mirrors the sync-worker's cycle logs. */
+const syncLog = createLogger('sync-mutator')
 
 /**
  * Server mutators that extend shared mutators with server-specific logic
@@ -241,6 +245,8 @@ export function createServerMutators(
 					throw new Error('Not authenticated')
 				}
 				const userId = authData.sub // TypeScript now knows this is not null
+				const startedAtMs = Date.now()
+				syncLog.info('syncRealDevices start', { userId })
 
 				try {
 					// Get the connection from the database
@@ -359,10 +365,10 @@ export function createServerMutators(
 								}
 								return { device, properties: null }
 							} catch (error) {
-								console.warn(
-									`Failed to fetch properties for device ${device.dsn}:`,
-									error,
-								)
+								syncLog.warn('properties fetch failed for device', {
+									dsn: device.dsn,
+									error: error instanceof Error ? error.message : String(error),
+								})
 								return { device, properties: null }
 							}
 						},
@@ -375,9 +381,10 @@ export function createServerMutators(
 						(r) => r.status === 'rejected',
 					).length
 					if (failedCount > 0) {
-						console.warn(
-							`[Server] Failed to fetch properties for ${failedCount} devices`,
-						)
+						syncLog.warn('properties fetch failed for some devices', {
+							userId,
+							failedCount,
+						})
 					}
 
 					// Extract successful results
@@ -501,15 +508,20 @@ export function createServerMutators(
 						}
 					}
 
-					console.log(
-						`[Server] Synced ${devicesWithProperties.length} real devices for user: ${userId}`,
-					)
+					syncLog.info('syncRealDevices complete', {
+						userId,
+						devices: devicesWithProperties.length,
+						durationMs: Date.now() - startedAtMs,
+					})
 				} catch (error) {
-					console.error('[Server] syncRealDevices error:', error)
-
 					// Check if this is a permanent auth error
 					const errorMessage =
 						error instanceof Error ? error.message : String(error)
+					syncLog.error('syncRealDevices failed', {
+						userId,
+						durationMs: Date.now() - startedAtMs,
+						error: errorMessage,
+					})
 					const isPermanentAuthError =
 						errorMessage.includes('OAuth token exchange failed') ||
 						errorMessage.includes('Invalid credentials') ||
@@ -518,9 +530,9 @@ export function createServerMutators(
 						errorMessage.includes('Invalid refresh token')
 
 					if (isPermanentAuthError) {
-						console.log(
-							'[Server] Permanent auth error detected, clearing tokens',
-						)
+						syncLog.warn('permanent auth error detected — clearing tokens', {
+							userId,
+						})
 						// Clear the tokens to stop future polling attempts
 						await sharedMutators.ninjaConnections.updateTokens(tx, {
 							userId: userId,
