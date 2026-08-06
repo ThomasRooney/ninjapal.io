@@ -74,10 +74,13 @@ export async function handler(
 				new InvokeCommand({
 					FunctionName: SELF_FUNCTION_NAME,
 					InvocationType: 'Event',
+					// Control fields only — a stream-event payload would otherwise
+					// re-send the entire Records batch through the chain.
 					Payload: JSON.stringify({
-						...payload,
 						depth: depth + 1,
 						reason: 'reinvoke',
+						allowErrorRecovery: payload.allowErrorRecovery === true,
+						checkDrift: payload.checkDrift === true,
 					} satisfies WakePayload),
 				}),
 			)
