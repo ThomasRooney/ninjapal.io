@@ -1,5 +1,5 @@
 import { CookPhotos } from '@/components/cook-photos'
-import { PitChat } from '@/components/pit-chat'
+import { PitChat, SteerResetButton } from '@/components/pit-chat'
 import {
 	EtaLine,
 	PitControl,
@@ -247,13 +247,16 @@ function PitmasterCommandBand({
 				</div>
 			</div>
 			<div className='relative min-w-0 space-y-3'>
-				<div>
-					<p className='text-sm font-semibold'>Steer this cook</p>
-					<p className='hidden text-xs text-muted-foreground sm:block'>
-						Ask for a plan, change dinner time, or tell it what you just did.
-					</p>
+				<div className='flex items-start justify-between gap-2'>
+					<div>
+						<p className='text-sm font-semibold'>Steer this cook</p>
+						<p className='hidden text-xs text-muted-foreground sm:block'>
+							Ask for a plan, change dinner time, or tell it what you just did.
+						</p>
+					</div>
+					{device.id && <SteerResetButton deviceId={device.id} />}
 				</div>
-				<PitChat />
+				{device.id && <PitChat deviceId={device.id} />}
 			</div>
 		</section>
 	)
