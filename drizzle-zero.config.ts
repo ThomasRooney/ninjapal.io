@@ -157,6 +157,7 @@ export default drizzleZeroConfig(drizzleSchema, {
     deviceHistory: {
       id: true,
       deviceId: true,
+      userId: true, // denormalized owner — powers the own-rows-only select permission
       recordedAt: true,
       historyType: true,
       changedBy: true,

@@ -50,8 +50,9 @@ function toMillis(value: unknown): number | null {
 /**
  * Reads the full credential row (including the Zero-excluded password/token
  * columns) with raw SQL inside the mutator's transaction.
+ * Exported for unit tests.
  */
-async function readNinjaCredentials(
+export async function readNinjaCredentials(
 	tx: Transaction<Schema>,
 	userId: string,
 ): Promise<NinjaCredentialRow | null> {
@@ -99,8 +100,9 @@ type NinjaTokenUpdate = {
  * Writes OAuth/Ayla tokens with raw SQL. Only keys present in `updates` are
  * written; expiry values are epoch millis. Replaces the old shared-mutator
  * `updateTokens` path — tokens are no longer part of the Zero schema.
+ * Exported for unit tests.
  */
-async function writeNinjaTokens(
+export async function writeNinjaTokens(
 	tx: Transaction<Schema>,
 	userId: string,
 	updates: NinjaTokenUpdate,
@@ -561,6 +563,7 @@ export function createServerMutators(
 											// id is DB-generated (identity); zero insert type wrongly requires it
 											{
 												deviceId: existingDevice.id,
+												userId,
 												historyType: 'patch',
 												changes: patch,
 												changedBy: userId,
@@ -575,6 +578,7 @@ export function createServerMutators(
 										// id is DB-generated (identity); zero insert type wrongly requires it
 										{
 											deviceId: existingDevice.id,
+											userId,
 											historyType: 'snapshot',
 											changes: currentDevice, // The snapshot is the full new state
 											changedBy: userId,
@@ -602,6 +606,7 @@ export function createServerMutators(
 									// id is DB-generated (identity); zero insert type wrongly requires it
 									{
 										deviceId: newDevice.id,
+										userId,
 										historyType: 'snapshot',
 										changes: deviceData,
 										changedBy: userId,
@@ -702,6 +707,7 @@ export function createServerMutators(
 							// id is DB-generated (identity); zero insert type wrongly requires it
 							{
 								deviceId: args.id,
+								userId: currentDevice.userId,
 								historyType: 'patch',
 								changes: patch,
 								changedBy: authData.sub,
@@ -716,6 +722,7 @@ export function createServerMutators(
 						// id is DB-generated (identity); zero insert type wrongly requires it
 						{
 							deviceId: args.id,
+							userId: currentDevice.userId,
 							historyType: 'snapshot',
 							changes: newState,
 							changedBy: authData.sub,

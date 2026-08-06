@@ -211,6 +211,7 @@ function deviceState(p: CookPoint, profile: CookProfile) {
 async function insertCookHistory(
 	db: Client,
 	deviceId: string,
+	userId: string,
 	points: CookPoint[],
 	profile: CookProfile,
 ): Promise<number> {
@@ -230,10 +231,11 @@ async function insertCookHistory(
 			if (Object.keys(changes).length === 0) continue
 		}
 		await db.query(
-			`insert into device_history (device_id, recorded_at, history_type, changes)
-			 values ($1, to_timestamp($2 / 1000.0), $3, $4)`,
+			`insert into device_history (device_id, user_id, recorded_at, history_type, changes)
+			 values ($1, $2, to_timestamp($3 / 1000.0), $4, $5)`,
 			[
 				deviceId,
+				userId,
 				p.t,
 				isSnapshot || !prevState ? 'snapshot' : 'patch',
 				JSON.stringify(changes),
@@ -483,11 +485,11 @@ async function main() {
 
 	// Telemetry + sessions for all three cooks (ribs/chicken finished, brisket live)
 	let inserted = 0
-	inserted += await insertCookHistory(db, smokerId, ribsPoints, ribs)
+	inserted += await insertCookHistory(db, smokerId, userId, ribsPoints, ribs)
 	await insertSession(db, smokerId, userId, ribsPoints, ribs, false)
-	inserted += await insertCookHistory(db, smokerId, chickenPoints, chicken)
+	inserted += await insertCookHistory(db, smokerId, userId, chickenPoints, chicken)
 	await insertSession(db, smokerId, userId, chickenPoints, chicken, false)
-	inserted += await insertCookHistory(db, smokerId, points, brisket)
+	inserted += await insertCookHistory(db, smokerId, userId, points, brisket)
 	await insertSession(db, smokerId, userId, points, brisket, true)
 
 	await db.query('delete from cook_messages where device_id = $1', [smokerId])

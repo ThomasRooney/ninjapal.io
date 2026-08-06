@@ -52,6 +52,11 @@ export const permissions = definePermissions<AuthData, Schema>(
 			{ cmp }: ExpressionBuilder<Schema, 'devices'>,
 		) => cmp('userId', authData.sub as string)
 
+		const allowIfSelfHistory = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'deviceHistory'>,
+		) => cmp('userId', authData.sub as string)
+
 		const allowIfSelfSession = (
 			authData: AuthData,
 			{ cmp }: ExpressionBuilder<Schema, 'cookSessions'>,
@@ -109,12 +114,9 @@ export const permissions = definePermissions<AuthData, Schema>(
 			},
 			deviceHistory: {
 				row: {
-					// Allow all authenticated users to read device history
-					// The component will filter to only show history for their devices
-					select: [
-						(_authData, { cmp }: ExpressionBuilder<Schema, 'deviceHistory'>) =>
-							cmp('id', '>', 0), // Allow all rows for authenticated users
-					],
+					// Own rows only — history rows carry a denormalized userId
+					// stamped by every writer (server mutators, sync worker, seed)
+					select: [allowIfSelfHistory],
 					// Only server-side operations can insert
 					insert: [],
 					// No updates or deletes allowed on history
