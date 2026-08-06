@@ -4,7 +4,7 @@ import { Line, LineChart, ResponsiveContainer, YAxis } from 'recharts'
 /** Minimal inline trend line (no axes/grid) for the trailing window. */
 export function Sparkline({
 	points,
-	color = '#3b82f6',
+	color = 'var(--chart-2)',
 	height = 28,
 }: {
 	points: TempPoint[]

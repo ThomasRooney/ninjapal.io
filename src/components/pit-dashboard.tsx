@@ -32,12 +32,22 @@ export function PitGauges({
 	const cutoff = Date.now() - SPARK_WINDOW_MS
 
 	const cells = [
-		{ label: 'Grill', key: 'temp_grill', color: '#ef4444', withSetpoint: true },
-		{ label: 'Chamber', key: 'temp_air', color: '#3b82f6', withSetpoint: true },
+		{
+			label: 'Grill',
+			key: 'temp_grill',
+			color: 'var(--chart-1)',
+			withSetpoint: true,
+		},
+		{
+			label: 'Chamber',
+			key: 'temp_air',
+			color: 'var(--chart-2)',
+			withSetpoint: true,
+		},
 		{
 			label: 'Exhaust',
 			key: 'temp_smoke',
-			color: '#94a3b8',
+			color: 'var(--chart-5)',
 			withSetpoint: false,
 		},
 	]
@@ -78,10 +88,10 @@ export function StallBadge({ deviceId }: { deviceId: string }) {
 	const mins = Math.round(stall.currentStallMs / 60000)
 	return (
 		<div
-			className='inline-flex items-center gap-1.5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-400 px-2.5 py-0.5 text-xs font-semibold'
+			className='inline-flex items-center gap-1.5 rounded-full bg-chart-4/15 text-chart-4 px-2.5 py-0.5 text-xs font-semibold'
 			data-testid='stall-badge'
 		>
-			<span className='inline-block h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse' />
+			<span className='inline-block h-1.5 w-1.5 rounded-full bg-chart-4 animate-pulse' />
 			THE STALL —{' '}
 			{mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`}
 		</div>
@@ -156,7 +166,7 @@ function ProgressRing({
 				cy={size / 2}
 				r={r}
 				fill='none'
-				stroke={filled >= 1 ? '#22c55e' : '#f59e0b'}
+				stroke={filled >= 1 ? 'var(--success)' : 'var(--chart-3)'}
 				strokeWidth={4}
 				strokeLinecap='round'
 				strokeDasharray={`${c * filled} ${c}`}
@@ -264,7 +274,7 @@ export function ProbeRow({
 					</button>
 				)}
 				<div className='mt-1'>
-					<Sparkline points={spark} color='#f59e0b' height={20} />
+					<Sparkline points={spark} color='var(--chart-3)' height={20} />
 				</div>
 			</div>
 			<div className='text-right shrink-0'>
@@ -382,11 +392,11 @@ export function PitControl({
 					<span
 						className={
 							lastCommand.status === 'sent'
-								? 'text-green-600'
+								? 'text-success'
 								: lastCommand.status === 'failed' ||
 										lastCommand.status === 'rejected'
-									? 'text-red-600'
-									: 'text-amber-600'
+									? 'text-destructive'
+									: 'text-warning'
 						}
 					>
 						{lastCommand.status === 'dry_run'

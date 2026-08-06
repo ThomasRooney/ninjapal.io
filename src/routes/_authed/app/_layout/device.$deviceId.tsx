@@ -355,17 +355,25 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 				}
 				title='Live cook timeline'
 				series={[
-					{ attributeName: 'temp_grill', name: 'Grill Temp', color: '#ef4444' },
-					{ attributeName: 'temp_air', name: 'Air Temp', color: '#3b82f6' },
+					{
+						attributeName: 'temp_grill',
+						name: 'Grill Temp',
+						color: 'var(--chart-1)',
+					},
+					{
+						attributeName: 'temp_air',
+						name: 'Air Temp',
+						color: 'var(--chart-2)',
+					},
 					{
 						attributeName: 'probe1_temp_a',
 						name: 'Probe 1',
-						color: '#f59e0b',
+						color: 'var(--chart-3)',
 					},
 					{
 						attributeName: 'probe2_temp_a',
 						name: 'Probe 2',
-						color: '#8b5cf6',
+						color: 'var(--chart-4)',
 					},
 				]}
 			/>

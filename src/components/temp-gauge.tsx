@@ -37,13 +37,13 @@ export function TempGauge({
 	const circumference = 2 * Math.PI * r
 	const arcLen = (sweep / 360) * circumference
 
-	// Color: blue cold → amber near temp → red over
-	let color = '#3b82f6'
+	// Color: smoke-blue cold → warming amber → on-temp green → over-temp red
+	let color = 'var(--chart-2)'
 	if (setpointC != null && valueC != null) {
 		const ratio = valueC / setpointC
-		if (ratio > 1.05) color = '#dc2626'
-		else if (ratio > 0.9) color = '#22c55e'
-		else if (ratio > 0.6) color = '#f59e0b'
+		if (ratio > 1.05) color = 'var(--destructive)'
+		else if (ratio > 0.9) color = 'var(--success)'
+		else if (ratio > 0.6) color = 'var(--warning)'
 	}
 
 	const tickAngle =
