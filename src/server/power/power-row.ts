@@ -116,6 +116,22 @@ export async function readPowerRow(): Promise<PowerRow | null> {
 }
 
 /**
+ * Records that an authenticated user wants the stack awake. The
+ * orchestrator (DDB Streams-triggered) reacts to desiredState; this only
+ * writes intent. A wake is also web activity, so lastWebAt rides along in
+ * the same write. No-op false when unconfigured.
+ */
+export async function requestWake(requestedBy: string): Promise<boolean> {
+	const now = new Date().toISOString()
+	return updatePowerAttributes({
+		desiredState: { S: 'AWAKE' },
+		wakeRequestedAt: { S: now },
+		wakeRequestedBy: { S: requestedBy },
+		lastWebAt: { S: now },
+	})
+}
+
+/**
  * SETs the given attributes on the power row, conditioned on the row
  * existing. Returns true on success, false when unconfigured, the row is
  * missing, or the write fails — never throws (stamps are best-effort).

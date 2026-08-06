@@ -1,8 +1,13 @@
 import { ActivityBeacon } from '@/components/activity-beacon.tsx'
 import { AppSidebar } from '@/components/app-sidebar.tsx'
+import { PowerGate } from '@/components/power-gate.tsx'
 import { SidebarProvider } from '@/components/ui/sidebar.tsx'
 import { Toaster } from '@/components/ui/sonner.tsx'
-import { initializeZero, zeroAtom } from '@/lib/zero-setup.ts'
+import {
+	initializeZero,
+	onZeroOnlineChange,
+	zeroAtom,
+} from '@/lib/zero-setup.ts'
 import { ZeroProvider } from '@rocicorp/zero/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
@@ -74,12 +79,14 @@ function RouteComponent() {
 	return (
 		<Suspense fallback={null}>
 			<QueryClientProvider client={queryClient}>
-				<ZeroProvider zero={zero}>
-					<SidebarProvider className='flex h-screen'>
-						<AppContent />
-					</SidebarProvider>
-					<Toaster />
-				</ZeroProvider>
+				<PowerGate watchOnline={onZeroOnlineChange}>
+					<ZeroProvider zero={zero}>
+						<SidebarProvider className='flex h-screen'>
+							<AppContent />
+						</SidebarProvider>
+						<Toaster />
+					</ZeroProvider>
+				</PowerGate>
 			</QueryClientProvider>
 		</Suspense>
 	)
