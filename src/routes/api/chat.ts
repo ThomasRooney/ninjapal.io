@@ -52,7 +52,11 @@ export const Route = createFileRoute('/api/chat')({
 
 				// The chat loop talks to the SAME MCP server that external agents
 				// get at /api/mcp — here over an in-memory transport (no HTTP hop).
-				const mcpServer = createPitMinderMcpServer(session.user.id)
+				// The in-app session gets the full grant (read + control).
+				const mcpServer = createPitMinderMcpServer(
+					session.user.id,
+					new Set(['pitminder:read', 'pitminder:control']),
+				)
 				const [clientTransport, serverTransport] =
 					InMemoryTransport.createLinkedPair()
 				await mcpServer.connect(serverTransport)
