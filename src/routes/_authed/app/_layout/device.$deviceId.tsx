@@ -496,10 +496,10 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 							) : (
 								<div className='flex items-center justify-between'>
 									<div className='flex items-center gap-2'>
-										<CheckCircle2 className='h-4 w-4 text-green-600' />
+										<CheckCircle2 className='h-4 w-4 text-success' />
 										<span className='text-sm font-medium'>Status</span>
 									</div>
-									<span className='text-sm text-green-600 font-medium'>OK</span>
+									<span className='text-sm text-success font-medium'>OK</span>
 								</div>
 							)}
 
@@ -514,7 +514,7 @@ function DeviceOverviewPage({ device, zeroUser }: DeviceOverviewPageProps) {
 										viewModel?.deviceStatus === 'Offline'
 											? 'text-muted-foreground'
 											: viewModel?.lidIsOpen
-												? 'text-yellow-600'
+												? 'text-warning'
 												: 'text-muted-foreground'
 									}`}
 								>

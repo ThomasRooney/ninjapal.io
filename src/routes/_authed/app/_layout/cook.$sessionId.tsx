@@ -155,7 +155,7 @@ function CookDetailPage() {
 							</h1>
 						)}
 						{active && (
-							<Badge className='bg-green-600'>
+							<Badge className='bg-primary text-primary-foreground'>
 								<Flame className='h-3 w-3 mr-1' />
 								Live
 							</Badge>

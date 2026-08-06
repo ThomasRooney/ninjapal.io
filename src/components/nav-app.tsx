@@ -32,7 +32,7 @@ const NavApp = ({ title, breadcrumbs, children }: NavAppProps) => {
 	return (
 		<div
 			data-testid='app-nav'
-			className='flex justify-between items-center border-b border-gray-200 h-12 px-4 sticky top-0 bg-background z-10 shrink-0'
+			className='flex justify-between items-center border-b h-12 px-4 sticky top-0 bg-background z-10 shrink-0'
 		>
 			<div className='flex items-center gap-2'>
 				<TooltipProvider>
@@ -45,7 +45,7 @@ const NavApp = ({ title, breadcrumbs, children }: NavAppProps) => {
 						<TooltipContent>
 							<p>
 								Toggle sidebar{' '}
-								<kbd className='ml-1 pointer-events-none inline-flex h-4 select-none items-center gap-2 rounded border border-muted-foreground px-1 font-mono text-xs font-medium text-muted opacity-100 bg-muted-foreground'>
+								<kbd className='ml-1 pointer-events-none inline-flex h-4 select-none items-center gap-2 rounded border px-1 font-mono text-xs font-medium text-muted-foreground bg-muted'>
 									⌘ B
 								</kbd>
 							</p>

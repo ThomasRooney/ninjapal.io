@@ -36,7 +36,7 @@ function AppContent() {
 		<>
 			{user?.impersonatedBy && (
 				<div
-					className='fixed top-0 inset-x-0 z-50 bg-amber-500 text-black text-center text-sm font-semibold py-1'
+					className='fixed top-0 inset-x-0 z-50 bg-warning text-background text-center text-sm font-semibold py-1'
 					data-testid='impersonation-banner'
 				>
 					Impersonating {user.email} —{' '}

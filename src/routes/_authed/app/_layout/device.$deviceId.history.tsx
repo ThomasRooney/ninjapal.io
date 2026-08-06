@@ -144,24 +144,24 @@ function DeviceHistoryPage() {
 											</span>
 											<span className='text-right'>
 												{value.status === 'added' && (
-													<span className='text-green-600'>
+													<span className='text-success'>
 														{formatFieldValue(value.to)}
 													</span>
 												)}
 												{value.status === 'removed' && (
-													<span className='text-red-500 line-through'>
+													<span className='text-destructive line-through'>
 														{formatFieldValue(value.from)}
 													</span>
 												)}
 												{value.status === 'changed' && (
 													<>
-														<span className='text-red-500 line-through'>
+														<span className='text-destructive line-through'>
 															{formatFieldValue(value.from)}
 														</span>
 														<span className='mx-1 text-muted-foreground'>
 															→
 														</span>
-														<span className='text-green-600'>
+														<span className='text-success'>
 															{formatFieldValue(value.to)}
 														</span>
 													</>

@@ -1,6 +1,6 @@
 const Logo = () => {
 	return (
-		<div className='flex items-center p-0.5 rounded text-white bg-gradient-to-br from-stone-500 to-stone-800 border border-stone-700 shadow'>
+		<div className='flex items-center p-0.5 rounded text-primary bg-gradient-to-b from-secondary to-background border shadow-sm'>
 			<svg
 				className='h-4 w-4'
 				viewBox='0 0 24 24'
