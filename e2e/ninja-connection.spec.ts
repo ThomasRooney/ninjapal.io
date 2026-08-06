@@ -25,7 +25,7 @@ test.describe('Ninja Connection Page', () => {
     await page.waitForURL('**/app/**', { timeout: 10000 });
   });
 
-  test('should render ninja connection page with form and debug components', async ({ page }) => {
+  test('should render ninja connection page with the credentials form', async ({ page }) => {
     // Navigate to ninja connection page
     await page.goto('/app/ninja-connection');
 
@@ -42,9 +42,9 @@ test.describe('Ninja Connection Page', () => {
     // Check for submit button
     await expect(page.getByTestId('ninja-connection-form--submit-button')).toBeVisible();
 
-    // Check debug component is rendered - it should show connection data
-    // The debug component shows "Debug Information" as its title
-    await expect(page.getByTestId('ninja-connection-debug--card-title')).toBeVisible();
+    // The token debug card must NOT exist — credentials/tokens never reach
+    // the browser (they are excluded from the Zero schema).
+    await expect(page.getByTestId('ninja-connection-debug--card-title')).toHaveCount(0);
   });
 
   test('should allow entering ninja credentials', async ({ page }) => {
@@ -108,11 +108,12 @@ test.describe('Ninja Connection Page', () => {
     // Wait for the form to switch back to view mode (edit button reappears)
     await expect(editButton).toBeVisible();
     
-    // Now verify fields are disabled and have updated values
+    // Now verify fields are disabled; the username round-trips through Zero
+    // but the password is write-only (never synced back to the browser).
     await expect(usernameInput).toBeDisabled();
     await expect(passwordInput).toBeDisabled();
     await expect(usernameInput).toHaveValue('updated.user@example.com', { timeout: 10000 });
-    await expect(passwordInput).toHaveValue('updatedpassword456', { timeout: 10000 });
+    await expect(passwordInput).toHaveValue('', { timeout: 10000 });
   });
 
   test('should cancel edit mode and revert to original values', async ({ page }) => {
@@ -142,12 +143,13 @@ test.describe('Ninja Connection Page', () => {
     const cancelButton = page.getByTestId('ninja-connection-form--cancel-button');
     await cancelButton.click();
 
-    // Step 5: Verify form reverted to read-only with original values
+    // Step 5: Verify form reverted to read-only; the password clears because
+    // it is write-only (never synced back to the browser).
     await expect(usernameInput).toBeDisabled();
     await expect(passwordInput).toBeDisabled();
     await expect(editButton).toBeVisible();
     await expect(usernameInput).toHaveValue('original.user@example.com');
-    await expect(passwordInput).toHaveValue('originalpassword123');
+    await expect(passwordInput).toHaveValue('');
   });
 
   test('should show Test Credentials button and handle test results', async ({ page }) => {

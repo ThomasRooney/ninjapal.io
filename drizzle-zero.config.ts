@@ -27,17 +27,20 @@ export default drizzleZeroConfig(drizzleSchema, {
     ninjaConnections: {
       userId: true, // Enable for Zero sync
       username: true,
-      password: true,
+      // Plaintext smoker-account credentials and durable cloud tokens must
+      // never reach the browser (Zero replicates synced columns into
+      // IndexedDB). Server code reads/writes these via SQL, not Zero.
+      password: false,
       attempts: true,
       lastSuccessAt: false, // server-only worker bookkeeping
       lastErrorAt: false,
       nextAttemptAt: false,
-      oauthAccessToken: true,
-      oauthRefreshToken: true,
-      oauthExpiresAt: true,
-      aylaAccessToken: true,
-      aylaRefreshToken: true,
-      aylaExpiresAt: true,
+      oauthAccessToken: false, // server-only secret
+      oauthRefreshToken: false, // server-only secret
+      oauthExpiresAt: true, // safe status field for the UI
+      aylaAccessToken: false, // server-only secret
+      aylaRefreshToken: false, // server-only secret
+      aylaExpiresAt: true, // safe status field for the UI
       createdAt: true,
       updatedAt: true,
     },
@@ -154,6 +157,7 @@ export default drizzleZeroConfig(drizzleSchema, {
     deviceHistory: {
       id: true,
       deviceId: true,
+      userId: true, // denormalized owner — powers the own-rows-only select permission
       recordedAt: true,
       historyType: true,
       changedBy: true,

@@ -24,6 +24,12 @@ export const deviceHistory = pgTable(
 			.notNull()
 			.references(() => devices.id, { onDelete: 'cascade' }),
 
+		// Denormalized owner of the device — powers the own-rows-only Zero
+		// select permission (the generated Zero schema has no relationships to
+		// join through). Nullable for expand/migrate/contract; backfilled from
+		// devices.user_id.
+		userId: uuid('user_id'),
+
 		// When the change was recorded
 		recordedAt: timestamp('recorded_at', { withTimezone: true })
 			.defaultNow()

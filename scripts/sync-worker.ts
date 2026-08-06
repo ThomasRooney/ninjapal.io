@@ -1178,6 +1178,7 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 				if (Object.keys(patch).length > 0) {
 					await db.insert(deviceHistory).values({
 						deviceId: existing.id,
+						userId: conn.userId,
 						historyType: 'patch',
 						changes: patch,
 					})
@@ -1185,6 +1186,7 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 			} else {
 				await db.insert(deviceHistory).values({
 					deviceId: existing.id,
+					userId: conn.userId,
 					historyType: 'snapshot',
 					changes: historyState,
 				})
@@ -1201,6 +1203,7 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 			if (inserted) {
 				await db.insert(deviceHistory).values({
 					deviceId: inserted.id,
+					userId: conn.userId,
 					historyType: 'snapshot',
 					changes: historyState,
 				})
@@ -1349,6 +1352,7 @@ async function stepSimulatedDevices() {
 				if (Object.keys(patch).length > 0) {
 					await db.insert(deviceHistory).values({
 						deviceId: device.id,
+						userId: device.userId,
 						historyType: 'patch',
 						changes: patch,
 					})
@@ -1356,6 +1360,7 @@ async function stepSimulatedDevices() {
 			} else {
 				await db.insert(deviceHistory).values({
 					deviceId: device.id,
+					userId: device.userId,
 					historyType: 'snapshot',
 					changes: historyState,
 				})

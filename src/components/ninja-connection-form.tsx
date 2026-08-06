@@ -61,12 +61,14 @@ export function NinjaConnectionForm() {
 		},
 	})
 
-	// Set form values when connection data loads
+	// Set form values when connection data loads. The password never syncs to
+	// the browser (it is excluded from the Zero schema), so the field is
+	// write-only: it stays empty until the user types a new value.
 	useEffect(() => {
 		if (connection) {
 			reset({
 				username: connection.username,
-				password: connection.password,
+				password: '',
 			})
 		}
 	}, [connection, reset])
@@ -247,7 +249,7 @@ export function NinjaConnectionForm() {
 											navigate({ search: () => ({}) })
 											reset({
 												username: connection.username,
-												password: connection.password,
+												password: '',
 											})
 										}}
 										data-testid='ninja-connection-form--cancel-button'
