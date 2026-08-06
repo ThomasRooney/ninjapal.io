@@ -153,20 +153,25 @@ function PitmasterCommandBand({
 
 	return (
 		<section
-			className='grid min-w-0 gap-4 rounded-lg border border-stone-800 bg-stone-950 p-4 text-stone-100 shadow-sm sm:p-5 lg:grid-cols-[1fr_420px]'
+			className='relative grid min-w-0 gap-4 overflow-hidden rounded-lg border bg-card p-4 text-card-foreground shadow-sm sm:p-5 lg:grid-cols-[1fr_420px]'
 			data-testid='pitmaster-command-band'
 		>
-			<div className='min-w-0 space-y-4 sm:space-y-5'>
+			{/* Ember glow bleeding in from the top corner — the pit is lit. */}
+			<div
+				aria-hidden='true'
+				className='pointer-events-none absolute -top-32 -right-20 h-72 w-96 rounded-full bg-primary/10 blur-3xl'
+			/>
+			<div className='relative min-w-0 space-y-4 sm:space-y-5'>
 				<div className='flex flex-wrap items-start justify-between gap-3'>
 					<div>
-						<div className='mb-2 inline-flex items-center gap-2 rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-400'>
+						<div className='mb-2 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-primary'>
 							<Bot className='h-3.5 w-3.5' />
 							PitMinder
 						</div>
 						<h2 className='text-2xl font-bold leading-tight sm:text-3xl'>
 							Tell it what is cooking and when you want to eat.
 						</h2>
-						<p className='mt-2 max-w-2xl text-sm leading-6 text-stone-400'>
+						<p className='mt-2 max-w-2xl text-sm leading-6 text-muted-foreground'>
 							PitMinder turns that sentence into a cook plan, watches the stall,
 							projects the finish, and can drop the pit to hold-warm when the
 							meat lands.
@@ -175,8 +180,8 @@ function PitmasterCommandBand({
 					<span
 						className={`rounded-full px-3 py-1 text-xs font-bold ${
 							autopilotEnabled
-								? 'bg-red-600 text-white'
-								: 'border border-stone-700 bg-stone-900 text-stone-300'
+								? 'bg-primary text-primary-foreground'
+								: 'border bg-secondary text-secondary-foreground'
 						}`}
 					>
 						{phase}
@@ -192,13 +197,13 @@ function PitmasterCommandBand({
 								? `set ${formatTemperature(setpointC, prefersCelsius)}`
 								: 'setpoint --'
 						}
-						color='text-red-400'
+						color='text-chart-1'
 					/>
 					<BriefStat
 						label='Chamber'
 						value={formatTemperature(airC, prefersCelsius)}
 						sub='live air'
-						color='text-blue-400'
+						color='text-chart-2'
 					/>
 					<BriefStat
 						label='Probe 1'
@@ -208,32 +213,32 @@ function PitmasterCommandBand({
 								? `${connectedProbes} probe connected`
 								: 'no probe'
 						}
-						color='text-amber-400'
+						color='text-chart-3'
 					/>
 					<BriefStat
 						label='Timer'
 						value={finishAt ?? '--'}
 						sub='estimated finish'
-						color='text-emerald-400'
+						color='text-success'
 					/>
 				</div>
 
-				<div className='hidden gap-3 text-sm text-stone-300 lg:grid lg:grid-cols-3'>
-					<div className='flex items-start gap-2 rounded border border-stone-800 bg-stone-900/70 p-3'>
-						<Utensils className='mt-0.5 h-4 w-4 text-red-400' />
+				<div className='hidden gap-3 text-sm text-muted-foreground lg:grid lg:grid-cols-3'>
+					<div className='flex items-start gap-2 rounded border border-border/70 bg-background/50 p-3'>
+						<Utensils className='mt-0.5 h-4 w-4 text-chart-1' />
 						<span>
 							Say “beef short-rib, bark first, eat at 2pm” and steer from there.
 						</span>
 					</div>
-					<div className='flex items-start gap-2 rounded border border-stone-800 bg-stone-900/70 p-3'>
-						<Thermometer className='mt-0.5 h-4 w-4 text-amber-400' />
+					<div className='flex items-start gap-2 rounded border border-border/70 bg-background/50 p-3'>
+						<Thermometer className='mt-0.5 h-4 w-4 text-chart-3' />
 						<span>
 							Stall and ETA come from the real probe climb rate, not a canned
 							timer.
 						</span>
 					</div>
-					<div className='flex items-start gap-2 rounded border border-stone-800 bg-stone-900/70 p-3'>
-						<MessageSquareText className='mt-0.5 h-4 w-4 text-blue-400' />
+					<div className='flex items-start gap-2 rounded border border-border/70 bg-background/50 p-3'>
+						<MessageSquareText className='mt-0.5 h-4 w-4 text-chart-2' />
 						<span>
 							Coaching appears as action cards: spritz, wrap, refill, hold, or
 							grab the wheel.
@@ -241,16 +246,14 @@ function PitmasterCommandBand({
 					</div>
 				</div>
 			</div>
-			<div className='min-w-0 space-y-3'>
+			<div className='relative min-w-0 space-y-3'>
 				<div>
-					<p className='text-sm font-semibold text-stone-100'>
-						Steer this cook
-					</p>
-					<p className='hidden text-xs text-stone-500 sm:block'>
+					<p className='text-sm font-semibold'>Steer this cook</p>
+					<p className='hidden text-xs text-muted-foreground sm:block'>
 						Ask for a plan, change dinner time, or tell it what you just did.
 					</p>
 				</div>
-				<PitChat variant='dark' />
+				<PitChat />
 			</div>
 		</section>
 	)
@@ -268,12 +271,14 @@ function BriefStat({
 	color: string
 }) {
 	return (
-		<div className='rounded border border-stone-800 bg-stone-900/80 p-2.5 sm:p-3'>
-			<p className='text-xs uppercase tracking-wide text-stone-500'>{label}</p>
+		<div className='rounded border border-border/60 bg-background/50 p-2.5 sm:p-3'>
+			<p className='text-xs uppercase tracking-wide text-muted-foreground'>
+				{label}
+			</p>
 			<p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${color}`}>
 				{value}
 			</p>
-			<p className='mt-0.5 text-xs text-stone-500'>{sub}</p>
+			<p className='mt-0.5 text-xs text-muted-foreground'>{sub}</p>
 		</div>
 	)
 }
