@@ -4,10 +4,9 @@
 # Core development tools
 bun = "latest"
 node = "lts"  # Some tools may still require node
-"ubi:DarthSim/overmind" = "v2.5.1"  # Process manager for development
 neonctl = "latest"  # Neon CLI for managing Neon Postgres
 railway = "latest"  # Railway CLI — hosts zero-cache + device-sync poller
-pitchfork = "latest"
+pitchfork = "latest"  # Process manager for development (pitchfork.toml)
 
 [env]
 # Default environment variables for development
@@ -18,7 +17,7 @@ VITE_PORT = "3000"
 # Install dependencies
 install = { run = "bun install", description = "Install npm dependencies" }
 
-# Individual service tasks (used by overmind)
+# Individual service tasks (run as pitchfork daemons — see pitchfork.toml)
 "dev:frontend" = { run = ".mise-tasks/dev/frontend.bash", description = "Start frontend development server" }
 "dev:db" = { run = ".mise-tasks/dev/db.bash", description = "Start local Postgres (wal_level=logical) for Zero" }
 "dev:cache" = { run = ".mise-tasks/dev/cache.bash", description = "Start Zero cache server" }
@@ -26,15 +25,16 @@ install = { run = "bun install", description = "Install npm dependencies" }
 "dev:worker" = { run = ".mise-tasks/dev/worker.bash", description = "Start Ayla sync worker (60s poll)" }
 
 # Main development task
-"dev:up" = { run = ".mise-tasks/dev/up.bash", description = "Start all services with overmind" }
+"dev:up" = { run = ".mise-tasks/dev/up.bash", description = "Start all services with pitchfork" }
 
-# Convenience aliases
-dev = { alias = "dev:up", description = "Start all services (alias for dev:up)" }
+# NOTE: a plain `dev = { alias = "dev:up" }` silently no-ops on mise 2026.7.x —
+# define it as a real task instead.
+dev = { run = "mise run dev:up", description = "Start all services (pitchfork)" }
 
 # Process management
-stop = { run = "overmind quit", description = "Stop all services managed by overmind" }
-restart = { run = "overmind restart", description = "Restart all services" }
-ps = { run = "overmind ps", description = "Show status of all services" }
+stop = { run = "pitchfork stop --all", description = "Stop all pitchfork daemons" }
+restart = { run = "bash -c 'pitchfork stop --all && pitchfork start --all'", description = "Restart all services" }
+ps = { run = "pitchfork list", description = "Show status of all services" }
 
 # Database tasks (passthrough to existing bun scripts)
 "db:generate" = { run = "bun db:generate", description = "Generate Drizzle migration" }

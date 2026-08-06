@@ -26,7 +26,8 @@
 ## Key Commands
 
 ```bash
-mise run dev               # overmind: web :5173, postgres :54332, zero-cache :4848, email :3883
+mise run dev               # pitchfork daemons: web :5173, postgres :54332, zero-cache :4848, email :3883, sync worker
+                           # logs: `pitchfork logs <web|db|cache|email|worker> --tail`; TUI: `pitchfork tui`; stop: `mise run stop`
 bun check                  # biome + tsc — keep green
 bun test                   # vitest unit suite
 bunx playwright test       # e2e (needs the dev stack running; reuses it)

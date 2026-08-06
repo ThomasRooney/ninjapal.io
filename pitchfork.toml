@@ -18,3 +18,8 @@ ready_output = "Local:"
 [daemons.email]
 run = "mise run dev:email"
 ready_output = "Running preview at"
+
+[daemons.worker]
+run = "mise run dev:worker"
+depends = ["db"]
+ready_output = "cycle 1 ok"

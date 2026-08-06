@@ -1,33 +1,20 @@
 #!/usr/bin/env bash
 
-# Start all development services using overmind
+# Start all development services with pitchfork (config: pitchfork.toml)
 
 set -e
 
-# Check if overmind is installed
-if ! command -v overmind &> /dev/null; then
-    echo "❌ overmind is not installed. Please run './zero' to set up your development environment."
+if ! command -v pitchfork &> /dev/null; then
+    echo "❌ pitchfork is not installed. Run 'mise install' first."
     exit 1
 fi
 
-# Create a temporary Procfile if it doesn't exist
-PROCFILE_DEV="Procfile.dev"
+echo "🚀 Starting all development services (pitchfork)..."
+pitchfork start --all
 
-if [ ! -f "$PROCFILE_DEV" ]; then
-    echo "📝 Creating Procfile.dev..."
-    cat > "$PROCFILE_DEV" << 'EOF'
-# Development services managed by overmind
-web: mise run dev:frontend
-db: mise run dev:db
-cache: mise run dev:cache
-email: mise run dev:email
-worker: mise run dev:worker
-EOF
-fi
-
-# Start overmind with all services
-echo "🚀 Starting all development services..."
-echo "   Press Ctrl+C to stop all services"
 echo
-
-exec overmind start -f "$PROCFILE_DEV"
+pitchfork list
+echo
+echo "   Logs:   pitchfork logs <web|db|cache|email|worker> --tail"
+echo "   TUI:    pitchfork tui"
+echo "   Stop:   mise run stop"

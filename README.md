@@ -34,10 +34,10 @@ Production topology and operational details live in [STATUS.md](./STATUS.md).
 
 ```bash
 ./zero            # one-time onboarding checks (mise, Docker, bun)
-mise install      # toolchain (bun, node, overmind, railway, neonctl)
+mise install      # toolchain (bun, node, pitchfork, railway, neonctl)
 bun install
 
-mise run dev      # everything via overmind:
+mise run dev      # everything via pitchfork:
                   #   web    → http://localhost:5173
                   #   db     → Postgres 17 on :54332 (wal_level=logical)
                   #   cache  → zero-cache on :4848
