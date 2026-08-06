@@ -58,7 +58,7 @@ import {
 } from '@/server/db/schema'
 import Anthropic from '@anthropic-ai/sdk'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
-import { and, desc, eq, gt, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray, isNull, lte, max } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
@@ -68,10 +68,17 @@ import {
 	resolveStoredPhotoUrl,
 } from '@/server/photo-storage'
 import {
+	stampRealDeviceOnline,
+	writeWorkerHeartbeat,
+} from '@/server/power/worker'
+import {
 	assertSafeUpstream,
 	backoffOnFailure,
 	backoffOnSuccess,
+	countsAsRealDeviceOnline,
+	createDrainController,
 	inBackoff,
+	shouldRunDirector,
 } from './sync-worker-lib'
 
 const log = createLogger('sync-worker')
@@ -693,8 +700,20 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
 const DIRECTOR_INTERVAL_MS = Number(
 	process.env.PIT_DIRECTOR_INTERVAL_MS ?? 10 * 60_000,
 )
-/** In-memory cadence per device; a restart just runs one check-in early. */
-const directorLastRun = new Map<string, number>()
+
+/**
+ * Director cadence source of truth: the newest director_runs row (ok or
+ * error — both are inserted). Persisted state survives restarts and
+ * prevents a scale-to-zero wake from double-firing check-ins the way the
+ * old in-memory map could.
+ */
+async function lastDirectorRunAt(deviceId: string): Promise<Date | null> {
+	const [row] = await db
+		.select({ last: max(directorRuns.createdAt) })
+		.from(directorRuns)
+		.where(eq(directorRuns.deviceId, deviceId))
+	return row?.last ?? null
+}
 
 async function configValue(key: string): Promise<string | null> {
 	const [row] = await db
@@ -742,10 +761,9 @@ async function runPitDirector(
 ) {
 	if (!anthropic || !deviceRow.autopilot_enabled) return
 	if (!isCooking(deviceData.cook_state)) return
-	const last = directorLastRun.get(deviceRow.id) ?? 0
-	if (Date.now() - last < DIRECTOR_INTERVAL_MS) return
+	const last = await lastDirectorRunAt(deviceRow.id)
+	if (!shouldRunDirector(last, Date.now(), DIRECTOR_INTERVAL_MS)) return
 	if ((await configValue('pit_director_enabled')) === 'false') return
-	directorLastRun.set(deviceRow.id, Date.now())
 
 	const model = (await configValue('pit_director_model')) ?? DEFAULT_DIRECTOR_MODEL
 	const num = (v: unknown) => (typeof v === 'number' ? v : null)
@@ -1093,11 +1111,15 @@ async function handleSessionTransition(
 	console.log(`session ${active.id} ended for device ${deviceId}`)
 }
 
-/** Polls one Ayla account; returns the number of devices written. */
+/**
+ * Polls one Ayla account; returns the number of devices written plus how
+ * many were NON-simulated and Online (the lastRealDeviceOnlineAt signal —
+ * sims are stepped elsewhere and must never count).
+ */
 async function syncConnection(
 	conn: typeof ninjaConnections.$inferSelect,
-): Promise<number> {
-	if (!conn.username || !conn.password) return 0
+): Promise<{ devices: number; realOnline: number }> {
+	if (!conn.username || !conn.password) return { devices: 0, realOnline: 0 }
 
 	const initialState: EnhancedAuthState = {}
 	if (conn.oauthAccessToken && conn.oauthRefreshToken && conn.oauthExpiresAt) {
@@ -1157,6 +1179,7 @@ async function syncConnection(
 	const devicesData: Array<{ device: AylaDevice }> =
 		await devicesResponse.json()
 
+	let realOnline = 0
 	for (const wrapper of devicesData) {
 		const device = wrapper.device
 		let properties: unknown = null
@@ -1179,6 +1202,18 @@ async function syncConnection(
 			.from(devices)
 			.where(and(eq(devices.dsn, device.dsn), eq(devices.userId, conn.userId)))
 			.limit(1)
+
+		if (
+			countsAsRealDeviceOnline({
+				isSimulated: existing?.is_simulated === true,
+				connectionStatus:
+					typeof deviceData.connectionStatus === 'string'
+						? deviceData.connectionStatus
+						: null,
+			})
+		) {
+			realOnline++
+		}
 
 		if (existing) {
 			await db.update(devices).set(row).where(eq(devices.id, existing.id))
@@ -1268,8 +1303,9 @@ async function syncConnection(
 	log.debug('synced connection', {
 		userId: conn.userId,
 		devices: devicesData.length,
+		realOnline,
 	})
-	return devicesData.length
+	return { devices: devicesData.length, realOnline }
 }
 
 /**
@@ -1456,8 +1492,9 @@ let lastPhotoReapMs = 0
 
 /**
  * Reaps aged director_runs (check-in transcripts have no value after the
- * cook is long over) and prunes the in-memory cadence map so device
- * deletions don't leak entries.
+ * cook is long over). Cadence reads max(created_at) per device, so a fully
+ * reaped device simply runs its next check-in immediately — correct, since
+ * its last one was ≥30 days ago.
  */
 async function reapDirectorRuns() {
 	const cutoff = new Date(Date.now() - DIRECTOR_RUN_TTL_DAYS * 24 * 3_600_000)
@@ -1466,9 +1503,6 @@ async function reapDirectorRuns() {
 		.where(lte(directorRuns.createdAt, cutoff))
 	if (Array.isArray(gone) && gone.length) {
 		console.log(`director: reaped ${gone.length} aged runs`)
-	}
-	for (const [deviceId, lastMs] of directorLastRun) {
-		if (Date.now() - lastMs > 24 * 3_600_000) directorLastRun.delete(deviceId)
 	}
 }
 
@@ -1519,6 +1553,7 @@ async function cycle() {
 		skippedRealOnly: 0,
 		skippedNoCredentials: 0,
 		devicesUpdated: simDevices,
+		realDevicesOnline: 0,
 	}
 
 	const connections = await db.select().from(ninjaConnections)
@@ -1566,7 +1601,9 @@ async function cycle() {
 		}
 		lastPolledAt.set(conn.userId, nowMs)
 		try {
-			stats.devicesUpdated += await syncConnection(conn)
+			const result = await syncConnection(conn)
+			stats.devicesUpdated += result.devices
+			stats.realDevicesOnline += result.realOnline
 			stats.polled++
 			await db
 				.update(ninjaConnections)
@@ -1586,6 +1623,15 @@ async function cycle() {
 			})
 		}
 	}
+
+	// Scale-to-zero idle signals (no-ops when POWER_TABLE is unset): only
+	// real Online devices refresh lastRealDeviceOnlineAt — sims never do —
+	// and every cycle heartbeats with POWER_GENERATION for fencing.
+	if (stats.realDevicesOnline > 0) {
+		await stampRealDeviceOnline()
+	}
+	await writeWorkerHeartbeat()
+
 	return stats
 }
 
@@ -1597,8 +1643,33 @@ log.info('sync-worker starting', {
 	db: DB_URL.replace(/:[^:@/]+@/, ':***@'),
 	realDevicesOnly: REAL_DEVICES_ONLY,
 })
+
+// Graceful shutdown (ECS sends SIGTERM, then SIGKILL at stopTimeout=60s):
+// stop starting new cycles, let the in-flight cycle finish its side
+// effects, flush the pool, exit 0. A hard 45s deadline beats the SIGKILL;
+// a second signal forces an immediate exit.
+const drain = createDrainController()
+const DRAIN_DEADLINE_MS = 45_000
+function requestShutdown(signal: string) {
+	if (drain.isDraining()) {
+		log.warn(`second ${signal} — forcing immediate exit`)
+		process.exit(1)
+	}
+	log.info(
+		`${signal} received — draining: finishing the in-flight cycle, no new cycles`,
+	)
+	drain.requestDrain()
+	const deadline = setTimeout(() => {
+		log.warn(`drain deadline (${DRAIN_DEADLINE_MS}ms) reached — exiting now`)
+		process.exit(0)
+	}, DRAIN_DEADLINE_MS)
+	deadline.unref()
+}
+process.on('SIGTERM', () => requestShutdown('SIGTERM'))
+process.on('SIGINT', () => requestShutdown('SIGINT'))
+
 let cycleCount = 0
-while (true) {
+while (!drain.isDraining()) {
 	const start = Date.now()
 	let cycleFailed = false
 	try {
@@ -1627,5 +1698,12 @@ while (true) {
 		process.exit(cycleFailed ? 1 : 0)
 	}
 	const elapsed = Date.now() - start
-	await new Promise((r) => setTimeout(r, Math.max(5_000, INTERVAL_MS - elapsed)))
+	// Resolves early the moment a drain is requested.
+	await drain.sleep(Math.max(5_000, INTERVAL_MS - elapsed))
 }
+
+log.info('drained — closing the db pool and exiting 0', {
+	cyclesCompleted: cycleCount,
+})
+await sql.end({ timeout: 5 }).catch(() => {})
+process.exit(0)

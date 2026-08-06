@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
 	assertSafeUpstream,
 	BACKOFF_CAP_MS,
 	backoffDelayMs,
 	backoffOnFailure,
 	backoffOnSuccess,
+	countsAsRealDeviceOnline,
+	createDrainController,
 	inBackoff,
+	shouldRunDirector,
 } from './sync-worker-lib'
 
 describe('assertSafeUpstream', () => {
@@ -133,5 +136,127 @@ describe('inBackoff', () => {
 
 	it('polls when no backoff was ever recorded', () => {
 		expect(inBackoff({ attempts: 1, nextAttemptAt: null }, now)).toBe(false)
+	})
+})
+
+describe('createDrainController', () => {
+	it('starts not draining and flips permanently on requestDrain', () => {
+		const drain = createDrainController()
+		expect(drain.isDraining()).toBe(false)
+		drain.requestDrain()
+		expect(drain.isDraining()).toBe(true)
+		drain.requestDrain() // idempotent
+		expect(drain.isDraining()).toBe(true)
+	})
+
+	it('sleep waits the full duration when no drain is requested', async () => {
+		vi.useFakeTimers()
+		try {
+			const drain = createDrainController()
+			let resolved = false
+			void drain.sleep(10_000).then(() => {
+				resolved = true
+			})
+			await vi.advanceTimersByTimeAsync(9_999)
+			expect(resolved).toBe(false)
+			await vi.advanceTimersByTimeAsync(1)
+			expect(resolved).toBe(true)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('sleep resolves early the moment a drain is requested', async () => {
+		vi.useFakeTimers()
+		try {
+			const drain = createDrainController()
+			let resolved = false
+			void drain.sleep(60_000).then(() => {
+				resolved = true
+			})
+			await vi.advanceTimersByTimeAsync(1_000)
+			expect(resolved).toBe(false)
+			drain.requestDrain()
+			await vi.advanceTimersByTimeAsync(0)
+			expect(resolved).toBe(true)
+		} finally {
+			vi.useRealTimers()
+		}
+	})
+
+	it('sleep after a drain resolves immediately', async () => {
+		const drain = createDrainController()
+		drain.requestDrain()
+		await expect(drain.sleep(60_000)).resolves.toBeUndefined()
+	})
+})
+
+describe('shouldRunDirector', () => {
+	const INTERVAL = 10 * 60_000
+	const now = Date.parse('2026-08-06T12:00:00Z')
+
+	it('runs when the device has never had a director run', () => {
+		expect(shouldRunDirector(null, now, INTERVAL)).toBe(true)
+		expect(shouldRunDirector(undefined, now, INTERVAL)).toBe(true)
+	})
+
+	it('skips while the newest run is younger than the interval', () => {
+		expect(shouldRunDirector(new Date(now - INTERVAL + 1), now, INTERVAL)).toBe(
+			false,
+		)
+		expect(shouldRunDirector(new Date(now - 1_000), now, INTERVAL)).toBe(false)
+	})
+
+	it('runs once the newest run is at least one interval old', () => {
+		expect(shouldRunDirector(new Date(now - INTERVAL), now, INTERVAL)).toBe(
+			true,
+		)
+		expect(shouldRunDirector(new Date(now - INTERVAL * 5), now, INTERVAL)).toBe(
+			true,
+		)
+	})
+})
+
+describe('countsAsRealDeviceOnline', () => {
+	it('counts a real device reporting Online (any casing)', () => {
+		expect(
+			countsAsRealDeviceOnline({
+				isSimulated: false,
+				connectionStatus: 'Online',
+			}),
+		).toBe(true)
+		expect(
+			countsAsRealDeviceOnline({
+				isSimulated: null,
+				connectionStatus: 'online',
+			}),
+		).toBe(true)
+	})
+
+	it('NEVER counts simulated devices — they always report Online', () => {
+		expect(
+			countsAsRealDeviceOnline({
+				isSimulated: true,
+				connectionStatus: 'Online',
+			}),
+		).toBe(false)
+	})
+
+	it('does not count offline or unknown real devices', () => {
+		expect(
+			countsAsRealDeviceOnline({
+				isSimulated: false,
+				connectionStatus: 'Offline',
+			}),
+		).toBe(false)
+		expect(
+			countsAsRealDeviceOnline({ isSimulated: false, connectionStatus: null }),
+		).toBe(false)
+		expect(
+			countsAsRealDeviceOnline({
+				isSimulated: false,
+				connectionStatus: 'unknown',
+			}),
+		).toBe(false)
 	})
 })
