@@ -7,6 +7,32 @@ import { nitroV2Plugin } from '@tanstack/nitro-v2-vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
+// Spike (branch spike/lambda-streaming): NITRO_PRESET_SPIKE env-switches the
+// nitro target so the Vercel build stays untouched.
+//   aws-stock — nitro's own aws-lambda preset with awsLambda.streaming:true
+//               (Function-URL/v2.0 event shape only; build-compat check)
+//   aws-apigw — aws-lambda preset with a custom streaming entry that also
+//               parses API Gateway REST (payload v1.0) events; the artifact
+//               deployed behind responseTransferMode=STREAM. serveStatic so
+//               the single Lambda also serves /assets for the spike.
+const nitroSpikeConfig = () => {
+	switch (process.env.NITRO_PRESET_SPIKE) {
+		case 'aws-stock':
+			return { preset: 'aws-lambda', awsLambda: { streaming: true } }
+		case 'aws-apigw':
+			return {
+				preset: 'aws-lambda',
+				// keep false: the preset's rollup:before hook appends '-streaming'
+				// to the entry path when true, which would break the custom entry
+				awsLambda: { streaming: false },
+				entry: resolve(__dirname, 'infra/aws/spike/lambda-entry.mjs'),
+				serveStatic: true,
+			}
+		default:
+			return { preset: 'vercel' }
+	}
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
@@ -20,7 +46,7 @@ export default defineConfig({
 		}),
 		// Start 1.16x removed nitro; this official bridge restores the vercel
 		// preset that produces .vercel/output (Build Output API)
-		nitroV2Plugin({ preset: 'vercel' }),
+		nitroV2Plugin(nitroSpikeConfig()),
 		// Start 1.16x no longer bundles React Refresh — must follow tanstackStart()
 		react(),
 		tailwindcss(),

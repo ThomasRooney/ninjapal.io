@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  THROWAWAY spike (pitminder:spike=lambda-streaming): TanStack Start SSR Lambda
+  (custom nitro streaming entry) in a NAT-less VPC private subnet behind a
+  Regional API Gateway REST API with responseTransferMode=STREAM, plus a
+  fallback out-of-VPC Lambda (stock nitro aws-lambda-streaming build) behind a
+  Function URL with InvokeMode RESPONSE_STREAM.
+
+Parameters:
+  CodeBucket:
+    Type: String
+  ApigwZipKey:
+    Type: String
+  StockZipKey:
+    Type: String
+  ColdstartSalt:
+    Type: String
+    Default: '0'
+    Description: Bump to force new sandboxes (cold starts) without code changes.
+
+Resources:
+  # --- throwaway VPC: no IGW, no NAT — mirrors the real design's private placement
+  SpikeVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.99.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: pitminder-spike-vpc }]
+
+  SpikePrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SpikeVpc
+      CidrBlock: 10.99.0.0/26
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+
+  SpikeSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: pitminder spike ssr lambda (no ingress)
+      VpcId: !Ref SpikeVpc
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  # --- SSR Lambda: custom entry parsing BOTH APIGW REST v1.0 and Function URL v2.0 events
+  SsrFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: pitminder-spike-ssr
+      Runtime: nodejs22.x
+      Handler: server/index.handler
+      MemorySize: 1024
+      Timeout: 60
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref ApigwZipKey
+      VpcConfig:
+        SubnetIds: [!Ref SpikePrivateSubnet]
+        SecurityGroupIds: [!GetAtt SpikeSg.GroupId]
+      Environment:
+        Variables:
+          # dummies: module-scope asserts in the bundle require these to EXIST;
+          # nothing in the spike routes dials out (postgres.js connects lazily)
+          RESEND_API_KEY: spike-dummy
+          ZERO_UPSTREAM_DB: postgresql://spike:spike@127.0.0.1:5/spike
+          BETTER_AUTH_URL: https://spike.example
+          BETTER_AUTH_SECRET: spike-dummy-not-a-real-secret-0000000000
+          ZERO_AUTH_SECRET: spike-dummy-not-a-real-zero-secret-0000
+          COLDSTART_SALT: !Ref ColdstartSalt
+
+  # --- fallback: stock nitro aws-lambda-streaming build, OUTSIDE the VPC, Function URL
+  FallbackFn:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: pitminder-spike-fallback
+      Runtime: nodejs22.x
+      Handler: server/index.handler
+      MemorySize: 1024
+      Timeout: 60
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref StockZipKey
+      Environment:
+        Variables:
+          RESEND_API_KEY: spike-dummy
+          ZERO_UPSTREAM_DB: postgresql://spike:spike@127.0.0.1:5/spike
+          BETTER_AUTH_URL: https://spike.example
+          BETTER_AUTH_SECRET: spike-dummy-not-a-real-secret-0000000000
+          ZERO_AUTH_SECRET: spike-dummy-not-a-real-zero-secret-0000
+          COLDSTART_SALT: !Ref ColdstartSalt
+
+  FallbackUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt FallbackFn.Arn
+      AuthType: NONE
+      InvokeMode: RESPONSE_STREAM
+
+  FallbackUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref FallbackFn
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  # --- Regional REST API, greedy proxy, streaming integration
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: pitminder-spike
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: '{proxy+}'
+
+  # Streaming Lambda proxy integration:
+  #  - Uri uses the 2021-11-15 API version + /response-streaming-invocations
+  #    (API GW then calls InvokeWithResponseStream instead of Invoke)
+  #  - ResponseTransferMode: STREAM is the new Integration property
+  RootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !GetAtt RestApi.RootResourceId
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        ResponseTransferMode: STREAM
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2021-11-15/functions/${SsrFn.Arn}/response-streaming-invocations
+
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        ResponseTransferMode: STREAM
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2021-11-15/functions/${SsrFn.Arn}/response-streaming-invocations
+
+  # GOTCHA (measured 2026-08-06): even though streaming integrations call the
+  # InvokeWithResponseStream API, API Gateway authorizes against
+  # lambda:InvokeFunction. Granting only lambda:InvokeWithResponseStream
+  # yields an instant 500 "Internal server error" (Lambda never invoked);
+  # granting only lambda:InvokeFunction works.
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SsrFn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: [RootMethod, ProxyMethod]
+    Properties:
+      RestApiId: !Ref RestApi
+
+  Stage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref Deployment
+      StageName: spike
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/spike
+  FallbackFnUrl:
+    Value: !GetAtt FallbackUrl.FunctionUrl
+  SsrFnName:
+    Value: !Ref SsrFn
+  FallbackFnName:
+    Value: !Ref FallbackFn
