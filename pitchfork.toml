@@ -1,0 +1,20 @@
+# Local dev services — run with `pitchfork start --all` (or `mise run dev`)
+# Logs: `pitchfork logs <name>` / `pitchfork logs --tail <name>`; TUI: `pitchfork tui`
+
+[daemons.db]
+run = "mise run dev:db"
+ready_output = "Postgres is ready"
+
+[daemons.cache]
+run = "mise run dev:cache"
+depends = ["db"]
+ready_output = "zero-cache ready"
+
+[daemons.web]
+run = "mise run dev:frontend"
+depends = ["db"]
+ready_output = "Local:"
+
+[daemons.email]
+run = "mise run dev:email"
+ready_output = "Running preview at"

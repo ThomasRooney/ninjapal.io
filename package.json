@@ -27,8 +27,8 @@
     "typecheck": "tsc --noEmit",
     "update-packages": "bunx taze -I --recursive",
     "zero-cache": "source .env && zero-cache-dev -p src/server/db/index.ts --log-level debug",
-    "email:dev": "bunx react-email dev --dir src/emails --port 3883",
-    "email:export": "bunx react-email export --dir src/emails",
+    "email:dev": "bunx react-email@6.6.9 dev --dir src/emails --port 3883",
+    "email:export": "bunx react-email@6.6.9 export --dir src/emails",
     "postinstall": "bun db:zero:generate"
   },
   "dependencies": {
@@ -103,6 +103,7 @@
     "@biomejs/biome": "1.9.4",
     "@faker-js/faker": "^9.7.0",
     "@playwright/test": "^1.53.1",
+    "@react-email/ui": "6.6.9",
     "@tanstack/nitro-v2-vite-plugin": "^1.155.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
