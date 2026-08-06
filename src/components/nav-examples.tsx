@@ -78,7 +78,7 @@ export function NavExamples() {
 
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel>Examples</SidebarGroupLabel>
+			<SidebarGroupLabel>Pit</SidebarGroupLabel>
 			<SidebarGroupContent>
 				<SidebarMenu>
 					{[

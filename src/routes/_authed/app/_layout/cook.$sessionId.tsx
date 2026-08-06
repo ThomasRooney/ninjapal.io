@@ -252,6 +252,9 @@ function CookDetailPage() {
 												formatTemperature(v, prefersCelsius, undefined)
 											}
 											className='text-xs'
+											tick={{ fill: 'var(--muted-foreground)' }}
+											axisLine={{ stroke: 'var(--border)' }}
+											tickLine={{ stroke: 'var(--border)' }}
 										/>
 										<YAxis hide />
 										<Tooltip

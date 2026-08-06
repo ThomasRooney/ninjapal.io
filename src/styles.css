@@ -122,4 +122,13 @@ code {
 	::selection {
 		background-color: oklch(0.72 0.16 55 / 0.3);
 	}
+	/* Faint smoke drift up the sidebar: a whisper of ember warmth at the
+	   base fading into charred black. Pure gradient — no images, no blur. */
+	[data-slot="sidebar-inner"] {
+		background-image: linear-gradient(
+			to top,
+			oklch(0.72 0.16 55 / 0.04),
+			transparent 30%
+		);
+	}
 }
