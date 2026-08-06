@@ -8,12 +8,24 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
 // Deployment target: default stays the Vercel Build Output preset; the AWS
-// migration (infra/aws/ARCHITECTURE.md) builds with NITRO_PRESET=aws-lambda,
-// which also enables Lambda response streaming (/api/chat needs it).
+// migration (infra/aws/ARCHITECTURE.md) builds with NITRO_PRESET=aws-lambda.
+// That path uses the custom streaming entry proven on spike/lambda-streaming:
+// the decided gateway is Regional REST (payload v1.0 events), which nitro's
+// stock aws-lambda-streaming runtime cannot parse (it only reads Function-URL
+// v2.0 `rawPath`). awsLambda.streaming stays false because the preset's
+// rollup:before hook appends '-streaming' to the entry path when true, which
+// would break the custom entry; the entry itself streams via
+// awslambda.streamifyResponse + HttpResponseStream.
 const nitroPreset = process.env.NITRO_PRESET || 'vercel'
 const nitroConfig =
 	nitroPreset === 'aws-lambda'
-		? { preset: 'aws-lambda', awsLambda: { streaming: true } }
+		? {
+				preset: 'aws-lambda',
+				awsLambda: { streaming: false },
+				entry: resolve(__dirname, 'infra/aws/lambda-entry.mjs'),
+				// The single Lambda also serves /assets (CloudFront origin fallback)
+				serveStatic: true,
+			}
 		: { preset: nitroPreset }
 
 // https://vitejs.dev/config/
