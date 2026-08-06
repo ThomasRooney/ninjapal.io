@@ -29,6 +29,9 @@ export default drizzleZeroConfig(drizzleSchema, {
       username: true,
       password: true,
       attempts: true,
+      lastSuccessAt: false, // server-only worker bookkeeping
+      lastErrorAt: false,
+      nextAttemptAt: false,
       oauthAccessToken: true,
       oauthRefreshToken: true,
       oauthExpiresAt: true,

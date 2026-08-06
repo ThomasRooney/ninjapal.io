@@ -12,6 +12,10 @@ export const ninjaConnections = pgTable('ninja_connections', {
 	username: varchar('username', { length: 255 }).notNull(),
 	password: text('password').notNull(),
 	attempts: integer('attempts').notNull().default(0),
+	// Sync-worker health/backoff bookkeeping (replaces the permanent attempts>=3 stop)
+	lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+	lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+	nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
 	oauthAccessToken: text('oauth_access_token'),
 	oauthRefreshToken: text('oauth_refresh_token'),
 	oauthExpiresAt: timestamp('oauth_expires_at', { withTimezone: true }),
