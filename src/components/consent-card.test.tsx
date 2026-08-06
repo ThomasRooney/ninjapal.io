@@ -82,7 +82,7 @@ describe('ConsentCard', () => {
 	it('renders client name and scope descriptions', async () => {
 		mockFetch((url) => {
 			if (url.includes('/oauth2/public-client')) {
-				return Response.json({ name: 'Claude Code' })
+				return Response.json({ client_name: 'Claude Code' })
 			}
 			throw new Error(`unexpected fetch ${url}`)
 		})
@@ -119,7 +119,7 @@ describe('ConsentCard', () => {
 		const calls: Array<{ url: string; body: unknown }> = []
 		mockFetch((url, init) => {
 			if (url.includes('/oauth2/public-client')) {
-				return Response.json({ name: 'Claude Code' })
+				return Response.json({ client_name: 'Claude Code' })
 			}
 			if (url.includes('/oauth2/consent')) {
 				calls.push({ url, body: JSON.parse(String(init?.body)) })
@@ -150,7 +150,7 @@ describe('ConsentCard', () => {
 		const bodies: unknown[] = []
 		mockFetch((url, init) => {
 			if (url.includes('/oauth2/public-client')) {
-				return Response.json({ name: 'X' })
+				return Response.json({ client_name: 'X' })
 			}
 			bodies.push(JSON.parse(String(init?.body)))
 			return Response.json({
@@ -174,7 +174,7 @@ describe('ConsentCard', () => {
 	it('surfaces an error when the consent POST fails', async () => {
 		mockFetch((url) => {
 			if (url.includes('/oauth2/public-client')) {
-				return Response.json({ name: 'X' })
+				return Response.json({ client_name: 'X' })
 			}
 			return new Response('expired', { status: 400 })
 		})

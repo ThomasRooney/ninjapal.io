@@ -327,6 +327,36 @@ test.describe('authorization-code + PKCE flow', () => {
 	})
 })
 
+test.describe('consent page (browser)', () => {
+	test('renders client name, scopes and action buttons', async ({ page }) => {
+		// page.request shares the browser context's cookie jar, so the signup
+		// session is available both to API calls and the page itself.
+		await signUp(page.request)
+		const clientId = await registerClient(
+			page.request,
+			'pitminder:read pitminder:control',
+		)
+		const { challenge } = pkcePair()
+		const authorize = await page.request.get(
+			`${BASE}/api/auth/oauth2/authorize?response_type=code&client_id=${clientId}` +
+				`&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+				`&scope=${encodeURIComponent('pitminder:read pitminder:control')}` +
+				`&state=ui&code_challenge=${challenge}&code_challenge_method=S256`,
+			{ maxRedirects: 0 },
+		)
+		expect(authorize.status()).toBe(302)
+		await page.goto(`${BASE}${authorize.headers().location}`)
+		await expect(page.getByTestId('consent-client-name')).toHaveText(
+			'pitminder-e2e',
+		)
+		const scopes = page.getByTestId('consent-scopes')
+		await expect(scopes).toContainText('pitminder:read')
+		await expect(scopes).toContainText('pitminder:control')
+		await expect(page.getByTestId('consent-approve')).toBeEnabled()
+		await expect(page.getByTestId('consent-deny')).toBeEnabled()
+	})
+})
+
 test.describe('hand-minted token negatives', () => {
 	test('JWT signed by an unknown key (right iss/aud) → 401', async ({
 		request,

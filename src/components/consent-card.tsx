@@ -17,9 +17,9 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
 }
 
 interface PublicClient {
-	name?: string | null
-	uri?: string | null
-	icon?: string | null
+	/** RFC 7591 field names, e.g. {"client_id":"…","client_name":"…"} */
+	client_name?: string | null
+	client_uri?: string | null
 }
 
 /**
@@ -95,7 +95,7 @@ export function ConsentCard({
 	}
 
 	const scopes = scope.split(' ').filter(Boolean)
-	const clientName = client?.name || clientId
+	const clientName = client?.client_name || clientId
 
 	if (phase === 'loading') {
 		return (
