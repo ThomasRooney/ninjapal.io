@@ -6,6 +6,10 @@
  *
  * Env: ZERO_UPSTREAM_DB, AYLA_APP_SECRET, VITE_OAUTH_* / VITE_AYLA_* (same
  * values as the app), SYNC_INTERVAL_MS (default 60s).
+ * PITMINDER_ALLOW_REMOTE_DB=true — required when ZERO_UPSTREAM_DB is not
+ * local (prod sets this); otherwise the worker refuses to start.
+ * PITMINDER_SYNC_ONCE=true — run one cycle then exit (0 on success).
+ * PITMINDER_REAL_DEVICES_ONLY=true — skip sims + tokenless connections.
  *
  * Usage: bun scripts/sync-worker.ts
  */
@@ -14,6 +18,7 @@ import {
 	stabilityScore,
 	type TempPoint,
 } from '@/lib/cook-analysis'
+import { createLogger } from '@/lib/log'
 import { reconstructHistorySnapshots } from '@/lib/historyUtils'
 import { hopperStatus } from '@/lib/pellet-model'
 import { NinjaAuthManager } from '@/ninjaAuth/ninja-auth-manager'
@@ -58,14 +63,33 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
 import { del as blobDel } from '@vercel/blob'
+import {
+	assertSafeUpstream,
+	backoffOnFailure,
+	backoffOnSuccess,
+	inBackoff,
+} from './sync-worker-lib'
+
+const log = createLogger('sync-worker')
 
 const DB_URL = process.env.ZERO_UPSTREAM_DB
 if (!DB_URL) {
 	console.error('ZERO_UPSTREAM_DB is not set')
 	process.exit(1)
 }
+// Refuse remote upstreams unless explicitly allowed: this worker executes
+// device controls and director runs, so a copied prod URL in a local .env
+// would duplicate every prod side effect.
+try {
+	assertSafeUpstream(DB_URL, process.env)
+} catch (error) {
+	log.error(error instanceof Error ? error.message : String(error))
+	process.exit(1)
+}
 const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS ?? 60_000)
 const REAL_DEVICES_ONLY = process.env.PITMINDER_REAL_DEVICES_ONLY === 'true'
+// Run exactly one cycle then exit — verification and CI without killing loops.
+const SYNC_ONCE = process.env.PITMINDER_SYNC_ONCE === 'true'
 
 const sql = postgres(DB_URL, {
 	max: 5,
@@ -1052,8 +1076,11 @@ async function handleSessionTransition(
 	console.log(`session ${active.id} ended for device ${deviceId}`)
 }
 
-async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
-	if (!conn.username || !conn.password) return
+/** Polls one Ayla account; returns the number of devices written. */
+async function syncConnection(
+	conn: typeof ninjaConnections.$inferSelect,
+): Promise<number> {
+	if (!conn.username || !conn.password) return 0
 
 	const initialState: EnhancedAuthState = {}
 	if (conn.oauthAccessToken && conn.oauthRefreshToken && conn.oauthExpiresAt) {
@@ -1214,22 +1241,31 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 					deviceData,
 				)
 			}
-			console.log(`new device ${device.dsn} for user ${conn.userId}`)
+			log.info('new device discovered', {
+				dsn: device.dsn,
+				userId: conn.userId,
+			})
 		}
 	}
 
-	console.log(
-		`synced ${devicesData.length} device(s) for user ${conn.userId}`,
-	)
+	log.debug('synced connection', {
+		userId: conn.userId,
+		devices: devicesData.length,
+	})
+	return devicesData.length
 }
 
-/** Steps every simulated device through the same pipeline as real ones. */
-async function stepSimulatedDevices() {
+/**
+ * Steps every simulated device through the same pipeline as real ones.
+ * Returns the number of simulated devices stepped (written).
+ */
+async function stepSimulatedDevices(): Promise<number> {
 	const sims = await db
 		.select()
 		.from(devices)
 		.where(eq(devices.is_simulated, true))
 
+	let stepped = 0
 	for (const device of sims) {
 		try {
 			const now = Date.now()
@@ -1329,6 +1365,7 @@ async function stepSimulatedDevices() {
 			const row = toRow(deviceData)
 			const historyState = toHistoryState(deviceData)
 			await db.update(devices).set(row).where(eq(devices.id, device.id))
+			stepped++
 
 			// Minute snapshot / per-cycle patch (same scheme as real devices)
 			const minuteStart = new Date()
@@ -1387,12 +1424,13 @@ async function stepSimulatedDevices() {
 				{},
 			)
 		} catch (error) {
-			console.error(
-				`sim step failed for device ${device.id}:`,
-				error instanceof Error ? error.message : error,
-			)
+			log.error('sim step failed for device', {
+				deviceId: device.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
+	return stepped
 }
 
 const PHOTO_TTL_DAYS = 60
@@ -1449,8 +1487,18 @@ async function cycle() {
 
 	// Simulated grills first: cheap, high-value, and must never be starved
 	// by slow browser-auth attempts against stale real connections.
+	let simDevices = 0
 	if (!REAL_DEVICES_ONLY) {
-		await stepSimulatedDevices()
+		simDevices = await stepSimulatedDevices()
+	}
+
+	const stats = {
+		polled: 0,
+		skippedBackoff: 0,
+		// Named to dodge the logger's secret-key redaction ("token" matches).
+		skippedRealOnly: 0,
+		skippedNoCredentials: 0,
+		devicesUpdated: simDevices,
 	}
 
 	const connections = await db.select().from(ninjaConnections)
@@ -1460,50 +1508,103 @@ async function cycle() {
 			!conn.aylaAccessToken &&
 			!conn.aylaRefreshToken
 		) {
+			stats.skippedRealOnly++
 			continue
 		}
-		// Back off connections that keep failing auth (e2e leftovers, changed
-		// passwords). attempts resets when the user re-saves credentials.
-		if ((conn.attempts ?? 0) >= 3) continue
+		if (!conn.username || !conn.password) {
+			// Would no-op inside syncConnection; skip so the success path
+			// doesn't stamp last_success_at for a connection it never polled.
+			stats.skippedNoCredentials++
+			continue
+		}
+		// Timed exponential backoff for connections that keep failing auth
+		// (e2e leftovers, changed passwords) — they retry forever, just
+		// increasingly slowly. A credential re-save resets attempts to 0 and
+		// polls immediately (inBackoff requires attempts > 0).
+		if (inBackoff(conn, new Date())) {
+			log.debug('skipping connection: auth backoff window open', {
+				userId: conn.userId,
+				attempts: conn.attempts,
+				retryAt: conn.nextAttemptAt?.toISOString(),
+			})
+			stats.skippedBackoff++
+			continue
+		}
+		// Effective cadence: the owner's complaint was multi-minute history
+		// gaps, so surface any poll-to-poll gap beyond 1.5x the interval.
+		const nowMs = Date.now()
+		const prevPolledMs = lastPolledAt.get(conn.userId)
+		if (
+			prevPolledMs !== undefined &&
+			nowMs - prevPolledMs > 1.5 * INTERVAL_MS
+		) {
+			log.warn('connection poll gap exceeded 1.5x interval', {
+				userId: conn.userId,
+				gapMs: nowMs - prevPolledMs,
+				intervalMs: INTERVAL_MS,
+			})
+		}
+		lastPolledAt.set(conn.userId, nowMs)
 		try {
-			await syncConnection(conn)
-			if ((conn.attempts ?? 0) > 0) {
-				await db
-					.update(ninjaConnections)
-					.set({ attempts: 0 })
-					.where(eq(ninjaConnections.userId, conn.userId))
-			}
-		} catch (error) {
+			stats.devicesUpdated += await syncConnection(conn)
+			stats.polled++
 			await db
 				.update(ninjaConnections)
-				.set({ attempts: (conn.attempts ?? 0) + 1 })
+				.set(backoffOnSuccess(new Date()))
 				.where(eq(ninjaConnections.userId, conn.userId))
-			console.error(
-				`sync failed for user ${conn.userId} (attempt ${(conn.attempts ?? 0) + 1}):`,
-				error instanceof Error ? error.message : error,
-			)
+		} catch (error) {
+			const failure = backoffOnFailure(conn.attempts ?? 0, new Date())
+			await db
+				.update(ninjaConnections)
+				.set(failure)
+				.where(eq(ninjaConnections.userId, conn.userId))
+			log.error('sync failed for connection', {
+				userId: conn.userId,
+				attempt: failure.attempts,
+				retryAt: failure.nextAttemptAt.toISOString(),
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
+	return stats
 }
 
-console.log(
-	`sync-worker starting: interval ${INTERVAL_MS}ms, db ${DB_URL.replace(/:[^:@/]+@/, ':***@')}`,
-)
+/** Last poll start per connection (userId → epoch ms) for cadence warnings. */
+const lastPolledAt = new Map<string, number>()
+
+log.info('sync-worker starting', {
+	intervalMs: INTERVAL_MS,
+	db: DB_URL.replace(/:[^:@/]+@/, ':***@'),
+	realDevicesOnly: REAL_DEVICES_ONLY,
+})
 let cycleCount = 0
 while (true) {
 	const start = Date.now()
+	let cycleFailed = false
 	try {
-		await cycle()
+		const stats = await cycle()
 		cycleCount++
+		log.info('cycle complete', {
+			cycle: cycleCount,
+			...stats,
+			durationMs: Date.now() - start,
+		})
 		// Heartbeat: first cycle, then every ~10 min, so a silent hang is visible
 		if (cycleCount === 1 || cycleCount % 10 === 0) {
-			console.log(`cycle ${cycleCount} ok (${Date.now() - start}ms)`)
+			log.info(`cycle ${cycleCount} ok (${Date.now() - start}ms)`)
 		}
 	} catch (error) {
-		console.error(
-			`cycle ${cycleCount + 1} failed:`,
-			error instanceof Error ? (error.stack ?? error.message) : error,
-		)
+		cycleFailed = true
+		log.error(`cycle ${cycleCount + 1} failed`, {
+			error:
+				error instanceof Error ? (error.stack ?? error.message) : String(error),
+		})
+	}
+	if (SYNC_ONCE) {
+		log.info('PITMINDER_SYNC_ONCE set — exiting after one cycle', {
+			ok: !cycleFailed,
+		})
+		process.exit(cycleFailed ? 1 : 0)
 	}
 	const elapsed = Date.now() - start
 	await new Promise((r) => setTimeout(r, Math.max(5_000, INTERVAL_MS - elapsed)))

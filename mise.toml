@@ -23,6 +23,7 @@ install = { run = "bun install", description = "Install npm dependencies" }
 "dev:db" = { run = ".mise-tasks/dev/db.bash", description = "Start local Postgres (wal_level=logical) for Zero" }
 "dev:cache" = { run = ".mise-tasks/dev/cache.bash", description = "Start Zero cache server" }
 "dev:email" = { run = ".mise-tasks/dev/email.bash", description = "Start React Email dev server" }
+"dev:worker" = { run = ".mise-tasks/dev/worker.bash", description = "Start Ayla sync worker (60s poll)" }
 
 # Main development task
 "dev:up" = { run = ".mise-tasks/dev/up.bash", description = "Start all services with overmind" }

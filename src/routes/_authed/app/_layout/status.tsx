@@ -15,6 +15,7 @@ import {
 	TableRow,
 } from '@/components/ui/table.tsx'
 import { useZero } from '@/hooks/use-typed-zero'
+import { isDeviceOnline } from '@/lib/device-status'
 import { useQuery } from '@rocicorp/zero/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { RefreshCw } from 'lucide-react'
@@ -145,7 +146,7 @@ function RouteComponent() {
 									<TableCell>
 										<span
 											className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-												device.connectionStatus === 'online'
+												isDeviceOnline(device.connectionStatus)
 													? 'bg-green-100 text-green-800'
 													: 'bg-gray-100 text-gray-800'
 											}`}
