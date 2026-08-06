@@ -17,8 +17,35 @@ function text(value: unknown) {
 	}
 }
 
-export function createPitMinderMcpServer(userId: string): McpServer {
+export function createPitMinderMcpServer(
+	userId: string,
+	options?: {
+		/**
+		 * When set, every tool is scoped to this device: telemetry, history,
+		 * messages and photos are filtered to it, and control tools refuse
+		 * other devices. Callers without a device context (e.g. /api/mcp)
+		 * omit it and keep the all-devices behavior.
+		 */
+		deviceId?: string
+	},
+): McpServer {
 	const sql = getSql()
+	const scopedDeviceId = options?.deviceId ?? null
+	/**
+	 * Resolve the device a device-taking tool may act on. Returns null when
+	 * the requested device falls outside the scope — tools answer with an
+	 * explicit error instead of silently switching devices.
+	 */
+	const resolveDeviceId = (requested: string): string | null => {
+		if (!scopedDeviceId) return requested
+		if (requested && requested !== scopedDeviceId) return null
+		return scopedDeviceId
+	}
+	const outOfScope = () =>
+		text({
+			error:
+				'device is outside the scope of this chat — it is bound to one device',
+		})
 	const server = new McpServer({ name: 'pitminder', version: '1.0.0' })
 
 	// registerTool's generics hit TS2589 (excessively deep instantiation)
@@ -44,6 +71,7 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 					probe1_temp_a, probe1_target_temp, probe2_temp_a, probe2_target_temp,
 					autopilot_enabled, is_simulated, grill_state_raw
 				from devices where user_id = ${userId}::uuid
+					${scopedDeviceId ? sql`and id = ${scopedDeviceId}::uuid` : sql``}
 			`
 			return text(
 				rows.map((d) => {
@@ -95,12 +123,14 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			},
 		},
 		async ({ deviceId, hours }) => {
+			const scopedId = resolveDeviceId(deviceId)
+			if (!scopedId) return outOfScope()
 			const h = Math.min(Math.max(hours ?? 6, 1), 24)
 			const rows = await sql`
 				select dh.id, dh.history_type, dh.recorded_at, dh.changed_by, dh.changes
 				from device_history dh
 				join devices d on d.id = dh.device_id
-				where dh.device_id = ${deviceId} and d.user_id = ${userId}::uuid
+				where dh.device_id = ${scopedId} and d.user_id = ${userId}::uuid
 					and dh.recorded_at > now() - make_interval(hours => ${h})
 			`
 			const snapshots = reconstructHistorySnapshots(
@@ -146,6 +176,7 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 					cs.avg_temp_grill, cs.max_probe1_temp, cs.stability_score, cs.stall_seconds
 				from cook_sessions cs
 				where cs.user_id = ${userId}::uuid and cs.ended_at is not null
+					${scopedDeviceId ? sql`and cs.device_id = ${scopedDeviceId}::uuid` : sql``}
 				order by cs.started_at desc limit 8
 			`
 			return text(
@@ -184,11 +215,13 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			const messages = await sql`
 				select created_at, kind, title, body, requires_ack, response, acked_at
 				from cook_messages where user_id = ${userId}::uuid
+					${scopedDeviceId ? sql`and device_id = ${scopedDeviceId}::uuid` : sql``}
 				order by created_at desc limit 15
 			`
 			const runs = await sql`
 				select created_at, status, summary, setpoint_changes, messages_sent
 				from director_runs where user_id = ${userId}::uuid
+					${scopedDeviceId ? sql`and device_id = ${scopedDeviceId}::uuid` : sql``}
 				order by created_at desc limit 5
 			`
 			return text({
@@ -220,9 +253,11 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			},
 		},
 		async ({ deviceId }) => {
+			const scopedId = resolveDeviceId(deviceId)
+			if (!scopedId) return outOfScope()
 			const [device] = await sql`
 				select hopper_capacity_kg, pellets_loaded_at from devices
-				where id = ${deviceId} and user_id = ${userId}::uuid
+				where id = ${scopedId} and user_id = ${userId}::uuid
 			`
 			if (!device) return text({ error: 'device not found' })
 			const capacityKg =
@@ -237,7 +272,7 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			}
 			const rows = await sql`
 				select recorded_at, history_type, changes, id, changed_by from device_history
-				where device_id = ${deviceId} and recorded_at >= to_timestamp(${loadedAtMs} / 1000.0)
+				where device_id = ${scopedId} and recorded_at >= to_timestamp(${loadedAtMs} / 1000.0)
 			`
 			const snapshots = reconstructHistorySnapshots(
 				rows
@@ -284,7 +319,9 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 		async () => {
 			const rows = await sql`
 				select url, created_at from cook_photos
-				where user_id = ${userId}::uuid order by created_at desc limit 10
+				where user_id = ${userId}::uuid
+					${scopedDeviceId ? sql`and device_id = ${scopedDeviceId}::uuid` : sql``}
+				order by created_at desc limit 10
 			`
 			return text(rows.map((p) => ({ url: p.url, at: p.created_at })))
 		},
@@ -302,9 +339,11 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			},
 		},
 		async ({ deviceId, setpointC, reason }) => {
+			const scopedId = resolveDeviceId(deviceId)
+			if (!scopedId) return outOfScope()
 			const [device] = await sql`
 				select cook_mode, grill_state_raw from devices
-				where id = ${deviceId} and user_id = ${userId}::uuid
+				where id = ${scopedId} and user_id = ${userId}::uuid
 			`
 			if (!device) return text({ ok: false, error: 'device not found' })
 			let currentSetpointC: number | null = null
@@ -321,7 +360,7 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			}
 			await sql`
 				insert into device_commands (device_id, user_id, kind, payload, source, status)
-				values (${deviceId}, ${userId}::uuid, 'set_pit_temp',
+				values (${scopedId}, ${userId}::uuid, 'set_pit_temp',
 					${sql.json({ setpointC: verdict.setpointC, reason })}, 'chat', 'pending')
 			`
 			return text({
@@ -349,6 +388,7 @@ export function createPitMinderMcpServer(userId: string): McpServer {
 			const updated = await sql`
 				update cook_messages set response = ${response}, acked_at = now()
 				where user_id = ${userId}::uuid and acked_at is null and requires_ack
+					${scopedDeviceId ? sql`and device_id = ${scopedDeviceId}::uuid` : sql``}
 					and title ilike ${`%${title}%`}
 				returning id, title
 			`

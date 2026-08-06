@@ -82,6 +82,16 @@ export const permissions = definePermissions<AuthData, Schema>(
 			{ cmp }: ExpressionBuilder<Schema, 'cookMessages'>,
 		) => cmp('userId', authData.sub as string)
 
+		const allowIfSelfSteerThread = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'steerThreads'>,
+		) => cmp('userId', authData.sub as string)
+
+		const allowIfSelfSteerMessage = (
+			authData: AuthData,
+			{ cmp }: ExpressionBuilder<Schema, 'steerMessages'>,
+		) => cmp('userId', authData.sub as string)
+
 		return {
 			users: {
 				row: {
@@ -162,6 +172,26 @@ export const permissions = definePermissions<AuthData, Schema>(
 						postMutation: [allowIfSelfMessage],
 					},
 					delete: [allowIfSelfMessage],
+				},
+			},
+			steerThreads: {
+				row: {
+					// Own rows only; every write goes through the server
+					// (/api/chat + the reset server fn)
+					select: [allowIfSelfSteerThread],
+					insert: [],
+					update: { preMutation: [], postMutation: [] },
+					delete: [],
+				},
+			},
+			steerMessages: {
+				row: {
+					// Own rows only; the chat API is the sole writer and rows
+					// are immutable once written
+					select: [allowIfSelfSteerMessage],
+					insert: [],
+					update: { preMutation: [], postMutation: [] },
+					delete: [],
 				},
 			},
 			cookSessions: {

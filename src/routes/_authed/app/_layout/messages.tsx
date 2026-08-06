@@ -19,7 +19,7 @@ import {
 	Send,
 	SkipForward,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 export const Route = createFileRoute('/_authed/app/_layout/messages')({
 	component: MessagesPage,
@@ -286,6 +286,23 @@ function MessagesPage() {
 	const [sessions] = useQuery(
 		z.query.cookSessions.orderBy('startedAt', 'desc').limit(50),
 	)
+	const [devices] = useQuery(z.query.devices.orderBy('createdAt', 'asc'))
+
+	// The steer chat is device-scoped: prefer the device with the most
+	// recently started active cook, else fall back to the first device so
+	// the chat stays available between cooks. Hidden with no devices.
+	const chatDeviceId = useMemo(() => {
+		const { activeStartedByDevice } = activeCookContext(sessions)
+		let best: string | null = null
+		let bestAt = -1
+		for (const [deviceId, startedAt] of activeStartedByDevice) {
+			if (startedAt > bestAt) {
+				best = deviceId
+				bestAt = startedAt
+			}
+		}
+		return best ?? devices?.[0]?.id ?? null
+	}, [sessions, devices])
 
 	const pendingCount =
 		messages
@@ -324,7 +341,7 @@ function MessagesPage() {
 						: 'All caught up — the pit minds itself'}
 				</p>
 
-				<PitChat className='mb-6' />
+				{chatDeviceId && <PitChat deviceId={chatDeviceId} className='mb-6' />}
 
 				{messages === undefined ? null : feed.length === 0 ? (
 					<Card>

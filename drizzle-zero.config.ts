@@ -216,6 +216,25 @@ export default drizzleZeroConfig(drizzleSchema, {
       response: true,
       ackedAt: true,
     },
+    // Steer-chat threads/messages — server-side writes only, synced for reads
+    steerThreads: {
+      id: true,
+      userId: true,
+      deviceId: true,
+      createdAt: true,
+      closedAt: true,
+    },
+    steerMessages: {
+      id: true,
+      threadId: true,
+      userId: true,
+      deviceId: true,
+      sessionId: true,
+      turnId: true,
+      role: true,
+      parts: true,
+      createdAt: true,
+    },
     cookSessions: {
       id: true,
       deviceId: true,
