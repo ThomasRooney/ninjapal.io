@@ -37,19 +37,31 @@ export interface RdsControl {
 }
 
 /**
- * ECS scaling interface — STUBBED until the pitminder-compute stack exists.
- * The compute stack will provide an implementation that scales the zero-cache
- * and sync-worker Fargate services 0<->1, probes readiness (websocket upgrade
- * for zero-cache), drains with SIGTERM lease-respect, and runs the TLS SQL
- * probe from inside the VPC.
+ * ECS + NAT scaling interface. The pitminder-compute stack provides the real
+ * implementation (compute-control.ts): Fargate services 0<->1, websocket
+ * readiness probes, SIGTERM draining, NAT instance start/stop, and the
+ * in-VPC SQL probe. createStubComputeControl remains for environments where
+ * the compute stack does not exist yet.
  */
 export interface ComputeControl {
+	/** Start the NAT instance. Idempotent; re-issued every WAKING_DB poll so
+	 * it rides up in parallel with the RDS start. */
+	startNat(): Promise<void>
+	/** Stop the NAT instance. Idempotent, unpaid (never gated) — issued in
+	 * STOPPING_DB and while holding SLEEPING so a crashed wake can never
+	 * leak a running instance. */
+	stopNat(): Promise<void>
 	/** Scale all components up for this generation. Must be idempotent. */
 	scaleUp(generation: number): Promise<void>
 	/** Component names verified ready (probe-passed) for this generation. */
 	readyComponents(generation: number): Promise<string[]>
-	/** Drain sync-worker first, then zero-cache; resolve at runningCount 0. */
-	drain(): Promise<void>
+	/**
+	 * Drain sync-worker first, then zero-cache; resolve at runningCount 0.
+	 * `keepAlive` is invoked between waits so the driver can heartbeat its
+	 * lease; when it returns false the drain aborts and resolves false
+	 * (superseded — the caller re-reads and stands down).
+	 */
+	drain(keepAlive?: () => Promise<boolean>): Promise<boolean>
 	/** SQL probe (TLS connect + slot/publication check) once RDS is up. */
 	probeDb(): Promise<void>
 }
@@ -298,6 +310,9 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					if (!res) return done(row.state)
 					continue
 				}
+				// Holding SLEEPING: belt-and-braces NAT-down (unpaid,
+				// idempotent) so a crashed wake never leaks a running NAT.
+				await compute.stopNat()
 				return done(row.state)
 			}
 
@@ -307,8 +322,13 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					if (!(await claimStep(row, 'WAKING_SERVICES'))) return done(row.state)
 					continue
 				}
+				// Paid mutations below (NAT + RDS start) — re-check the budget
+				// breaker every poll, not just at the claim into WAKING_DB.
+				if (!(await gate(row, 'NAT/RDS start'))) return done(row.state)
+				// The NAT rides up in parallel with the RDS start; idempotent,
+				// re-issued every poll so a resumed invocation converges.
+				await compute.startNat()
 				if (status === 'stopped') {
-					if (!(await gate(row, 'StartDBInstance'))) return done(row.state)
 					await rds.start()
 					step('rds start requested')
 				}
@@ -359,7 +379,18 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					step('drain cancelled by wake')
 					continue
 				}
-				await compute.drain()
+				// The drain blocks for minutes; keepAlive heartbeats the lease
+				// between waits and aborts the drain when superseded (the fenced
+				// claims protect the row either way).
+				const drained = await compute.drain(async () => {
+					const fresh = await store.get()
+					if (!fresh || fresh.state !== 'DRAINING') return false
+					return (await ensureLease(fresh)) !== 'lost'
+				})
+				if (!drained) {
+					step('drain aborted: superseded')
+					return done(row.state)
+				}
 				step('services drained')
 				const fresh = await store.get()
 				if (!fresh || fresh.state !== 'DRAINING') continue
@@ -370,6 +401,9 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			}
 
 			case 'STOPPING_DB': {
+				// Services are already drained — the NAT is idle. Stopping it is
+				// unpaid and idempotent; re-issued every poll.
+				await compute.stopNat()
 				const status = await rds.status()
 				if (status === 'stopped') {
 					if (!(await claimStep(row, 'SLEEPING'))) return done(row.state)
