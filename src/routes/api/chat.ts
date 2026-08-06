@@ -124,7 +124,8 @@ export const Route = createFileRoute('/api/chat')({
 						(thread_id, user_id, device_id, session_id, turn_id, role, parts)
 					values
 						(${threadId}::uuid, ${userId}::uuid, ${deviceId}::uuid,
-						${sessionId}, ${turnId}::uuid, 'user', ${sql.json(lastMessage.parts as never)})
+						${sessionId}, ${turnId}::uuid, 'user',
+						${JSON.stringify(lastMessage.parts)}::jsonb)
 					on conflict (thread_id, turn_id, role) do nothing
 					returning id
 				`
@@ -225,62 +226,69 @@ export const Route = createFileRoute('/api/chat')({
 					},
 				})
 
-				// Run the stream to completion server-side even if the client
-				// disconnects, so the assistant half below always lands.
-				void result.consumeStream()
+				// Persist the completed assistant turn from an INDEPENDENT tee of
+				// the UI message stream, read to completion server-side. The
+				// HTTP response's own onFinish fires early with whatever the
+				// client saw when it disconnects — this reader does not, so the
+				// assistant half lands even mid-refresh.
+				void (async () => {
+					try {
+						let assistantMessage: { parts?: unknown[] } | undefined
+						for await (const uiMessage of ai.readUIMessageStream({
+							stream: result.toUIMessageStream(),
+						})) {
+							assistantMessage = uiMessage
+						}
+						const parts = assistantMessage?.parts ?? []
+						if (parts.length === 0) {
+							log.warn('assistant turn empty — not persisted', {
+								userId,
+								threadId,
+								turnId,
+							})
+							return
+						}
+						if (!partsWithinCap(parts)) {
+							// Server-generated and bounded by stepCountIs(8); log
+							// loudly but keep the history rather than lose the turn.
+							log.warn('assistant parts over size cap — persisting anyway', {
+								userId,
+								threadId,
+								turnId,
+							})
+						}
+						// Persist against the thread captured at request start
+						// even if a reset closed it mid-stream: history is
+						// preserved in the archived thread and the UI already
+						// shows the fresh one.
+						const inserted = await sql`
+							insert into steer_messages
+								(thread_id, user_id, device_id, session_id, turn_id, role, parts)
+							values
+								(${threadId}::uuid, ${userId}::uuid, ${deviceId}::uuid,
+								${sessionId}, ${turnId}::uuid, 'assistant',
+								${JSON.stringify(parts)}::jsonb)
+							on conflict (thread_id, turn_id, role) do nothing
+							returning id
+						`
+						log.info('assistant turn persisted', {
+							userId,
+							threadId,
+							turnId,
+							deduped: inserted.length === 0,
+						})
+					} catch (error) {
+						log.error('assistant turn persistence failed', {
+							userId,
+							threadId,
+							turnId,
+							error: chatErrorForLog(error),
+						})
+					}
+				})()
 
 				return result.toUIMessageStreamResponse({
 					originalMessages: contextMessages,
-					onFinish: async ({ responseMessage, isAborted }) => {
-						try {
-							const parts = responseMessage.parts ?? []
-							if (parts.length === 0) {
-								log.warn('assistant turn empty — not persisted', {
-									userId,
-									threadId,
-									turnId,
-									isAborted,
-								})
-								return
-							}
-							if (!partsWithinCap(parts)) {
-								// Server-generated and bounded by stepCountIs(8); log
-								// loudly but keep the history rather than lose the turn.
-								log.warn('assistant parts over size cap — persisting anyway', {
-									userId,
-									threadId,
-									turnId,
-								})
-							}
-							// Persist against the thread captured at request start
-							// even if a reset closed it mid-stream: history is
-							// preserved in the archived thread and the UI already
-							// shows the fresh one.
-							const inserted = await sql`
-								insert into steer_messages
-									(thread_id, user_id, device_id, session_id, turn_id, role, parts)
-								values
-									(${threadId}::uuid, ${userId}::uuid, ${deviceId}::uuid,
-									${sessionId}, ${turnId}::uuid, 'assistant', ${sql.json(parts as never)})
-								on conflict (thread_id, turn_id, role) do nothing
-								returning id
-							`
-							log.info('assistant turn persisted', {
-								userId,
-								threadId,
-								turnId,
-								isAborted,
-								deduped: inserted.length === 0,
-							})
-						} catch (error) {
-							log.error('assistant turn persistence failed', {
-								userId,
-								threadId,
-								turnId,
-								error: chatErrorForLog(error),
-							})
-						}
-					},
 					onError: chatErrorForUser,
 				})
 			},
