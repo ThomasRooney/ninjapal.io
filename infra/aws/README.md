@@ -83,13 +83,23 @@ epoch milliseconds.
   leases, maintenance due, desired mismatch) and delegates to wake with
   `allowErrorRecovery` + `checkDrift`
 - `lambda/budget-shutoff.ts` — $40 budget SNS → writes
-  `/pitminder/prod/execution/enabled=disabled` (the $20 tier only alerts on
-  `pitminder-budget-alert`; subscribe an email there if wanted)
+  `/pitminder/prod/execution/enabled=disabled`, forces
+  `desiredState=SLEEPING`, and invokes the orchestrator so anything RUNNING
+  winds down (drain → StopDBInstance); failures land in
+  `pitminder-budget-shutoff-dlq`, which alarms to `pitminder-budget-alert`
+  (subscribe an email there if wanted). **Honesty note: AWS Budgets
+  actual-spend data refreshes roughly every 8–12 hours — this is a delayed
+  guardrail against runaway drift, NOT an invoice cap.** The $20 tier only
+  alerts.
 
-Writers elsewhere (the app / worker, once on AWS) use `lib.ts`:
-`stampWebActivity` (self-throttled 1/5min), `requestWake`,
-`stampRealDeviceOnline` — the WORKER must exclude `is_simulated` devices;
-the library stores whatever it is sent.
+**`lambda/power/CONTRACT.md` is the canonical row contract** — attribute
+names/types (epoch-ms numbers), the exact ConditionExpressions external
+writers must use (web stamp, requestWake, the worker's single
+generation-fenced heartbeat+activity write, keep-warm hold), and what is
+orchestrator-only. The app's `src/server/power/power-row.ts` is written
+against it. The WORKER must exclude `is_simulated` devices; the row stores
+whatever it is sent. An operator keep-warm hold (`keepWarmUntil`, capped
+24h) defers the idle rule without affecting wakes.
 
 IAM is least-privilege per Lambda: RDS start/stop/describe on the one
 instance ARN, DynamoDB on the one table, SSM on the one parameter, no
@@ -103,6 +113,8 @@ bun scripts/power-tool.ts status              # row + RDS status
 bun scripts/power-tool.ts seed [STATE]        # create the row
 bun scripts/power-tool.ts wake                # request a wake
 bun scripts/power-tool.ts force-idle          # backdate signals >8h + run the idle cron
+bun scripts/power-tool.ts hold 4              # keep-warm hold (defers idle; capped 24h)
+bun scripts/power-tool.ts release             # release the hold
 bun scripts/power-tool.ts invoke-reconciler
 bun scripts/power-tool.ts watch               # 5s poll, logs every change with +elapsed
 ```

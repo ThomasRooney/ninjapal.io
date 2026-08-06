@@ -142,32 +142,85 @@ describe('pitminder-data synth', () => {
 		}
 	})
 
-	it('grants the orchestrator RDS actions on the ONE instance — no wildcard resources', () => {
+	// One flattened [actions, resource] list per collected statement.
+	function allPolicyStatements() {
 		const policies = template.findResources('AWS::IAM::Policy')
-		let rdsStatements = 0
+		const statements: Array<{ actions: string[]; resource: unknown }> = []
 		for (const [, policy] of Object.entries(policies)) {
-			const statements: Array<{
-				Action: string | string[]
-				Resource: unknown
-			}> = policy.Properties?.PolicyDocument?.Statement ?? []
-			for (const statement of statements) {
+			for (const statement of policy.Properties?.PolicyDocument?.Statement ??
+				[]) {
 				const actions = Array.isArray(statement.Action)
 					? statement.Action
 					: [statement.Action]
-				if (actions.some((a) => String(a).startsWith('rds:'))) {
-					rdsStatements++
-					expect(actions.sort()).toEqual([
-						'rds:DescribeDBInstances',
-						'rds:StartDBInstance',
-						'rds:StopDBInstance',
-					])
-					expect(statement.Resource).not.toBe('*')
-				}
-				// No statement in this stack may use a bare * resource.
-				expect(statement.Resource).not.toBe('*')
+				statements.push({ actions: actions.map(String), resource: statement.Resource })
 			}
 		}
-		expect(rdsStatements).toBe(1)
+		return statements
+	}
+
+	it('grants the orchestrator RDS actions on the ONE instance — no wildcard resources', () => {
+		const statements = allPolicyStatements()
+		const rdsStatements = statements.filter((s) =>
+			s.actions.some((a) => a.startsWith('rds:')),
+		)
+		expect(rdsStatements).toHaveLength(1)
+		expect([...rdsStatements[0].actions].sort()).toEqual([
+			'rds:DescribeDBInstances',
+			'rds:StartDBInstance',
+			'rds:StopDBInstance',
+		])
+		for (const s of statements) expect(s.resource).not.toBe('*')
+	})
+
+	it('pins DynamoDB access to GetItem/UpdateItem — never the grant* supersets', () => {
+		const statements = allPolicyStatements()
+		const ddbActions = new Set(
+			statements
+				.flatMap((s) => s.actions)
+				.filter((a) => a.startsWith('dynamodb:')),
+		)
+		// Row access + the stream-consumer set, nothing else: no PutItem,
+		// DeleteItem, Scan, Query, BatchWriteItem, ConditionCheckItem...
+		expect([...ddbActions].sort()).toEqual([
+			'dynamodb:DescribeStream',
+			'dynamodb:GetItem',
+			'dynamodb:GetRecords',
+			'dynamodb:GetShardIterator',
+			'dynamodb:ListStreams',
+			'dynamodb:UpdateItem',
+		])
+		// wake + idle-cron: GetItem+UpdateItem; reconciler: GetItem only;
+		// budget shutoff: UpdateItem only.
+		const rowStatements = statements.filter((s) =>
+			s.actions.every((a) => a.startsWith('dynamodb:')) &&
+			!s.actions.includes('dynamodb:GetRecords'),
+		)
+		const shapes = rowStatements.map((s) => [...s.actions].sort().join(','))
+		expect(shapes.filter((x) => x === 'dynamodb:GetItem,dynamodb:UpdateItem')).toHaveLength(2)
+		expect(shapes.filter((x) => x === 'dynamodb:GetItem')).toHaveLength(1)
+		expect(shapes.filter((x) => x === 'dynamodb:UpdateItem')).toHaveLength(1)
+	})
+
+	it('budget shutoff has a DLQ with an alarm to the alert topic', () => {
+		template.hasResourceProperties('AWS::SQS::Queue', {
+			QueueName: 'pitminder-budget-shutoff-dlq',
+		})
+		template.hasResourceProperties('AWS::Lambda::Function', {
+			FunctionName: 'pitminder-budget-shutoff',
+			DeadLetterConfig: Match.anyValue(),
+			Environment: {
+				Variables: Match.objectLike({
+					POWER_TABLE: Match.anyValue(),
+					WAKE_FUNCTION_NAME: 'pitminder-power-wake',
+				}),
+			},
+		})
+		template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+			AlarmName: 'pitminder-budget-shutoff-dlq',
+			ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+			Threshold: 1,
+			AlarmActions: Match.anyValue(),
+		})
 	})
 
 	it('publishes the SSM contract under /pitminder/prod/data/', () => {
