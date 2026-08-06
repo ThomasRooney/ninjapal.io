@@ -2,6 +2,7 @@
   "include": ["**/*.ts", "**/*.tsx",
     "src/types/**/*.d.ts"
   ],
+  "exclude": ["infra"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
