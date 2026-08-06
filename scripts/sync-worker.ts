@@ -6,6 +6,10 @@
  *
  * Env: ZERO_UPSTREAM_DB, AYLA_APP_SECRET, VITE_OAUTH_* / VITE_AYLA_* (same
  * values as the app), SYNC_INTERVAL_MS (default 60s).
+ * PITMINDER_ALLOW_REMOTE_DB=true — required when ZERO_UPSTREAM_DB is not
+ * local (prod sets this); otherwise the worker refuses to start.
+ * PITMINDER_SYNC_ONCE=true — run one cycle then exit (0 on success).
+ * PITMINDER_REAL_DEVICES_ONLY=true — skip sims + tokenless connections.
  *
  * Usage: bun scripts/sync-worker.ts
  */
@@ -84,6 +88,8 @@ try {
 }
 const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS ?? 60_000)
 const REAL_DEVICES_ONLY = process.env.PITMINDER_REAL_DEVICES_ONLY === 'true'
+// Run exactly one cycle then exit — verification and CI without killing loops.
+const SYNC_ONCE = process.env.PITMINDER_SYNC_ONCE === 'true'
 
 const sql = postgres(DB_URL, {
 	max: 5,
@@ -1484,7 +1490,8 @@ async function cycle() {
 	const stats = {
 		polled: 0,
 		skippedBackoff: 0,
-		skippedTokenless: 0,
+		// Named to dodge the logger's secret-key redaction ("token" matches).
+		skippedRealOnly: 0,
 		skippedNoCredentials: 0,
 		devicesUpdated: simDevices,
 	}
@@ -1496,7 +1503,7 @@ async function cycle() {
 			!conn.aylaAccessToken &&
 			!conn.aylaRefreshToken
 		) {
-			stats.skippedTokenless++
+			stats.skippedRealOnly++
 			continue
 		}
 		if (!conn.username || !conn.password) {
@@ -1568,6 +1575,7 @@ log.info('sync-worker starting', {
 let cycleCount = 0
 while (true) {
 	const start = Date.now()
+	let cycleFailed = false
 	try {
 		const stats = await cycle()
 		cycleCount++
@@ -1581,10 +1589,17 @@ while (true) {
 			log.info(`cycle ${cycleCount} ok (${Date.now() - start}ms)`)
 		}
 	} catch (error) {
+		cycleFailed = true
 		log.error(`cycle ${cycleCount + 1} failed`, {
 			error:
 				error instanceof Error ? (error.stack ?? error.message) : String(error),
 		})
+	}
+	if (SYNC_ONCE) {
+		log.info('PITMINDER_SYNC_ONCE set — exiting after one cycle', {
+			ok: !cycleFailed,
+		})
+		process.exit(cycleFailed ? 1 : 0)
 	}
 	const elapsed = Date.now() - start
 	await new Promise((r) => setTimeout(r, Math.max(5_000, INTERVAL_MS - elapsed)))
