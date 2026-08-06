@@ -108,10 +108,21 @@ bun scripts/power-tool.ts watch               # 5s poll, logs every change with 
 ```
 
 Measured on the live stack (2026-08-06, db.t4g.micro, eu-west-2):
-RDS **start** (`stopped → available`) ≈ **8.5 min**; RDS **stop**
-(`available → stopped`) ≈ **4.5 min**. The wake UX must communicate minutes,
-not seconds — the Loading state gets progress from the row (state +
-generation), later surfaced via `/api/ready` in the compute stack.
+
+| Path | Measured |
+|---|---|
+| wake request → row AWAKE (end to end) | **6m58s** |
+| `StartDBInstance` → RDS `available` | 6m56s |
+| requestWake stream event → orchestrator claim | ~1.2s |
+| idle decision → row SLEEPING (end to end) | 8m28s (twice) |
+| `StopDBInstance` → RDS `stopped` | ~8m20s |
+| stub component readiness + AWAKE advance | ~150ms |
+
+The wake UX must communicate **minutes, not seconds** — budget ~7 min from a
+cold wake before the DB is even up (ECS adds more later). The Loading state
+gets progress from the row (state + generation), surfaced via `/api/ready`
+in the compute stack. Both transitions completed inside a single 13-min
+orchestrator invocation; the self-reinvoke chain is headroom.
 
 ## Stubbed for pitminder-compute
 
