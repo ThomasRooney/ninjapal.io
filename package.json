@@ -72,7 +72,7 @@
     "@tanstack/router-plugin": "^1.168.18",
     "@vercel/blob": "^2.4.0",
     "ai": "^6.0.202",
-    "better-auth": "^1.2.10",
+    "better-auth": "1.6.26",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
