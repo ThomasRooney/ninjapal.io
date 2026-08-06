@@ -1070,8 +1070,11 @@ async function handleSessionTransition(
 	console.log(`session ${active.id} ended for device ${deviceId}`)
 }
 
-async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
-	if (!conn.username || !conn.password) return
+/** Polls one Ayla account; returns the number of devices written. */
+async function syncConnection(
+	conn: typeof ninjaConnections.$inferSelect,
+): Promise<number> {
+	if (!conn.username || !conn.password) return 0
 
 	const initialState: EnhancedAuthState = {}
 	if (conn.oauthAccessToken && conn.oauthRefreshToken && conn.oauthExpiresAt) {
@@ -1229,22 +1232,31 @@ async function syncConnection(conn: typeof ninjaConnections.$inferSelect) {
 					deviceData,
 				)
 			}
-			console.log(`new device ${device.dsn} for user ${conn.userId}`)
+			log.info('new device discovered', {
+				dsn: device.dsn,
+				userId: conn.userId,
+			})
 		}
 	}
 
-	console.log(
-		`synced ${devicesData.length} device(s) for user ${conn.userId}`,
-	)
+	log.debug('synced connection', {
+		userId: conn.userId,
+		devices: devicesData.length,
+	})
+	return devicesData.length
 }
 
-/** Steps every simulated device through the same pipeline as real ones. */
-async function stepSimulatedDevices() {
+/**
+ * Steps every simulated device through the same pipeline as real ones.
+ * Returns the number of simulated devices stepped (written).
+ */
+async function stepSimulatedDevices(): Promise<number> {
 	const sims = await db
 		.select()
 		.from(devices)
 		.where(eq(devices.is_simulated, true))
 
+	let stepped = 0
 	for (const device of sims) {
 		try {
 			const now = Date.now()
@@ -1344,6 +1356,7 @@ async function stepSimulatedDevices() {
 			const row = toRow(deviceData)
 			const historyState = toHistoryState(deviceData)
 			await db.update(devices).set(row).where(eq(devices.id, device.id))
+			stepped++
 
 			// Minute snapshot / per-cycle patch (same scheme as real devices)
 			const minuteStart = new Date()
@@ -1400,12 +1413,13 @@ async function stepSimulatedDevices() {
 				{},
 			)
 		} catch (error) {
-			console.error(
-				`sim step failed for device ${device.id}:`,
-				error instanceof Error ? error.message : error,
-			)
+			log.error('sim step failed for device', {
+				deviceId: device.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
+	return stepped
 }
 
 const PHOTO_TTL_DAYS = 60
@@ -1462,8 +1476,17 @@ async function cycle() {
 
 	// Simulated grills first: cheap, high-value, and must never be starved
 	// by slow browser-auth attempts against stale real connections.
+	let simDevices = 0
 	if (!REAL_DEVICES_ONLY) {
-		await stepSimulatedDevices()
+		simDevices = await stepSimulatedDevices()
+	}
+
+	const stats = {
+		polled: 0,
+		skippedBackoff: 0,
+		skippedTokenless: 0,
+		skippedNoCredentials: 0,
+		devicesUpdated: simDevices,
 	}
 
 	const connections = await db.select().from(ninjaConnections)
@@ -1473,6 +1496,13 @@ async function cycle() {
 			!conn.aylaAccessToken &&
 			!conn.aylaRefreshToken
 		) {
+			stats.skippedTokenless++
+			continue
+		}
+		if (!conn.username || !conn.password) {
+			// Would no-op inside syncConnection; skip so the success path
+			// doesn't stamp last_success_at for a connection it never polled.
+			stats.skippedNoCredentials++
 			continue
 		}
 		// Timed exponential backoff for connections that keep failing auth
@@ -1485,10 +1515,27 @@ async function cycle() {
 				attempts: conn.attempts,
 				retryAt: conn.nextAttemptAt?.toISOString(),
 			})
+			stats.skippedBackoff++
 			continue
 		}
+		// Effective cadence: the owner's complaint was multi-minute history
+		// gaps, so surface any poll-to-poll gap beyond 1.5x the interval.
+		const nowMs = Date.now()
+		const prevPolledMs = lastPolledAt.get(conn.userId)
+		if (
+			prevPolledMs !== undefined &&
+			nowMs - prevPolledMs > 1.5 * INTERVAL_MS
+		) {
+			log.warn('connection poll gap exceeded 1.5x interval', {
+				userId: conn.userId,
+				gapMs: nowMs - prevPolledMs,
+				intervalMs: INTERVAL_MS,
+			})
+		}
+		lastPolledAt.set(conn.userId, nowMs)
 		try {
-			await syncConnection(conn)
+			stats.devicesUpdated += await syncConnection(conn)
+			stats.polled++
 			await db
 				.update(ninjaConnections)
 				.set(backoffOnSuccess(new Date()))
@@ -1507,26 +1554,37 @@ async function cycle() {
 			})
 		}
 	}
+	return stats
 }
 
-console.log(
-	`sync-worker starting: interval ${INTERVAL_MS}ms, db ${DB_URL.replace(/:[^:@/]+@/, ':***@')}`,
-)
+/** Last poll start per connection (userId → epoch ms) for cadence warnings. */
+const lastPolledAt = new Map<string, number>()
+
+log.info('sync-worker starting', {
+	intervalMs: INTERVAL_MS,
+	db: DB_URL.replace(/:[^:@/]+@/, ':***@'),
+	realDevicesOnly: REAL_DEVICES_ONLY,
+})
 let cycleCount = 0
 while (true) {
 	const start = Date.now()
 	try {
-		await cycle()
+		const stats = await cycle()
 		cycleCount++
+		log.info('cycle complete', {
+			cycle: cycleCount,
+			...stats,
+			durationMs: Date.now() - start,
+		})
 		// Heartbeat: first cycle, then every ~10 min, so a silent hang is visible
 		if (cycleCount === 1 || cycleCount % 10 === 0) {
-			console.log(`cycle ${cycleCount} ok (${Date.now() - start}ms)`)
+			log.info(`cycle ${cycleCount} ok (${Date.now() - start}ms)`)
 		}
 	} catch (error) {
-		console.error(
-			`cycle ${cycleCount + 1} failed:`,
-			error instanceof Error ? (error.stack ?? error.message) : error,
-		)
+		log.error(`cycle ${cycleCount + 1} failed`, {
+			error:
+				error instanceof Error ? (error.stack ?? error.message) : String(error),
+		})
 	}
 	const elapsed = Date.now() - start
 	await new Promise((r) => setTimeout(r, Math.max(5_000, INTERVAL_MS - elapsed)))
