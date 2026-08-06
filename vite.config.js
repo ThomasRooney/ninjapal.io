@@ -7,6 +7,15 @@ import { nitroV2Plugin } from '@tanstack/nitro-v2-vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
+// Deployment target: default stays the Vercel Build Output preset; the AWS
+// migration (infra/aws/ARCHITECTURE.md) builds with NITRO_PRESET=aws-lambda,
+// which also enables Lambda response streaming (/api/chat needs it).
+const nitroPreset = process.env.NITRO_PRESET || 'vercel'
+const nitroConfig =
+	nitroPreset === 'aws-lambda'
+		? { preset: 'aws-lambda', awsLambda: { streaming: true } }
+		: { preset: nitroPreset }
+
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
@@ -19,8 +28,9 @@ export default defineConfig({
 			},
 		}),
 		// Start 1.16x removed nitro; this official bridge restores the vercel
-		// preset that produces .vercel/output (Build Output API)
-		nitroV2Plugin({ preset: 'vercel' }),
+		// preset that produces .vercel/output (Build Output API). Preset is
+		// env-selected (NITRO_PRESET) — see nitroConfig above.
+		nitroV2Plugin(nitroConfig),
 		// Start 1.16x no longer bundles React Refresh — must follow tanstackStart()
 		react(),
 		tailwindcss(),
