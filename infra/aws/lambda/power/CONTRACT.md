@@ -94,6 +94,21 @@ release: REMOVE #hold SET #updatedAt = :now
 ```
 Hold-condition failure = an existing hold reaches further; keep it.
 
+### Writer 5 — JWKS mirror (app, awake path only)
+
+`src/server/power/jwks-cache.ts` mirrors the public JWKS onto the row so cold
+MCP bearers can verify offline and wake the stack:
+
+```
+SET #jwksJson = :json, #jwksMirroredAt = :now
+ConditionExpression: attribute_exists(#pk)
+```
+
+Throttled to at most one write per hour, only after a successful DB-backed
+`getJwks` read while AWAKE. Touches no control fields (state/version/
+generation/desiredState/activity), so the stream filter must keep ignoring
+it. Public key material only — never private keys.
+
 ## Orchestrator-only mutations (never call these from the app/worker)
 
 Claims (state transitions, fenced on `state` + `version` + lease), lease
