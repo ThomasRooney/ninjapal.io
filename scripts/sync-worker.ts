@@ -59,7 +59,12 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
 import { del as blobDel } from '@vercel/blob'
-import { assertSafeUpstream } from './sync-worker-lib'
+import {
+	assertSafeUpstream,
+	backoffOnFailure,
+	backoffOnSuccess,
+	inBackoff,
+} from './sync-worker-lib'
 
 const log = createLogger('sync-worker')
 
@@ -1470,26 +1475,36 @@ async function cycle() {
 		) {
 			continue
 		}
-		// Back off connections that keep failing auth (e2e leftovers, changed
-		// passwords). attempts resets when the user re-saves credentials.
-		if ((conn.attempts ?? 0) >= 3) continue
+		// Timed exponential backoff for connections that keep failing auth
+		// (e2e leftovers, changed passwords) — they retry forever, just
+		// increasingly slowly. A credential re-save resets attempts to 0 and
+		// polls immediately (inBackoff requires attempts > 0).
+		if (inBackoff(conn, new Date())) {
+			log.debug('skipping connection: auth backoff window open', {
+				userId: conn.userId,
+				attempts: conn.attempts,
+				retryAt: conn.nextAttemptAt?.toISOString(),
+			})
+			continue
+		}
 		try {
 			await syncConnection(conn)
-			if ((conn.attempts ?? 0) > 0) {
-				await db
-					.update(ninjaConnections)
-					.set({ attempts: 0 })
-					.where(eq(ninjaConnections.userId, conn.userId))
-			}
-		} catch (error) {
 			await db
 				.update(ninjaConnections)
-				.set({ attempts: (conn.attempts ?? 0) + 1 })
+				.set(backoffOnSuccess(new Date()))
 				.where(eq(ninjaConnections.userId, conn.userId))
-			console.error(
-				`sync failed for user ${conn.userId} (attempt ${(conn.attempts ?? 0) + 1}):`,
-				error instanceof Error ? error.message : error,
-			)
+		} catch (error) {
+			const failure = backoffOnFailure(conn.attempts ?? 0, new Date())
+			await db
+				.update(ninjaConnections)
+				.set(failure)
+				.where(eq(ninjaConnections.userId, conn.userId))
+			log.error('sync failed for connection', {
+				userId: conn.userId,
+				attempt: failure.attempts,
+				retryAt: failure.nextAttemptAt.toISOString(),
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
 }
