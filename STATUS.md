@@ -47,14 +47,6 @@ Secrets: prod `ZERO_AUTH_SECRET`/`BETTER_AUTH_SECRET` are in the commented block
 - **Prefs**: °C/°F preference synced through Zero (`users.prefers_celsius`).
 - **E2E tests**: auth, ninja-connection, device sync (with Ayla API mocked via Playwright route interception), devices list.
 
-### Landed 2026-08-06 — MCP OAuth (`feat/mcp-oauth`)
-- **/api/mcp accepts OAuth Bearer tokens** for external agents (Claude Code, Cursor, MCP Inspector) alongside the unchanged session-cookie path. Fail-closed: a presented Bearer must verify (JWKS, exact issuer + audience) — never falls back to cookies.
-- Authorization server = better-auth `@better-auth/oauth-provider@1.6.26` (exact pin) + `jwt()` plugin; scopes `pitminder:read`/`pitminder:control`; dynamic client registration open (default grant read-only); consent UI at `/consent`; RFC 8414/9728 metadata at `/.well-known/*`.
-- **Security invariant**: `validAudiences` has exactly ONE entry (`PITMINDER_MCP_RESOURCE`, prod default `https://app.pitminder.com/api/mcp`) — GHSA-p2fr-6hmx-4528 workaround; never add a second.
-- New tables (excluded from Zero): `jwks`, `oauth_client`, `oauth_refresh_token`, `oauth_access_token`, `oauth_consent`. **Prod TODO before deploy: apply the same DDL to Neon** (see `src/server/db/schema/auth.ts`; drizzle-kit push prompts interactively — use psql).
-- Replaced the fetch-to-node bridge in `/api/mcp` with an InMemoryTransport pair — the old pattern crashed the whole process after every completed external MCP call on current Node.
-- DCR rate limiting is better-auth's built-in (register: 5/min) — **in-memory storage, per-instance on Vercel**, so it is advisory only; revisit if abuse appears.
-
 ### Landed 2026-06-11 (was in flight at audit time)
 - ✅ **Dual-channel probe migration** complete: probe fields enabled in Zero config, Probe 1/2 series added to the temperature graph, verified end-to-end with seeded demo telemetry.
 - ✅ **Dev-env overhaul** committed: `mise.toml` + `.mise-tasks/dev/*` + `./zero` onboarding script (README quick-start still describes the old commands).
