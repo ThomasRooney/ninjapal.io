@@ -21,6 +21,7 @@ web: mise run dev:frontend
 db: mise run dev:db
 cache: mise run dev:cache
 email: mise run dev:email
+worker: mise run dev:worker
 EOF
 fi
 
