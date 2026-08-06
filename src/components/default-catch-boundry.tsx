@@ -25,21 +25,21 @@ export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
 					onClick={() => {
 						router.invalidate()
 					}}
-					className='px-2 py-1 bg-gray-600 dark:bg-gray-700 rounded text-white uppercase font-extrabold'
+					className='px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-accent rounded-md text-sm font-medium'
 				>
 					Try Again
 				</button>
 				{isRoot ? (
 					<Link
 						to='/'
-						className='px-2 py-1 bg-gray-600 dark:bg-gray-700 rounded text-white uppercase font-extrabold'
+						className='px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-accent rounded-md text-sm font-medium'
 					>
 						Home
 					</Link>
 				) : (
 					<Link
 						to='/'
-						className='px-2 py-1 bg-gray-600 dark:bg-gray-700 rounded text-white uppercase font-extrabold'
+						className='px-3 py-1.5 bg-secondary text-secondary-foreground hover:bg-accent rounded-md text-sm font-medium'
 						onClick={(e: React.MouseEvent) => {
 							e.preventDefault()
 							window.history.back()

@@ -20,9 +20,9 @@ function formatDuration(ms: number): string {
 
 function scoreColor(score: number | null): string {
 	if (score == null) return 'text-muted-foreground'
-	if (score >= 80) return 'text-green-600'
-	if (score >= 60) return 'text-amber-600'
-	return 'text-red-600'
+	if (score >= 80) return 'text-success'
+	if (score >= 60) return 'text-warning'
+	return 'text-destructive'
 }
 
 function CooksPage() {
@@ -62,7 +62,7 @@ function CooksPage() {
 									className='block transition-transform hover:scale-[1.02]'
 									data-testid='cook-card'
 								>
-									<Card className={active ? 'border-green-500/50' : ''}>
+									<Card className={active ? 'border-primary/50' : ''}>
 										<CardContent className='pt-6'>
 											<div className='flex items-start justify-between'>
 												<div>
@@ -83,7 +83,7 @@ function CooksPage() {
 													</p>
 												</div>
 												{active ? (
-													<Badge className='bg-green-600'>
+													<Badge className='bg-primary text-primary-foreground'>
 														<Flame className='h-3 w-3 mr-1' />
 														Live
 													</Badge>

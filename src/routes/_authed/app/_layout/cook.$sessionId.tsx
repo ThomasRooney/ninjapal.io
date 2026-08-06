@@ -155,7 +155,7 @@ function CookDetailPage() {
 							</h1>
 						)}
 						{active && (
-							<Badge className='bg-green-600'>
+							<Badge className='bg-primary text-primary-foreground'>
 								<Flame className='h-3 w-3 mr-1' />
 								Live
 							</Badge>
@@ -218,12 +218,20 @@ function CookDetailPage() {
 					setpointC={setpoint}
 					title='Cook timeline'
 					series={[
-						{ attributeName: 'temp_grill', name: 'Grill', color: '#ef4444' },
-						{ attributeName: 'temp_air', name: 'Chamber', color: '#3b82f6' },
+						{
+							attributeName: 'temp_grill',
+							name: 'Grill',
+							color: 'var(--chart-1)',
+						},
+						{
+							attributeName: 'temp_air',
+							name: 'Chamber',
+							color: 'var(--chart-2)',
+						},
 						{
 							attributeName: 'probe1_temp_a',
 							name: 'Probe 1',
-							color: '#f59e0b',
+							color: 'var(--chart-3)',
 						},
 					]}
 				/>
@@ -244,6 +252,9 @@ function CookDetailPage() {
 												formatTemperature(v, prefersCelsius, undefined)
 											}
 											className='text-xs'
+											tick={{ fill: 'var(--muted-foreground)' }}
+											axisLine={{ stroke: 'var(--border)' }}
+											tickLine={{ stroke: 'var(--border)' }}
 										/>
 										<YAxis hide />
 										<Tooltip
@@ -251,8 +262,21 @@ function CookDetailPage() {
 											labelFormatter={(v) =>
 												`${formatTemperature(Number(v), prefersCelsius)} bucket`
 											}
+											cursor={{ fill: 'var(--muted)' }}
+											contentStyle={{
+												backgroundColor: 'var(--popover)',
+												border: '1px solid var(--border)',
+												borderRadius: 8,
+												color: 'var(--popover-foreground)',
+											}}
+											labelStyle={{ color: 'var(--muted-foreground)' }}
+											itemStyle={{ color: 'var(--popover-foreground)' }}
 										/>
-										<Bar dataKey='count' fill='#ef4444' radius={[3, 3, 0, 0]} />
+										<Bar
+											dataKey='count'
+											fill='var(--chart-1)'
+											radius={[3, 3, 0, 0]}
+										/>
 									</BarChart>
 								</ResponsiveContainer>
 							</div>

@@ -147,8 +147,8 @@ function RouteComponent() {
 										<span
 											className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
 												isDeviceOnline(device.connectionStatus)
-													? 'bg-green-100 text-green-800'
-													: 'bg-gray-100 text-gray-800'
+													? 'bg-success/15 text-success'
+													: 'bg-muted text-muted-foreground'
 											}`}
 										>
 											{device.connectionStatus || 'unknown'}

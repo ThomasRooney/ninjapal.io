@@ -78,7 +78,7 @@ export function NavExamples() {
 
 	return (
 		<SidebarGroup>
-			<SidebarGroupLabel>Examples</SidebarGroupLabel>
+			<SidebarGroupLabel>Pit</SidebarGroupLabel>
 			<SidebarGroupContent>
 				<SidebarMenu>
 					{[
@@ -110,7 +110,7 @@ export function NavExamples() {
 									)}
 									{item.title === 'Messages' && pendingCount > 0 && (
 										<span
-											className='ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white'
+											className='ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground'
 											data-testid='messages-badge'
 										>
 											{pendingCount}

@@ -21,7 +21,7 @@ function WaitlistPage() {
 		<div className='min-h-screen bg-background flex items-center justify-center p-6'>
 			<Card className='max-w-md w-full'>
 				<CardContent className='pt-8 pb-8 text-center space-y-4'>
-					<Flame className='h-10 w-10 mx-auto text-red-600' />
+					<Flame className='h-10 w-10 mx-auto text-primary' />
 					<h1 className='text-2xl font-bold' data-testid='waitlist-heading'>
 						You're on the list 🔥
 					</h1>

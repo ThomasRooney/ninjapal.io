@@ -90,7 +90,7 @@ function MessageCard({
 		<Card
 			className={cn(
 				'transition-colors',
-				pending ? 'border-amber-500/60 bg-amber-500/5' : 'opacity-90',
+				pending ? 'border-primary/50 bg-primary/5' : 'opacity-90',
 			)}
 			data-testid={pending ? 'message-pending' : 'message-card'}
 		>
@@ -100,7 +100,7 @@ function MessageCard({
 						className={cn(
 							'mt-0.5 h-8 w-8 shrink-0 rounded-full flex items-center justify-center',
 							pending
-								? 'bg-amber-500/20 text-amber-600'
+								? 'bg-primary/15 text-primary'
 								: 'bg-muted text-muted-foreground',
 						)}
 					>
@@ -191,7 +191,7 @@ function MessageCard({
 									</>
 								) : (
 									<>
-										<Check className='h-3 w-3 text-green-600' />
+										<Check className='h-3 w-3 text-success' />
 										{chosenLabel ? (
 											<>
 												you chose{' '}
