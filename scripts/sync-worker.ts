@@ -14,6 +14,7 @@ import {
 	stabilityScore,
 	type TempPoint,
 } from '@/lib/cook-analysis'
+import { createLogger } from '@/lib/log'
 import { reconstructHistorySnapshots } from '@/lib/historyUtils'
 import { hopperStatus } from '@/lib/pellet-model'
 import { NinjaAuthManager } from '@/ninjaAuth/ninja-auth-manager'
@@ -58,10 +59,22 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
 import { del as blobDel } from '@vercel/blob'
+import { assertSafeUpstream } from './sync-worker-lib'
+
+const log = createLogger('sync-worker')
 
 const DB_URL = process.env.ZERO_UPSTREAM_DB
 if (!DB_URL) {
 	console.error('ZERO_UPSTREAM_DB is not set')
+	process.exit(1)
+}
+// Refuse remote upstreams unless explicitly allowed: this worker executes
+// device controls and director runs, so a copied prod URL in a local .env
+// would duplicate every prod side effect.
+try {
+	assertSafeUpstream(DB_URL, process.env)
+} catch (error) {
+	log.error(error instanceof Error ? error.message : String(error))
 	process.exit(1)
 }
 const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS ?? 60_000)
