@@ -106,6 +106,11 @@ export const Route = createFileRoute('/api/mcp')({
 					log.info('cookie auth ok', { sub: userId })
 				}
 
+				// A valid MCP credential counts as web activity for the
+				// scale-to-zero idle signal (ARCHITECTURE.md). No-op off AWS.
+				const { stampWebActivity } = await import('@/server/power/activity')
+				await stampWebActivity(userId)
+
 				// Stateless streamable HTTP: one JSON-RPC message in, one JSON
 				// response out, bridged over an in-memory transport pair.
 				// (fetch-to-node + StreamableHTTPServerTransport double-closes its

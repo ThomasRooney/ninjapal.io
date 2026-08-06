@@ -1,3 +1,4 @@
+import { ActivityBeacon } from '@/components/activity-beacon.tsx'
 import { AppSidebar } from '@/components/app-sidebar.tsx'
 import { SidebarProvider } from '@/components/ui/sidebar.tsx'
 import { Toaster } from '@/components/ui/sonner.tsx'
@@ -34,6 +35,7 @@ function AppContent() {
 	const { user } = Route.useLoaderData()
 	return (
 		<>
+			<ActivityBeacon />
 			{user?.impersonatedBy && (
 				<div
 					className='fixed top-0 inset-x-0 z-50 bg-warning text-background text-center text-sm font-semibold py-1'

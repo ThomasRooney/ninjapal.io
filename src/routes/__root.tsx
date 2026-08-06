@@ -45,6 +45,12 @@ const fetchUser = createServerFn({
 
 		const provisioned = await provisionUser(user)
 
+		// Scale-to-zero idle signal: an authenticated shell load is web
+		// activity. Throttled + no-op when POWER_TABLE is unset; readiness
+		// polling never comes through here.
+		const { stampWebActivity } = await import('@/server/power/activity')
+		await stampWebActivity(user.id)
+
 		return {
 			...user,
 			whitelisted: provisioned.whitelisted,
