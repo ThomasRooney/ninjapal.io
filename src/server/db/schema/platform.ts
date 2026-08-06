@@ -5,6 +5,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	uniqueIndex,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -74,17 +75,30 @@ export const directorRuns = pgTable(
 			.defaultNow()
 			.notNull(),
 		model: varchar('model', { length: 100 }).notNull(),
-		status: varchar('status', { length: 20 }).notNull().default('ok'), // ok | error
+		status: varchar('status', { length: 20 }).notNull().default('ok'), // claimed | ok | error
 		summary: text('summary'),
 		error: text('error'),
 		iterations: integer('iterations').notNull().default(0),
 		setpointChanges: integer('setpoint_changes').notNull().default(0),
 		messagesSent: integer('messages_sent').notNull().default(0),
 		toolCalls: jsonb('tool_calls'), // string[] of tool names in call order
+		/**
+		 * Atomic cadence lease (DB-time bucket start, floor(epoch/interval)):
+		 * the worker INSERTs a 'claimed' row ON CONFLICT DO NOTHING on
+		 * (device_id, interval_bucket) BEFORE the LLM call, so overlapping
+		 * tasks/restarts can never double-run a check-in and a crash after
+		 * side effects still consumes the bucket. NULL on legacy rows
+		 * (Postgres unique treats NULLs as distinct).
+		 */
+		intervalBucket: timestamp('interval_bucket', { withTimezone: true }),
 	},
 	(table) => ({
 		deviceIdx: index('idx_director_runs_device_id').on(table.deviceId),
 		userIdx: index('idx_director_runs_user_id').on(table.userId),
 		createdIdx: index('idx_director_runs_created_at').on(table.createdAt),
+		deviceBucketUq: uniqueIndex('uq_director_runs_device_bucket').on(
+			table.deviceId,
+			table.intervalBucket,
+		),
 	}),
 )

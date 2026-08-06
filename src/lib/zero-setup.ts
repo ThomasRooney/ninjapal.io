@@ -17,6 +17,20 @@ export type User = {
 
 const zeroAtom = new Atom<Zero<ZeroSchema, ClientMutators>>()
 
+type OnlineListener = (online: boolean) => void
+const onlineListeners = new Set<OnlineListener>()
+
+/**
+ * Subscribe to Zero's online/offline transitions (PowerGate uses this to
+ * spot DB-unavailable-style failures). Returns an unsubscribe function.
+ */
+export function onZeroOnlineChange(listener: OnlineListener): () => void {
+	onlineListeners.add(listener)
+	return () => {
+		onlineListeners.delete(listener)
+	}
+}
+
 let didPreload = false
 
 export function preload(z: Zero<ZeroSchema, ClientMutators>) {
@@ -62,6 +76,9 @@ export function initializeZero(user: User) {
 		userID: user.id,
 		mutators: createClientMutators(authData),
 		auth: () => user.accessToken,
+		onOnlineChange: (online) => {
+			for (const listener of onlineListeners) listener(online)
+		},
 	})
 
 	zeroAtom.value = zero

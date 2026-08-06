@@ -1,3 +1,4 @@
+import { publicOriginEnv } from '@/lib/public-origin'
 import { getDb } from '@/server/db/client'
 import * as authSchema from '@/server/db/schema/auth'
 import {
@@ -14,18 +15,26 @@ export const MCP_SCOPES = ['pitminder:read', 'pitminder:control'] as const
 
 /**
  * The single OAuth resource identifier (JWT audience) for the MCP endpoint.
- * Per environment: prod default below, dev overrides via PITMINDER_MCP_RESOURCE
- * (http://localhost:5173/api/mcp in .env).
+ * Per environment: PITMINDER_MCP_RESOURCE override first (dev sets
+ * http://localhost:5173/api/mcp in .env), then PUBLIC_ORIGIN (AWS, where the
+ * canonical origin must never derive from request.url behind CloudFront),
+ * then the prod default.
  */
 export const MCP_RESOURCE =
-	process.env.PITMINDER_MCP_RESOURCE ?? 'https://app.pitminder.com/api/mcp'
+	process.env.PITMINDER_MCP_RESOURCE ??
+	(publicOriginEnv()
+		? `${publicOriginEnv()}/api/mcp`
+		: 'https://app.pitminder.com/api/mcp')
 
 /**
  * OAuth issuer — better-auth's baseURL (origin + basePath). Must match the
  * `iss` claim the jwt plugin signs into access tokens.
  */
 export function getAuthIssuer(): string {
-	const origin = process.env.BETTER_AUTH_URL ?? new URL(MCP_RESOURCE).origin
+	const origin =
+		process.env.BETTER_AUTH_URL ??
+		publicOriginEnv() ??
+		new URL(MCP_RESOURCE).origin
 	return `${origin.replace(/\/+$/, '')}/api/auth`
 }
 
@@ -38,7 +47,13 @@ export function getAuthIssuer(): string {
  * (callback URL: {BETTER_AUTH_URL}/api/auth/callback/google — must be
  * registered in the Google Cloud Console OAuth client).
  */
+// better-auth reads BETTER_AUTH_URL itself; PUBLIC_ORIGIN is the AWS
+// fallback so the baseURL never derives from request.url behind CloudFront.
+// Both unset (local dev) → request-derived, exactly as before.
+const authBaseURL = process.env.BETTER_AUTH_URL ?? publicOriginEnv()
+
 export const auth = betterAuth({
+	...(authBaseURL ? { baseURL: authBaseURL } : {}),
 	database: drizzleAdapter(getDb(), {
 		provider: 'pg',
 		schema: authSchema,

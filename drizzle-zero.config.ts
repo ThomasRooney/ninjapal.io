@@ -184,6 +184,8 @@ export default drizzleZeroConfig(drizzleSchema, {
       setpointChanges: true,
       messagesSent: true,
       toolCalls: true,
+      // worker-internal cadence lease — not synced (expand phase)
+      intervalBucket: false,
     },
     cookPhotos: {
       id: true,

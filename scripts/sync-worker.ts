@@ -58,16 +58,35 @@ import {
 } from '@/server/db/schema'
 import Anthropic from '@anthropic-ai/sdk'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
-import { and, desc, eq, gt, gte, inArray, isNull, lte } from 'drizzle-orm'
+import {
+	and,
+	desc,
+	eq,
+	gt,
+	gte,
+	inArray,
+	isNull,
+	lte,
+	max,
+	sql as sqlExpr,
+} from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
 import { del as blobDel } from '@vercel/blob'
 import {
+	deleteStoredPhotoObject,
+	resolveStoredPhotoUrl,
+} from '@/server/photo-storage'
+import { stampWorkerCyclePower } from '@/server/power/worker'
+import {
 	assertSafeUpstream,
 	backoffOnFailure,
 	backoffOnSuccess,
+	countsAsRealDeviceOnline,
+	createDrainController,
 	inBackoff,
+	shouldRunDirector,
 } from './sync-worker-lib'
 
 const log = createLogger('sync-worker')
@@ -689,8 +708,50 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
 const DIRECTOR_INTERVAL_MS = Number(
 	process.env.PIT_DIRECTOR_INTERVAL_MS ?? 10 * 60_000,
 )
-/** In-memory cadence per device; a restart just runs one check-in early. */
-const directorLastRun = new Map<string, number>()
+
+/**
+ * Advisory cadence read: the newest director_runs row (claimed, ok or
+ * error). Cheap spacing check only — the ATOMIC fence is claimDirectorRun.
+ */
+async function lastDirectorRunAt(deviceId: string): Promise<Date | null> {
+	const [row] = await db
+		.select({ last: max(directorRuns.createdAt) })
+		.from(directorRuns)
+		.where(eq(directorRuns.deviceId, deviceId))
+	return row?.last ?? null
+}
+
+/**
+ * Atomic per-interval cadence lease, taken BEFORE any LLM spend: INSERT a
+ * 'claimed' row keyed on (device_id, interval_bucket) with the bucket
+ * computed from DATABASE time (never the worker clock), ON CONFLICT DO
+ * NOTHING. Exactly one task can own a device's bucket — overlapping tasks
+ * during a deploy/wake and check-then-act races cannot double-run, and a
+ * crash after side effects (row left 'claimed') still consumes the bucket
+ * so the spend is never repeated. Returns the claimed row id, or null when
+ * the bucket is already owned.
+ */
+async function claimDirectorRun(
+	deviceId: string,
+	userId: string,
+	model: string,
+): Promise<string | null> {
+	const intervalSec = Math.max(1, Math.round(DIRECTOR_INTERVAL_MS / 1000))
+	const rows = await db
+		.insert(directorRuns)
+		.values({
+			userId,
+			deviceId,
+			model,
+			status: 'claimed',
+			intervalBucket: sqlExpr`to_timestamp(floor(extract(epoch from now()) / ${intervalSec}) * ${intervalSec})`,
+		})
+		.onConflictDoNothing({
+			target: [directorRuns.deviceId, directorRuns.intervalBucket],
+		})
+		.returning({ id: directorRuns.id })
+	return rows[0]?.id ?? null
+}
 
 async function configValue(key: string): Promise<string | null> {
 	const [row] = await db
@@ -738,12 +799,15 @@ async function runPitDirector(
 ) {
 	if (!anthropic || !deviceRow.autopilot_enabled) return
 	if (!isCooking(deviceData.cook_state)) return
-	const last = directorLastRun.get(deviceRow.id) ?? 0
-	if (Date.now() - last < DIRECTOR_INTERVAL_MS) return
+	// Advisory spacing (cheap, avoids claim-insert churn every cycle) …
+	const last = await lastDirectorRunAt(deviceRow.id)
+	if (!shouldRunDirector(last, Date.now(), DIRECTOR_INTERVAL_MS)) return
 	if ((await configValue('pit_director_enabled')) === 'false') return
-	directorLastRun.set(deviceRow.id, Date.now())
 
 	const model = (await configValue('pit_director_model')) ?? DEFAULT_DIRECTOR_MODEL
+	// … and the ATOMIC per-bucket claim before any LLM spend.
+	const claimedRunId = await claimDirectorRun(deviceRow.id, userId, model)
+	if (!claimedRunId) return
 	const num = (v: unknown) => (typeof v === 'number' ? v : null)
 	const setpoint = parseSetpoint(deviceData)
 
@@ -878,10 +942,23 @@ async function runPitDirector(
 				.where(eq(cookPhotos.userId, userId))
 				.orderBy(desc(cookPhotos.createdAt))
 				.limit(10)
-			return rows.map((p) => ({
-				url: p.url,
-				at: p.createdAt.toISOString(),
-			}))
+			// S3-backed rows store an s3:// marker — the model needs a
+			// fetchable presigned URL; unresolvable photos are skipped.
+			const photos: Array<{ url: string; at: string }> = []
+			for (const p of rows) {
+				try {
+					photos.push({
+						url: await resolveStoredPhotoUrl(p.url, userId),
+						at: p.createdAt.toISOString(),
+					})
+				} catch (error) {
+					console.warn(
+						'[director] skipping unresolvable photo:',
+						error instanceof Error ? error.message : error,
+					)
+				}
+			}
+			return photos
 		},
 		set_pit_temp: async ({ setpointC, reason }) => {
 			const verdict = validateIntent(
@@ -935,31 +1012,30 @@ async function runPitDirector(
 		console.log(
 			`[director] ${deviceRow.id} model=${model} iters=${result.iterations} setpoints=${result.setpointChanges} msgs=${result.messagesSent} :: ${result.summary.slice(0, 200)}`,
 		)
-		await db.insert(directorRuns).values({
-			userId,
-			deviceId: deviceRow.id,
-			model,
-			status: 'ok',
-			summary: result.summary || null,
-			iterations: result.iterations,
-			setpointChanges: result.setpointChanges,
-			messagesSent: result.messagesSent,
-			toolCalls: result.toolCalls,
-		})
+		// Fill in the claimed lease row rather than inserting a second one.
+		await db
+			.update(directorRuns)
+			.set({
+				status: 'ok',
+				summary: result.summary || null,
+				iterations: result.iterations,
+				setpointChanges: result.setpointChanges,
+				messagesSent: result.messagesSent,
+				toolCalls: result.toolCalls,
+			})
+			.where(eq(directorRuns.id, claimedRunId))
 	} catch (error) {
 		console.error(
 			`[director] failed for device ${deviceRow.id}:`,
 			error instanceof Error ? error.message : error,
 		)
 		await db
-			.insert(directorRuns)
-			.values({
-				userId,
-				deviceId: deviceRow.id,
-				model,
+			.update(directorRuns)
+			.set({
 				status: 'error',
 				error: error instanceof Error ? error.message : String(error),
 			})
+			.where(eq(directorRuns.id, claimedRunId))
 			.catch(() => {})
 	}
 }
@@ -1076,11 +1152,15 @@ async function handleSessionTransition(
 	console.log(`session ${active.id} ended for device ${deviceId}`)
 }
 
-/** Polls one Ayla account; returns the number of devices written. */
+/**
+ * Polls one Ayla account; returns the number of devices written plus how
+ * many were NON-simulated and Online (the lastRealDeviceOnlineAt signal —
+ * sims are stepped elsewhere and must never count).
+ */
 async function syncConnection(
 	conn: typeof ninjaConnections.$inferSelect,
-): Promise<number> {
-	if (!conn.username || !conn.password) return 0
+): Promise<{ devices: number; realOnline: number }> {
+	if (!conn.username || !conn.password) return { devices: 0, realOnline: 0 }
 
 	const initialState: EnhancedAuthState = {}
 	if (conn.oauthAccessToken && conn.oauthRefreshToken && conn.oauthExpiresAt) {
@@ -1140,6 +1220,7 @@ async function syncConnection(
 	const devicesData: Array<{ device: AylaDevice }> =
 		await devicesResponse.json()
 
+	let realOnline = 0
 	for (const wrapper of devicesData) {
 		const device = wrapper.device
 		let properties: unknown = null
@@ -1162,6 +1243,18 @@ async function syncConnection(
 			.from(devices)
 			.where(and(eq(devices.dsn, device.dsn), eq(devices.userId, conn.userId)))
 			.limit(1)
+
+		if (
+			countsAsRealDeviceOnline({
+				isSimulated: existing?.is_simulated === true,
+				connectionStatus:
+					typeof deviceData.connectionStatus === 'string'
+						? deviceData.connectionStatus
+						: null,
+			})
+		) {
+			realOnline++
+		}
 
 		if (existing) {
 			await db.update(devices).set(row).where(eq(devices.id, existing.id))
@@ -1251,8 +1344,9 @@ async function syncConnection(
 	log.debug('synced connection', {
 		userId: conn.userId,
 		devices: devicesData.length,
+		realOnline,
 	})
-	return devicesData.length
+	return { devices: devicesData.length, realOnline }
 }
 
 /**
@@ -1439,8 +1533,9 @@ let lastPhotoReapMs = 0
 
 /**
  * Reaps aged director_runs (check-in transcripts have no value after the
- * cook is long over) and prunes the in-memory cadence map so device
- * deletions don't leak entries.
+ * cook is long over). Cadence reads max(created_at) per device, so a fully
+ * reaped device simply runs its next check-in immediately — correct, since
+ * its last one was ≥30 days ago.
  */
 async function reapDirectorRuns() {
 	const cutoff = new Date(Date.now() - DIRECTOR_RUN_TTL_DAYS * 24 * 3_600_000)
@@ -1449,9 +1544,6 @@ async function reapDirectorRuns() {
 		.where(lte(directorRuns.createdAt, cutoff))
 	if (Array.isArray(gone) && gone.length) {
 		console.log(`director: reaped ${gone.length} aged runs`)
-	}
-	for (const [deviceId, lastMs] of directorLastRun) {
-		if (Date.now() - lastMs > 24 * 3_600_000) directorLastRun.delete(deviceId)
 	}
 }
 
@@ -1464,13 +1556,21 @@ async function reapExpiredPhotos() {
 	)
 	const cutoff = new Date(Date.now() - PHOTO_TTL_DAYS * 24 * 3_600_000)
 	const expired = await db
-		.select({ id: cookPhotos.id, url: cookPhotos.url })
+		.select({
+			id: cookPhotos.id,
+			url: cookPhotos.url,
+			userId: cookPhotos.userId,
+		})
 		.from(cookPhotos)
 		.where(lte(cookPhotos.createdAt, cutoff))
 		.limit(100)
 	for (const photo of expired) {
 		try {
-			if (process.env.BLOB_READ_WRITE_TOKEN) await blobDel(photo.url)
+			// S3 rows (s3:// marker) delete their object here too — idempotent
+			// with the bucket lifecycle rule; Blob rows keep the old path.
+			// Bucket + owner-namespace enforced against the row's own user.
+			const wasS3 = await deleteStoredPhotoObject(photo.url, photo.userId)
+			if (!wasS3 && process.env.BLOB_READ_WRITE_TOKEN) await blobDel(photo.url)
 			await db.delete(cookPhotos).where(eq(cookPhotos.id, photo.id))
 			console.log(`photos: reaped expired ${photo.id}`)
 		} catch (error) {
@@ -1499,6 +1599,7 @@ async function cycle() {
 		skippedRealOnly: 0,
 		skippedNoCredentials: 0,
 		devicesUpdated: simDevices,
+		realDevicesOnline: 0,
 	}
 
 	const connections = await db.select().from(ninjaConnections)
@@ -1546,7 +1647,9 @@ async function cycle() {
 		}
 		lastPolledAt.set(conn.userId, nowMs)
 		try {
-			stats.devicesUpdated += await syncConnection(conn)
+			const result = await syncConnection(conn)
+			stats.devicesUpdated += result.devices
+			stats.realDevicesOnline += result.realOnline
 			stats.polled++
 			await db
 				.update(ninjaConnections)
@@ -1566,6 +1669,15 @@ async function cycle() {
 			})
 		}
 	}
+
+	// Scale-to-zero signals as ONE generation-fenced write per cycle
+	// (no-op when POWER_TABLE is unset; skipped+warned if POWER_GENERATION
+	// is missing): heartbeat always, lastRealDeviceOnlineAt only when a
+	// NON-simulated device reported Online — sims never count.
+	await stampWorkerCyclePower({
+		realDeviceOnline: stats.realDevicesOnline > 0,
+	})
+
 	return stats
 }
 
@@ -1577,8 +1689,33 @@ log.info('sync-worker starting', {
 	db: DB_URL.replace(/:[^:@/]+@/, ':***@'),
 	realDevicesOnly: REAL_DEVICES_ONLY,
 })
+
+// Graceful shutdown (ECS sends SIGTERM, then SIGKILL at stopTimeout=60s):
+// stop starting new cycles, let the in-flight cycle finish its side
+// effects, flush the pool, exit 0. A hard 45s deadline beats the SIGKILL;
+// a second signal forces an immediate exit.
+const drain = createDrainController()
+const DRAIN_DEADLINE_MS = 45_000
+function requestShutdown(signal: string) {
+	if (drain.isDraining()) {
+		log.warn(`second ${signal} — forcing immediate exit`)
+		process.exit(1)
+	}
+	log.info(
+		`${signal} received — draining: finishing the in-flight cycle, no new cycles`,
+	)
+	drain.requestDrain()
+	const deadline = setTimeout(() => {
+		log.warn(`drain deadline (${DRAIN_DEADLINE_MS}ms) reached — exiting now`)
+		process.exit(0)
+	}, DRAIN_DEADLINE_MS)
+	deadline.unref()
+}
+process.on('SIGTERM', () => requestShutdown('SIGTERM'))
+process.on('SIGINT', () => requestShutdown('SIGINT'))
+
 let cycleCount = 0
-while (true) {
+while (!drain.isDraining()) {
 	const start = Date.now()
 	let cycleFailed = false
 	try {
@@ -1607,5 +1744,12 @@ while (true) {
 		process.exit(cycleFailed ? 1 : 0)
 	}
 	const elapsed = Date.now() - start
-	await new Promise((r) => setTimeout(r, Math.max(5_000, INTERVAL_MS - elapsed)))
+	// Resolves early the moment a drain is requested.
+	await drain.sleep(Math.max(5_000, INTERVAL_MS - elapsed))
 }
+
+log.info('drained — closing the db pool and exiting 0', {
+	cyclesCompleted: cycleCount,
+})
+await sql.end({ timeout: 5 }).catch(() => {})
+process.exit(0)

@@ -7,31 +7,27 @@ import { nitroV2Plugin } from '@tanstack/nitro-v2-vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
-// Spike (branch spike/lambda-streaming): NITRO_PRESET_SPIKE env-switches the
-// nitro target so the Vercel build stays untouched.
-//   aws-stock — nitro's own aws-lambda preset with awsLambda.streaming:true
-//               (Function-URL/v2.0 event shape only; build-compat check)
-//   aws-apigw — aws-lambda preset with a custom streaming entry that also
-//               parses API Gateway REST (payload v1.0) events; the artifact
-//               deployed behind responseTransferMode=STREAM. serveStatic so
-//               the single Lambda also serves /assets for the spike.
-const nitroSpikeConfig = () => {
-	switch (process.env.NITRO_PRESET_SPIKE) {
-		case 'aws-stock':
-			return { preset: 'aws-lambda', awsLambda: { streaming: true } }
-		case 'aws-apigw':
-			return {
+// Deployment target: default stays the Vercel Build Output preset; the AWS
+// migration (infra/aws/ARCHITECTURE.md) builds with NITRO_PRESET=aws-lambda.
+// That path uses the custom streaming entry proven on spike/lambda-streaming
+// (now merged — infra/aws/spike/lambda-entry.mjs): the decided gateway is
+// Regional REST (payload v1.0 events), which nitro's stock
+// aws-lambda-streaming runtime cannot parse (it only reads Function-URL v2.0
+// `rawPath`). awsLambda.streaming stays false because the preset's
+// rollup:before hook appends '-streaming' to the entry path when true, which
+// would break the custom entry; the entry itself streams via
+// awslambda.streamifyResponse + HttpResponseStream.
+const nitroPreset = process.env.NITRO_PRESET || 'vercel'
+const nitroConfig =
+	nitroPreset === 'aws-lambda'
+		? {
 				preset: 'aws-lambda',
-				// keep false: the preset's rollup:before hook appends '-streaming'
-				// to the entry path when true, which would break the custom entry
 				awsLambda: { streaming: false },
 				entry: resolve(__dirname, 'infra/aws/spike/lambda-entry.mjs'),
+				// The single Lambda also serves /assets (CloudFront origin fallback)
 				serveStatic: true,
 			}
-		default:
-			return { preset: 'vercel' }
-	}
-}
+		: { preset: nitroPreset }
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -45,8 +41,9 @@ export default defineConfig({
 			},
 		}),
 		// Start 1.16x removed nitro; this official bridge restores the vercel
-		// preset that produces .vercel/output (Build Output API)
-		nitroV2Plugin(nitroSpikeConfig()),
+		// preset that produces .vercel/output (Build Output API). Preset is
+		// env-selected (NITRO_PRESET) — see nitroConfig above.
+		nitroV2Plugin(nitroConfig),
 		// Start 1.16x no longer bundles React Refresh — must follow tanstackStart()
 		react(),
 		tailwindcss(),

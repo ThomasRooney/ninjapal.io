@@ -1,8 +1,9 @@
 /**
  * Pure helpers for the sync worker, extracted from scripts/sync-worker.ts so
- * safety and backoff behaviour are unit-testable without a DB or the Ayla
- * cloud.
+ * safety, backoff, drain and cadence behaviour are unit-testable without a
+ * DB or the Ayla cloud.
  */
+import { isDeviceOnline } from '@/lib/device-status'
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 
@@ -90,4 +91,74 @@ export function inBackoff(
 		conn.nextAttemptAt !== null &&
 		conn.nextAttemptAt.getTime() > now.getTime()
 	)
+}
+
+/**
+ * Graceful-shutdown coordinator (ECS SIGTERM → stopTimeout → SIGKILL): the
+ * main loop checks `isDraining()` before starting a cycle and sleeps via
+ * `sleep()`, which resolves immediately once a drain is requested so the
+ * worker exits without waiting out the poll interval.
+ */
+export interface DrainController {
+	isDraining(): boolean
+	requestDrain(): void
+	/** Delay that ends early (resolves) the moment a drain is requested. */
+	sleep(ms: number): Promise<void>
+}
+
+export function createDrainController(): DrainController {
+	let draining = false
+	let wakers: Array<() => void> = []
+	return {
+		isDraining: () => draining,
+		requestDrain() {
+			if (draining) return
+			draining = true
+			const pending = wakers
+			wakers = []
+			for (const wake of pending) wake()
+		},
+		sleep(ms: number) {
+			if (draining || ms <= 0) return Promise.resolve()
+			return new Promise((resolve) => {
+				const wake = () => {
+					clearTimeout(timer)
+					resolve()
+				}
+				const timer = setTimeout(() => {
+					wakers = wakers.filter((w) => w !== wake)
+					resolve()
+				}, ms)
+				wakers.push(wake)
+			})
+		},
+	}
+}
+
+/**
+ * Director cadence from persisted state: run when the device has no
+ * director_runs row yet, or the newest one (ok OR error — failures insert a
+ * row too) is at least `intervalMs` old. Replaces the in-memory map so a
+ * worker restart/wake cannot double-fire check-ins.
+ */
+export function shouldRunDirector(
+	lastRunAt: Date | null | undefined,
+	nowMs: number,
+	intervalMs: number,
+): boolean {
+	if (lastRunAt == null) return true
+	return nowMs - lastRunAt.getTime() >= intervalMs
+}
+
+/**
+ * Whether a device counts toward the `lastRealDeviceOnlineAt` idle signal:
+ * NON-simulated and reporting Online. Simulated grills always report Online
+ * and would keep the stack awake forever (codex-found trap in
+ * infra/aws/ARCHITECTURE.md) — they must never count.
+ */
+export function countsAsRealDeviceOnline(device: {
+	isSimulated?: boolean | null
+	connectionStatus?: string | null
+}): boolean {
+	return device.isSimulated !== true && isDeviceOnline(device.connectionStatus)
 }
