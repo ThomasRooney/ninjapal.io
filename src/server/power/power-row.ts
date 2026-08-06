@@ -207,12 +207,12 @@ export async function stampWebActivityRow(
 }
 
 /**
- * A wake request (canonical requestWake): flips desiredState to AWAKE,
- * stamps web activity and bumps `version` so an in-flight DRAINING claim
- * fenced on the old version loses and re-reads. The `desired <> AWAKE`
- * condition is also the rate limit — once desired is AWAKE every further
- * wake write no-ops ('condition-failed' = already waking = success for
- * callers). Returns false only when unconfigured or on a hard error.
+ * A wake request (CONTRACT.md writer #2): flips desiredState to AWAKE,
+ * stamps web activity and bumps `version` — REQUIRED, it fences off an
+ * in-flight DRAINING→STOPPING_DB claim so wake-cancels-draining works.
+ * Condition failure = already desired awake → fall back to the activity
+ * stamp (writer #1) per the contract, and report success. Returns false
+ * only when unconfigured or on a hard error.
  */
 export async function requestWake(requestedBy: string): Promise<boolean> {
 	const result = await conditionedUpdate({
@@ -236,15 +236,23 @@ export async function requestWake(requestedBy: string): Promise<boolean> {
 		log.info('wake requested', { requestedBy })
 		return true
 	}
-	return result === 'condition-failed'
+	if (result === 'condition-failed') {
+		// Already desired awake — contract: fall back to the activity stamp.
+		await stampWebActivityRow()
+		return true
+	}
+	return false
 }
 
+/** The component name this app's worker reports readiness under. */
+export const WORKER_COMPONENT = 'sync-worker'
+
 /**
- * The worker's per-cycle write, as ONE generation-fenced update (canonical
- * fencing): heartbeat always; lastRealDeviceOnlineAt only when a
- * NON-simulated device reported Online this cycle (monotonic, like the
- * canonical stampRealDeviceOnline). A stale POWER_GENERATION (superseded
- * task after a wake) loses the condition and writes nothing.
+ * The worker's per-cycle write (CONTRACT.md writer #3), as ONE
+ * generation-fenced update: componentReady['sync-worker'] = generation
+ * always; lastRealDeviceOnlineAt ONLY when a NON-simulated device reported
+ * Online this cycle. A stale POWER_GENERATION (superseded task after a
+ * wake) loses the condition, writes nothing, and should drain itself.
  */
 export async function stampWorkerCycle(args: {
 	generation: number
@@ -252,28 +260,23 @@ export async function stampWorkerCycle(args: {
 	nowMs?: number
 }): Promise<PowerWriteResult> {
 	const now = args.nowMs ?? Date.now()
-	const set = ['#hb = :now', '#updatedAt = :now']
+	const set = ['#ready.#c = :gen', '#updatedAt = :now']
 	const names: Record<string, string> = {
-		'#hb': 'workerHeartbeatAt',
+		'#ready': 'componentReady',
+		'#c': WORKER_COMPONENT,
 		'#updatedAt': 'updatedAt',
 		'#generation': 'generation',
 	}
-	const values: Record<string, unknown> = {
-		':now': now,
-		':gen': args.generation,
-	}
-	let condition = 'attribute_exists(#pk) AND #generation = :gen'
 	if (args.realDeviceOnline) {
 		set.push('#device = :now')
 		names['#device'] = 'lastRealDeviceOnlineAt'
-		condition += ' AND (attribute_not_exists(#device) OR #device < :now)'
 	}
 	return conditionedUpdate({
 		label: 'worker cycle stamp',
 		set,
-		condition,
+		condition: 'attribute_exists(#pk) AND #generation = :gen',
 		names,
-		values,
+		values: { ':now': now, ':gen': args.generation },
 	})
 }
 

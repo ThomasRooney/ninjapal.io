@@ -58,7 +58,18 @@ import {
 } from '@/server/db/schema'
 import Anthropic from '@anthropic-ai/sdk'
 import { createJsonMergePatch } from '@/server/db/utils/json-merge-patch'
-import { and, desc, eq, gt, gte, inArray, isNull, lte, max } from 'drizzle-orm'
+import {
+	and,
+	desc,
+	eq,
+	gt,
+	gte,
+	inArray,
+	isNull,
+	lte,
+	max,
+	sql as sqlExpr,
+} from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import webPush from 'web-push'
@@ -699,10 +710,8 @@ const DIRECTOR_INTERVAL_MS = Number(
 )
 
 /**
- * Director cadence source of truth: the newest director_runs row (ok or
- * error — both are inserted). Persisted state survives restarts and
- * prevents a scale-to-zero wake from double-firing check-ins the way the
- * old in-memory map could.
+ * Advisory cadence read: the newest director_runs row (claimed, ok or
+ * error). Cheap spacing check only — the ATOMIC fence is claimDirectorRun.
  */
 async function lastDirectorRunAt(deviceId: string): Promise<Date | null> {
 	const [row] = await db
@@ -710,6 +719,38 @@ async function lastDirectorRunAt(deviceId: string): Promise<Date | null> {
 		.from(directorRuns)
 		.where(eq(directorRuns.deviceId, deviceId))
 	return row?.last ?? null
+}
+
+/**
+ * Atomic per-interval cadence lease, taken BEFORE any LLM spend: INSERT a
+ * 'claimed' row keyed on (device_id, interval_bucket) with the bucket
+ * computed from DATABASE time (never the worker clock), ON CONFLICT DO
+ * NOTHING. Exactly one task can own a device's bucket — overlapping tasks
+ * during a deploy/wake and check-then-act races cannot double-run, and a
+ * crash after side effects (row left 'claimed') still consumes the bucket
+ * so the spend is never repeated. Returns the claimed row id, or null when
+ * the bucket is already owned.
+ */
+async function claimDirectorRun(
+	deviceId: string,
+	userId: string,
+	model: string,
+): Promise<string | null> {
+	const intervalSec = Math.max(1, Math.round(DIRECTOR_INTERVAL_MS / 1000))
+	const rows = await db
+		.insert(directorRuns)
+		.values({
+			userId,
+			deviceId,
+			model,
+			status: 'claimed',
+			intervalBucket: sqlExpr`to_timestamp(floor(extract(epoch from now()) / ${intervalSec}) * ${intervalSec})`,
+		})
+		.onConflictDoNothing({
+			target: [directorRuns.deviceId, directorRuns.intervalBucket],
+		})
+		.returning({ id: directorRuns.id })
+	return rows[0]?.id ?? null
 }
 
 async function configValue(key: string): Promise<string | null> {
@@ -758,11 +799,15 @@ async function runPitDirector(
 ) {
 	if (!anthropic || !deviceRow.autopilot_enabled) return
 	if (!isCooking(deviceData.cook_state)) return
+	// Advisory spacing (cheap, avoids claim-insert churn every cycle) …
 	const last = await lastDirectorRunAt(deviceRow.id)
 	if (!shouldRunDirector(last, Date.now(), DIRECTOR_INTERVAL_MS)) return
 	if ((await configValue('pit_director_enabled')) === 'false') return
 
 	const model = (await configValue('pit_director_model')) ?? DEFAULT_DIRECTOR_MODEL
+	// … and the ATOMIC per-bucket claim before any LLM spend.
+	const claimedRunId = await claimDirectorRun(deviceRow.id, userId, model)
+	if (!claimedRunId) return
 	const num = (v: unknown) => (typeof v === 'number' ? v : null)
 	const setpoint = parseSetpoint(deviceData)
 
@@ -967,31 +1012,30 @@ async function runPitDirector(
 		console.log(
 			`[director] ${deviceRow.id} model=${model} iters=${result.iterations} setpoints=${result.setpointChanges} msgs=${result.messagesSent} :: ${result.summary.slice(0, 200)}`,
 		)
-		await db.insert(directorRuns).values({
-			userId,
-			deviceId: deviceRow.id,
-			model,
-			status: 'ok',
-			summary: result.summary || null,
-			iterations: result.iterations,
-			setpointChanges: result.setpointChanges,
-			messagesSent: result.messagesSent,
-			toolCalls: result.toolCalls,
-		})
+		// Fill in the claimed lease row rather than inserting a second one.
+		await db
+			.update(directorRuns)
+			.set({
+				status: 'ok',
+				summary: result.summary || null,
+				iterations: result.iterations,
+				setpointChanges: result.setpointChanges,
+				messagesSent: result.messagesSent,
+				toolCalls: result.toolCalls,
+			})
+			.where(eq(directorRuns.id, claimedRunId))
 	} catch (error) {
 		console.error(
 			`[director] failed for device ${deviceRow.id}:`,
 			error instanceof Error ? error.message : error,
 		)
 		await db
-			.insert(directorRuns)
-			.values({
-				userId,
-				deviceId: deviceRow.id,
-				model,
+			.update(directorRuns)
+			.set({
 				status: 'error',
 				error: error instanceof Error ? error.message : String(error),
 			})
+			.where(eq(directorRuns.id, claimedRunId))
 			.catch(() => {})
 	}
 }
