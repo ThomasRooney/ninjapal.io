@@ -16,6 +16,12 @@ export default drizzleZeroConfig(drizzleSchema, {
     session: false,
     account: false,
     verification: false,
+    // better-auth jwt + oauth-provider tables (MCP OAuth) — server-side only
+    jwks: false,
+    oauthClient: false,
+    oauthRefreshToken: false,
+    oauthAccessToken: false,
+    oauthConsent: false,
     users: {
       id: true,
       email: true,

@@ -17,6 +17,10 @@ function text(value: unknown) {
 	}
 }
 
+/** OAuth scopes gating tool registration (mirrors MCP_SCOPES in lib/auth). */
+export const MCP_SCOPE_READ = 'pitminder:read'
+export const MCP_SCOPE_CONTROL = 'pitminder:control'
+
 export function createPitMinderMcpServer(
 	userId: string,
 	options?: {
@@ -27,9 +31,12 @@ export function createPitMinderMcpServer(
 		 * omit it and keep the all-devices behavior.
 		 */
 		deviceId?: string
+		/** OAuth grant gating tool registration; defaults to the full grant. */
+		scopes?: Set<string>
 	},
 ): McpServer {
 	const sql = getSql()
+	const scopes = options?.scopes ?? new Set([MCP_SCOPE_READ, MCP_SCOPE_CONTROL])
 	const scopedDeviceId = options?.deviceId ?? null
 	/**
 	 * Resolve the device a device-taking tool may act on. Returns null when
@@ -50,12 +57,33 @@ export function createPitMinderMcpServer(
 
 	// registerTool's generics hit TS2589 (excessively deep instantiation)
 	// with zod raw shapes — bind through a plain signature instead.
-	const register = server.registerTool.bind(server) as (
+	const registerTool = server.registerTool.bind(server) as (
 		name: string,
 		config: { description: string; inputSchema: Record<string, z.ZodTypeAny> },
 		// biome-ignore lint/suspicious/noExplicitAny: boundary cast, see above
 		handler: (args: any) => Promise<ReturnType<typeof text>>,
 	) => void
+
+	// Read tools appear in tools/list only when the grant includes read scope.
+	const register: typeof registerTool = (name, config, handler) => {
+		if (!scopes.has(MCP_SCOPE_READ)) return
+		registerTool(name, config, handler)
+	}
+
+	// Control tools appear only with control scope, and re-check the grant at
+	// invocation time (defense in depth against registration drift).
+	const registerControl: typeof registerTool = (name, config, handler) => {
+		if (!scopes.has(MCP_SCOPE_CONTROL)) return
+		registerTool(name, config, async (args) => {
+			if (!scopes.has(MCP_SCOPE_CONTROL)) {
+				return text({
+					ok: false,
+					error: `missing scope: ${MCP_SCOPE_CONTROL}`,
+				})
+			}
+			return handler(args)
+		})
+	}
 
 	register(
 		'get_telemetry',
@@ -327,7 +355,7 @@ export function createPitMinderMcpServer(
 		},
 	)
 
-	register(
+	registerControl(
 		'set_pit_temp',
 		{
 			description:
@@ -372,7 +400,7 @@ export function createPitMinderMcpServer(
 		},
 	)
 
-	register(
+	registerControl(
 		'respond_to_message',
 		{
 			description:

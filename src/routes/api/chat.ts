@@ -163,7 +163,8 @@ export const Route = createFileRoute('/api/chat')({
 
 				// The chat loop talks to the SAME MCP server that external agents
 				// get at /api/mcp — here over an in-memory transport (no HTTP hop),
-				// scoped to the device this thread belongs to.
+				// scoped to the device this thread belongs to. The in-app session
+				// gets the full grant (read + control) via the scopes default.
 				const mcpServer = createPitMinderMcpServer(userId, { deviceId })
 				const [clientTransport, serverTransport] =
 					InMemoryTransport.createLinkedPair()

@@ -35,8 +35,16 @@ const formSchema = z.object({
 
 export function AuthLoginForm({
 	className,
+	redirectTo,
 	...props
-}: React.ComponentPropsWithoutRef<'div'>) {
+}: React.ComponentPropsWithoutRef<'div'> & {
+	/**
+	 * Full-page redirect target after email+password login (used by the OAuth
+	 * authorize flow to resume at /api/auth/oauth2/authorize). Defaults to the
+	 * SPA /app navigation.
+	 */
+	redirectTo?: string
+}) {
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
@@ -79,6 +87,11 @@ export function AuthLoginForm({
 
 		// Session cookie is set — re-run loaders so route context picks up the user
 		clearUserCache()
+		if (redirectTo) {
+			// OAuth continuation must hit the server route, not the SPA router
+			window.location.assign(redirectTo)
+			return
+		}
 		await router.invalidate()
 		await router.navigate({ to: '/app' })
 	}
