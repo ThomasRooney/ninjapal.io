@@ -152,7 +152,10 @@ describe('pitminder-data synth', () => {
 				const actions = Array.isArray(statement.Action)
 					? statement.Action
 					: [statement.Action]
-				statements.push({ actions: actions.map(String), resource: statement.Resource })
+				statements.push({
+					actions: actions.map(String),
+					resource: statement.Resource,
+				})
 			}
 		}
 		return statements
@@ -191,12 +194,15 @@ describe('pitminder-data synth', () => {
 		])
 		// wake + idle-cron: GetItem+UpdateItem; reconciler: GetItem only;
 		// budget shutoff: UpdateItem only.
-		const rowStatements = statements.filter((s) =>
-			s.actions.every((a) => a.startsWith('dynamodb:')) &&
-			!s.actions.includes('dynamodb:GetRecords'),
+		const rowStatements = statements.filter(
+			(s) =>
+				s.actions.every((a) => a.startsWith('dynamodb:')) &&
+				!s.actions.includes('dynamodb:GetRecords'),
 		)
 		const shapes = rowStatements.map((s) => [...s.actions].sort().join(','))
-		expect(shapes.filter((x) => x === 'dynamodb:GetItem,dynamodb:UpdateItem')).toHaveLength(2)
+		expect(
+			shapes.filter((x) => x === 'dynamodb:GetItem,dynamodb:UpdateItem'),
+		).toHaveLength(2)
 		expect(shapes.filter((x) => x === 'dynamodb:GetItem')).toHaveLength(1)
 		expect(shapes.filter((x) => x === 'dynamodb:UpdateItem')).toHaveLength(1)
 	})
