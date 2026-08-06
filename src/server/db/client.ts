@@ -10,6 +10,22 @@ import * as authSchema from './schema/auth'
  */
 let _sql: ReturnType<typeof postgres> | null = null
 
+/**
+ * Per-instance pool size: PG_POOL_MAX wins; otherwise 2 on Lambda
+ * (AWS_LAMBDA_FUNCTION_NAME present — one request per instance, db.t4g.micro
+ * upstream, so tiny pools keep aggregate connections bounded) and the
+ * long-standing 4 everywhere else. A Lambda invoke never runs more than two
+ * queries concurrently (request paths are sequential awaits; the Zero push
+ * processor uses a single transaction), verified before lowering.
+ */
+export function resolvePoolMax(
+	env: Record<string, string | undefined> = process.env,
+): number {
+	const fromEnv = Number(env.PG_POOL_MAX)
+	if (Number.isFinite(fromEnv) && fromEnv >= 1) return Math.floor(fromEnv)
+	return env.AWS_LAMBDA_FUNCTION_NAME ? 2 : 4
+}
+
 export function getSql() {
 	if (!_sql) {
 		const url = process.env.ZERO_UPSTREAM_DB
@@ -20,7 +36,7 @@ export function getSql() {
 			// Serverless-friendly: small per-instance pool, fail fast instead
 			// of hanging on dead frozen-instance connections, and no prepared
 			// statements so the Neon pgbouncer (pooled) endpoint works.
-			max: 4,
+			max: resolvePoolMax(),
 			idle_timeout: 20,
 			connect_timeout: 10,
 			prepare: false,
