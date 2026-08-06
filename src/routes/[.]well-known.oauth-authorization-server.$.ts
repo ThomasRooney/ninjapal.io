@@ -11,12 +11,18 @@ export const Route = createFileRoute(
 	server: {
 		handlers: {
 			GET: async ({ request }: { request: Request }) => {
-				const [{ auth }, { oauthProviderAuthServerMetadata }] =
-					await Promise.all([
-						import('@/lib/auth'),
-						import('@better-auth/oauth-provider'),
-					])
-				return oauthProviderAuthServerMetadata(auth)(request)
+				const [
+					{ auth },
+					{ oauthProviderAuthServerMetadata },
+					{ withPublicOrigin },
+				] = await Promise.all([
+					import('@/lib/auth'),
+					import('@better-auth/oauth-provider'),
+					import('@/lib/public-origin'),
+				])
+				// PUBLIC_ORIGIN pins the advertised issuer behind CloudFront;
+				// unset → the request passes through untouched (current behavior).
+				return oauthProviderAuthServerMetadata(auth)(withPublicOrigin(request))
 			},
 		},
 	},

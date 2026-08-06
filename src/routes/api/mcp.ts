@@ -1,4 +1,5 @@
 import { createLogger } from '@/lib/log'
+import { getPublicOrigin } from '@/lib/public-origin'
 import { createFileRoute } from '@tanstack/react-router'
 
 const log = createLogger('mcp-auth')
@@ -7,7 +8,8 @@ const log = createLogger('mcp-auth')
 const jwksCacheKey = {}
 
 function resourceMetadataUrl(request: Request): string {
-	return `${new URL(request.url).origin}/.well-known/oauth-protected-resource/api/mcp`
+	// PUBLIC_ORIGIN wins behind CloudFront; falls back to the request origin.
+	return `${getPublicOrigin(request)}/.well-known/oauth-protected-resource/api/mcp`
 }
 
 function unauthorized(request: Request, opts?: { invalidToken?: boolean }) {
