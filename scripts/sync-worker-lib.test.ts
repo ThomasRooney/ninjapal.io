@@ -8,6 +8,7 @@ import {
 	countsAsRealDeviceOnline,
 	createDrainController,
 	inBackoff,
+	resolveWorkerGeneration,
 	shouldRunDirector,
 } from './sync-worker-lib'
 
@@ -258,5 +259,58 @@ describe('countsAsRealDeviceOnline', () => {
 				connectionStatus: 'unknown',
 			}),
 		).toBe(false)
+	})
+})
+
+describe('resolveWorkerGeneration', () => {
+	it('prefers an explicit POWER_GENERATION env without touching the row', async () => {
+		const readRow = vi.fn()
+		await expect(
+			resolveWorkerGeneration(
+				{ POWER_GENERATION: '7', POWER_TABLE: 'pitminder-power' },
+				readRow,
+			),
+		).resolves.toBe(7)
+		expect(readRow).not.toHaveBeenCalled()
+	})
+
+	it('returns null for a garbage explicit POWER_GENERATION (never guesses)', async () => {
+		const readRow = vi.fn()
+		await expect(
+			resolveWorkerGeneration(
+				{ POWER_GENERATION: 'banana', POWER_TABLE: 'pitminder-power' },
+				readRow,
+			),
+		).resolves.toBeNull()
+		expect(readRow).not.toHaveBeenCalled()
+	})
+
+	it('skips the lookup entirely when POWER_TABLE is unset (Railway/local)', async () => {
+		const readRow = vi.fn()
+		await expect(resolveWorkerGeneration({}, readRow)).resolves.toBeNull()
+		expect(readRow).not.toHaveBeenCalled()
+	})
+
+	it('reads the row generation when POWER_TABLE is set', async () => {
+		await expect(
+			resolveWorkerGeneration(
+				{ POWER_TABLE: 'pitminder-power' },
+				async () => 3,
+			),
+		).resolves.toBe(3)
+	})
+
+	it('returns null when the row is unreadable or has no numeric generation', async () => {
+		await expect(
+			resolveWorkerGeneration(
+				{ POWER_TABLE: 'pitminder-power' },
+				async () => null,
+			),
+		).resolves.toBeNull()
+		await expect(
+			resolveWorkerGeneration({ POWER_TABLE: 'pitminder-power' }, async () => {
+				throw new Error('ddb down')
+			}),
+		).resolves.toBeNull()
 	})
 })
