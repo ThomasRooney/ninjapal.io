@@ -36,17 +36,12 @@ export const Route = createFileRoute('/api/mcp')({
 	server: {
 		handlers: {
 			POST: async ({ request }: { request: Request }) => {
-				const [
-					authMod,
-					{ createPitMinderMcpServer },
-					{ StreamableHTTPServerTransport },
-					{ toFetchResponse, toReqRes },
-				] = await Promise.all([
-					import('@/lib/auth'),
-					import('@/server/mcp/pitminder-server'),
-					import('@modelcontextprotocol/sdk/server/streamableHttp.js'),
-					import('fetch-to-node'),
-				])
+				const [authMod, { createPitMinderMcpServer }, { InMemoryTransport }] =
+					await Promise.all([
+						import('@/lib/auth'),
+						import('@/server/mcp/pitminder-server'),
+						import('@modelcontextprotocol/sdk/inMemory.js'),
+					])
 				const { auth, getAuthIssuer, MCP_RESOURCE, MCP_SCOPES } = authMod
 
 				let userId: string
@@ -109,18 +104,79 @@ export const Route = createFileRoute('/api/mcp')({
 					log.info('cookie auth ok', { sub: userId })
 				}
 
-				const { req, res } = toReqRes(request)
+				// Stateless streamable HTTP: one JSON-RPC message in, one JSON
+				// response out, bridged over an in-memory transport pair.
+				// (fetch-to-node + StreamableHTTPServerTransport double-closes its
+				// response stream on current Node and kills the process — avoided.)
+				let body: unknown
+				try {
+					body = await request.json()
+				} catch {
+					return new Response('Bad Request', { status: 400 })
+				}
+				if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+					return new Response('Bad Request', { status: 400 })
+				}
+				const message = body as {
+					jsonrpc?: string
+					id?: string | number
+					method?: string
+				}
+
 				const server = createPitMinderMcpServer(userId, scopes)
-				const transport = new StreamableHTTPServerTransport({
-					sessionIdGenerator: undefined, // stateless
-				})
-				await server.connect(transport)
-				await transport.handleRequest(req, res, await request.json())
-				res.on('close', () => {
-					transport.close()
-					server.close()
-				})
-				return toFetchResponse(res)
+				const [clientTransport, serverTransport] =
+					InMemoryTransport.createLinkedPair()
+				await server.connect(serverTransport)
+				const close = async () => {
+					await clientTransport.close().catch(() => {})
+					await server.close().catch(() => {})
+				}
+
+				// Notifications / client responses expect no reply → 202 (spec MUST)
+				if (message.method === undefined || message.id === undefined) {
+					// biome-ignore lint/suspicious/noExplicitAny: raw JSON-RPC boundary
+					await clientTransport.send(message as any).catch(() => {})
+					await close()
+					return new Response(null, { status: 202 })
+				}
+
+				try {
+					const response = await new Promise<unknown>((resolve, reject) => {
+						const timer = setTimeout(
+							() => reject(new Error('MCP request timed out')),
+							30_000,
+						)
+						clientTransport.onmessage = (msg) => {
+							const m = msg as { id?: string | number; method?: string }
+							// The reply to our request carries the same id and no method
+							if (m.method === undefined && m.id === message.id) {
+								clearTimeout(timer)
+								resolve(msg)
+							}
+						}
+						clientTransport.onerror = (err) => {
+							clearTimeout(timer)
+							reject(err)
+						}
+						// biome-ignore lint/suspicious/noExplicitAny: raw JSON-RPC boundary
+						clientTransport.send(message as any).catch(reject)
+					})
+					return Response.json(response)
+				} catch (error) {
+					log.error('mcp request failed', {
+						reason: error instanceof Error ? error.message : String(error),
+					})
+					return Response.json(
+						{
+							jsonrpc: '2.0',
+							id: message.id,
+							error: { code: -32603, message: 'Internal error' },
+						},
+						{ status: 500 },
+					)
+				} finally {
+					await close()
+				}
 			},
 			GET: async () =>
 				new Response('Method Not Allowed', {
