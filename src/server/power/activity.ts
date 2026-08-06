@@ -6,14 +6,20 @@
  * would defeat idle detection forever.
  *
  * No-op (debug log) when POWER_TABLE is unset, so Vercel/local behavior is
- * untouched. Throttled in-memory to one write per 5 minutes per process.
+ * untouched. The canonical throttle (one write per 5 minutes) lives in the
+ * DynamoDB ConditionExpression itself; the in-memory window here only
+ * saves the DDB round-trips between stamps.
  */
 import { createLogger } from '@/lib/log'
-import { powerConfig, updatePowerAttributes } from './power-row'
+import {
+	WEB_STAMP_THROTTLE_MS,
+	powerConfig,
+	stampWebActivityRow,
+} from './power-row'
 
 const log = createLogger('power-activity')
 
-export const ACTIVITY_STAMP_INTERVAL_MS = 5 * 60_000
+export const ACTIVITY_STAMP_INTERVAL_MS = WEB_STAMP_THROTTLE_MS
 
 let lastStampMs = 0
 
@@ -23,9 +29,8 @@ export function __resetActivityThrottleForTests(): void {
 }
 
 /**
- * Stamps `lastWebAt` (+ the stamping user for observability) on the power
- * row. Best-effort and throttled — callers on the hot request path can
- * await it without meaningful latency cost.
+ * Stamps `lastWebAt` on the power row. Best-effort and doubly throttled —
+ * callers on the hot request path can await it without latency cost.
  */
 export async function stampWebActivity(userId: string): Promise<void> {
 	if (!powerConfig()) {
@@ -35,14 +40,12 @@ export async function stampWebActivity(userId: string): Promise<void> {
 	const now = Date.now()
 	if (now - lastStampMs < ACTIVITY_STAMP_INTERVAL_MS) return
 	lastStampMs = now
-	const ok = await updatePowerAttributes({
-		lastWebAt: { S: new Date(now).toISOString() },
-		lastWebBy: { S: userId },
-	})
-	if (ok) {
+	const result = await stampWebActivityRow(now)
+	if (result === 'applied') {
 		log.debug('stamped lastWebAt', { userId })
-	} else {
+	} else if (result === 'error') {
 		// Let the next request retry rather than sitting out the window.
+		// ('condition-failed' = another process stamped within 5min — fine.)
 		lastStampMs = 0
 	}
 }

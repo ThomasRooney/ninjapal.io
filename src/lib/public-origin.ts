@@ -8,18 +8,31 @@
  * behavior falls back to the request's own origin exactly as before.
  */
 
-/** PUBLIC_ORIGIN env, normalized (no trailing slash), or null when unset. */
+/**
+ * PUBLIC_ORIGIN env, normalized (no trailing slash), or null when unset.
+ * Configured-but-INVALID throws: silently falling back to request-derived
+ * origins would advertise a wrong OAuth issuer in production — better to
+ * die at startup (this is evaluated at module load via MCP_RESOURCE).
+ */
 export function publicOriginEnv(): string | null {
 	const raw = process.env.PUBLIC_ORIGIN
-	if (!raw) return null
+	if (!raw || !raw.trim()) return null
 	const trimmed = raw.trim().replace(/\/+$/, '')
-	if (!trimmed) return null
+	let origin: string
 	try {
-		// Validate + canonicalize (lowercases host, drops default ports).
-		return new URL(trimmed).origin
+		// Canonicalize (lowercases host, drops default ports).
+		origin = new URL(trimmed).origin
 	} catch {
-		return null
+		throw new Error(
+			`PUBLIC_ORIGIN is set but is not a valid URL: ${JSON.stringify(raw)}`,
+		)
 	}
+	if (origin === 'null') {
+		throw new Error(
+			`PUBLIC_ORIGIN is set but has no usable origin: ${JSON.stringify(raw)}`,
+		)
+	}
+	return origin
 }
 
 /**

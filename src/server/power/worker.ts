@@ -1,14 +1,17 @@
 /**
- * Sync-worker → power-row stamps (infra/aws/ARCHITECTURE.md): the worker is
- * the only writer of `lastRealDeviceOnlineAt` (idle signal — simulated
- * devices are excluded by the caller via countsAsRealDeviceOnline) and of
- * its own per-cycle heartbeat. `POWER_GENERATION` is stamped alongside so
- * the orchestrator can fence out writes from a superseded task after a
- * wake. Everything no-ops when POWER_TABLE is unset.
+ * Sync-worker → power-row stamps (infra/aws/ARCHITECTURE.md, canonical
+ * contract in infra/aws/lambda/power/lib.ts): ONE generation-fenced update
+ * per cycle carrying the worker heartbeat and — only when a NON-simulated
+ * device reported Online (countsAsRealDeviceOnline is the caller's gate) —
+ * `lastRealDeviceOnlineAt`. A superseded task (stale POWER_GENERATION
+ * after a wake) loses the ConditionExpression and writes nothing.
+ *
+ * POWER_TABLE set but POWER_GENERATION missing is a deployment bug: the
+ * worker skips power writes entirely and warns (once) rather than writing
+ * unfenced.
  */
 import { createLogger } from '@/lib/log'
-import type { AttributeValue } from '@aws-sdk/client-dynamodb'
-import { updatePowerAttributes } from './power-row'
+import { powerConfig, stampWorkerCycle } from './power-row'
 
 const log = createLogger('power-worker')
 
@@ -19,41 +22,46 @@ export function powerGeneration(
 	const raw = env.POWER_GENERATION?.trim()
 	if (!raw) return null
 	const generation = Number(raw)
-	if (!Number.isFinite(generation)) {
-		log.warn('POWER_GENERATION is not numeric — ignoring', { raw })
-		return null
-	}
+	if (!Number.isFinite(generation)) return null
 	return generation
 }
 
-function withGeneration(
-	attrs: Record<string, AttributeValue>,
-	generationKey: string,
-): Record<string, AttributeValue> {
-	const generation = powerGeneration()
-	if (generation == null) return attrs
-	return { ...attrs, [generationKey]: { N: String(generation) } }
+let warnedMissingGeneration = false
+
+/** Test hook: re-arm the one-shot missing-generation warning. */
+export function __resetWorkerPowerWarningsForTests(): void {
+	warnedMissingGeneration = false
 }
 
 /**
- * Stamps `lastRealDeviceOnlineAt` after a cycle that saw at least one
- * NON-simulated device reporting Online. Best-effort; no-op unconfigured.
+ * The worker's single per-cycle power write. Returns true when the fenced
+ * update applied; false on skip/no-op/lost fence.
  */
-export async function stampRealDeviceOnline(): Promise<boolean> {
-	return updatePowerAttributes(
-		withGeneration(
-			{ lastRealDeviceOnlineAt: { S: new Date().toISOString() } },
-			'lastRealDeviceOnlineGeneration',
-		),
-	)
-}
-
-/** Per-cycle worker heartbeat (+ generation) for orchestrator visibility. */
-export async function writeWorkerHeartbeat(): Promise<boolean> {
-	return updatePowerAttributes(
-		withGeneration(
-			{ workerHeartbeatAt: { S: new Date().toISOString() } },
-			'workerGeneration',
-		),
-	)
+export async function stampWorkerCyclePower(args: {
+	realDeviceOnline: boolean
+}): Promise<boolean> {
+	if (!powerConfig()) return false
+	const generation = powerGeneration()
+	if (generation == null) {
+		if (!warnedMissingGeneration) {
+			warnedMissingGeneration = true
+			log.warn(
+				'POWER_TABLE is set but POWER_GENERATION is missing/non-numeric — skipping ALL power writes (unfenced writes are forbidden)',
+			)
+		}
+		return false
+	}
+	const result = await stampWorkerCycle({
+		generation,
+		realDeviceOnline: args.realDeviceOnline,
+	})
+	if (result === 'condition-failed') {
+		log.warn(
+			'worker cycle stamp lost its generation fence — superseded task?',
+			{
+				generation,
+			},
+		)
+	}
+	return result === 'applied'
 }

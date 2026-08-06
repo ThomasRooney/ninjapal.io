@@ -82,6 +82,30 @@ export function parseS3PhotoUrl(
 	return { bucket: rest.slice(0, slash), key: rest.slice(slash + 1) }
 }
 
+/**
+ * A stored marker is only actionable (presign/delete) when it points at
+ * THE configured bucket and inside the owning user's namespace — a
+ * tampered row must not turn the server into a signer/deleter for
+ * arbitrary buckets or other users' objects.
+ */
+export function assertOwnedPhotoMarker(
+	url: string,
+	ownerUserId: string,
+): { bucket: string; key: string } {
+	const parsed = parseS3PhotoUrl(url)
+	if (!parsed) throw new Error('not an s3 photo marker')
+	const bucket = photosBucket()
+	if (!bucket || parsed.bucket !== bucket) {
+		throw new Error(
+			`photo marker bucket "${parsed.bucket}" is not the configured PHOTOS_BUCKET`,
+		)
+	}
+	if (!ownerUserId || !parsed.key.startsWith(`cook-photos/${ownerUserId}/`)) {
+		throw new Error('photo marker key is outside the owner namespace')
+	}
+	return parsed
+}
+
 /** Uploads a photo object to the configured bucket. */
 export async function putPhotoObject(args: {
 	key: string
@@ -125,19 +149,29 @@ export async function presignPhotoGet(
 
 /**
  * Resolves a stored cook_photos.url to something fetchable: s3:// markers
- * become presigned GETs, anything else (Vercel Blob https URLs) passes
- * through untouched.
+ * become presigned GETs (only for the configured bucket + the owner's own
+ * namespace), anything else (Vercel Blob https URLs) passes through
+ * untouched.
  */
-export async function resolveStoredPhotoUrl(url: string): Promise<string> {
-	const parsed = parseS3PhotoUrl(url)
-	if (!parsed) return url
+export async function resolveStoredPhotoUrl(
+	url: string,
+	ownerUserId: string,
+): Promise<string> {
+	if (!parseS3PhotoUrl(url)) return url
+	const parsed = assertOwnedPhotoMarker(url, ownerUserId)
 	return presignPhotoGet(parsed.bucket, parsed.key)
 }
 
-/** Deletes the object behind an s3:// marker; no-op for non-S3 urls. */
-export async function deleteStoredPhotoObject(url: string): Promise<boolean> {
-	const parsed = parseS3PhotoUrl(url)
-	if (!parsed) return false
+/**
+ * Deletes the object behind an s3:// marker (configured bucket + owner
+ * namespace enforced); false = not an S3 row (Blob path handles it).
+ */
+export async function deleteStoredPhotoObject(
+	url: string,
+	ownerUserId: string,
+): Promise<boolean> {
+	if (!parseS3PhotoUrl(url)) return false
+	const parsed = assertOwnedPhotoMarker(url, ownerUserId)
 	const [client, { DeleteObjectCommand }] = await Promise.all([
 		getClient(),
 		import('@aws-sdk/client-s3'),

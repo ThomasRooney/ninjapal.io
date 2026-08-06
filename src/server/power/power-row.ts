@@ -1,26 +1,30 @@
 /**
- * DynamoDB power-state row plumbing (infra/aws/ARCHITECTURE.md).
+ * App-side client for the DynamoDB power-state row. The CANONICAL contract
+ * is infra/aws/lambda/power/lib.ts on the foundation branch — this module
+ * mirrors it and must never diverge:
  *
- * One versioned row per environment tracks the scale-to-zero lifecycle:
- * SLEEPING → WAKING_DB → WAKING_SERVICES → AWAKE → DRAINING → STOPPING_DB,
- * plus SLEEP_MAINTENANCE and ERROR. The orchestrator OWNS state transitions;
- * the app only reads the row and stamps activity/desire attributes.
+ *  - key: `pk` = "POWER#prod" (env POWER_ROW_KEY override for staging)
+ *  - ALL timestamps are epoch-millisecond NUMBERS (never ISO strings —
+ *    strings would corrupt the live row and break isIdle forever)
+ *  - `version` fences control mutations; requestWake bumps it so an
+ *    in-flight DRAINING claim fenced on the old version loses
+ *  - `generation` fences per-wake-cycle component writes
+ *  - activity stamps are data, not control: no version bump, throttled via
+ *    the ConditionExpression itself
+ *  - `keepWarmUntil` (epoch ms) is orchestrator-owned; app writers ignore
+ *    it, /api/ready may surface it
  *
- * Contract (must match the CDK data stack):
- *  - table name: env POWER_TABLE (unset → every helper here no-ops)
- *  - region:     env POWER_TABLE_REGION, else AWS_REGION/AWS_DEFAULT_REGION
- *  - key:        single partition key attribute `pk`, value env POWER_ROW_KEY
- *                (default "POWER#prod")
- *  - timestamps: ISO-8601 strings (S); generation: number (N)
- *
- * Every writer here conditions on attribute_exists(pk): the orchestrator
- * creates the row, and a missing row means the environment is not managed —
- * stamping must not conjure a half-initialized row for it.
+ * The app only reads the row and writes activity/desire/heartbeat
+ * attributes; the orchestrator owns state transitions and row creation.
+ * Every helper here is best-effort and never throws.
  */
 import { createLogger } from '@/lib/log'
-import type { AttributeValue, DynamoDB } from '@aws-sdk/client-dynamodb'
+import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
 
 const log = createLogger('power-row')
+
+/** Dashboard stamps lastWebAt at most once per 5 minutes (canonical). */
+export const WEB_STAMP_THROTTLE_MS = 5 * 60_000
 
 export interface PowerConfig {
 	table: string
@@ -45,13 +49,21 @@ export function powerConfig(
 	}
 }
 
-let _client: DynamoDB | null = null
+let _client: DynamoDBDocumentClient | null = null
 let _clientRegion: string | undefined
 
-async function getClient(region: string | undefined): Promise<DynamoDB> {
+async function getClient(
+	region: string | undefined,
+): Promise<DynamoDBDocumentClient> {
 	if (!_client || _clientRegion !== region) {
-		const { DynamoDB } = await import('@aws-sdk/client-dynamodb')
-		_client = new DynamoDB(region ? { region } : {})
+		const [{ DynamoDBClient }, { DynamoDBDocumentClient }] = await Promise.all([
+			import('@aws-sdk/client-dynamodb'),
+			import('@aws-sdk/lib-dynamodb'),
+		])
+		_client = DynamoDBDocumentClient.from(
+			new DynamoDBClient(region ? { region } : {}),
+			{ marshallOptions: { removeUndefinedValues: true } },
+		)
 		_clientRegion = region
 	}
 	return _client
@@ -63,49 +75,59 @@ export function __resetPowerClientForTests(): void {
 	_clientRegion = undefined
 }
 
-/** The power row as loosely-typed attributes; null when absent/unconfigured. */
+/** The power row (canonical fields loosely typed; extras pass through). */
 export interface PowerRow {
 	state: string | null
 	desiredState: string | null
+	version: number | null
 	generation: number | null
 	progress: string | null
+	keepWarmUntil: number | null
+	lastWebAt: number | null
+	lastRealDeviceOnlineAt: number | null
 	[key: string]: unknown
 }
 
-function attrToValue(attr: AttributeValue): unknown {
-	if (attr.S !== undefined) return attr.S
-	if (attr.N !== undefined) return Number(attr.N)
-	if (attr.BOOL !== undefined) return attr.BOOL
-	if (attr.NULL) return null
-	return undefined
+function num(v: unknown): number | null {
+	return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function str(v: unknown): string | null {
+	return typeof v === 'string' ? v : null
 }
 
 /**
- * Reads the power row. Returns null when unconfigured or the row is absent;
- * throws are swallowed into null + a warn (readers must fail open).
+ * Reads the power row (ConsistentRead). Returns null when unconfigured or
+ * the row is absent; failures are swallowed into null + a warn (readers
+ * must fail open).
  */
 export async function readPowerRow(): Promise<PowerRow | null> {
 	const config = powerConfig()
 	if (!config) return null
 	try {
-		const client = await getClient(config.region)
-		const result = await client.getItem({
-			TableName: config.table,
-			Key: { pk: { S: config.rowKey } },
-			ConsistentRead: true,
-		})
-		if (!result.Item) return null
-		const row: Record<string, unknown> = {}
-		for (const [key, attr] of Object.entries(result.Item)) {
-			row[key] = attrToValue(attr)
-		}
+		const [client, { GetCommand }] = await Promise.all([
+			getClient(config.region),
+			import('@aws-sdk/lib-dynamodb'),
+		])
+		const result = await client.send(
+			new GetCommand({
+				TableName: config.table,
+				Key: { pk: config.rowKey },
+				ConsistentRead: true,
+			}),
+		)
+		const item = result.Item
+		if (!item) return null
 		return {
-			state: typeof row.state === 'string' ? row.state : null,
-			desiredState:
-				typeof row.desiredState === 'string' ? row.desiredState : null,
-			generation: typeof row.generation === 'number' ? row.generation : null,
-			progress: typeof row.progress === 'string' ? row.progress : null,
-			...row,
+			...item,
+			state: str(item.state),
+			desiredState: str(item.desiredState),
+			version: num(item.version),
+			generation: num(item.generation),
+			progress: str(item.progress),
+			keepWarmUntil: num(item.keepWarmUntil),
+			lastWebAt: num(item.lastWebAt),
+			lastRealDeviceOnlineAt: num(item.lastRealDeviceOnlineAt),
 		}
 	} catch (error) {
 		log.warn('power row read failed', {
@@ -115,72 +137,169 @@ export async function readPowerRow(): Promise<PowerRow | null> {
 	}
 }
 
+export type PowerWriteResult =
+	| 'applied'
+	| 'condition-failed'
+	| 'unconfigured'
+	| 'error'
+
+interface ConditionedUpdate {
+	set: string[]
+	condition: string
+	names: Record<string, string>
+	values: Record<string, unknown>
+	label: string
+}
+
+async function conditionedUpdate(
+	update: ConditionedUpdate,
+): Promise<PowerWriteResult> {
+	const config = powerConfig()
+	if (!config) {
+		log.debug(`POWER_TABLE unset — skipping ${update.label}`)
+		return 'unconfigured'
+	}
+	try {
+		const [client, { UpdateCommand }] = await Promise.all([
+			getClient(config.region),
+			import('@aws-sdk/lib-dynamodb'),
+		])
+		await client.send(
+			new UpdateCommand({
+				TableName: config.table,
+				Key: { pk: config.rowKey },
+				UpdateExpression: `SET ${update.set.join(', ')}`,
+				ConditionExpression: update.condition,
+				ExpressionAttributeNames: { '#pk': 'pk', ...update.names },
+				ExpressionAttributeValues: update.values,
+			}),
+		)
+		return 'applied'
+	} catch (error) {
+		const name = error instanceof Error ? error.name : ''
+		if (name === 'ConditionalCheckFailedException') {
+			log.debug(`${update.label}: condition not met`)
+			return 'condition-failed'
+		}
+		log.warn(`${update.label} failed`, {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return 'error'
+	}
+}
+
 /**
- * Records that an authenticated user wants the stack awake. The
- * orchestrator (DDB Streams-triggered) reacts to desiredState; this only
- * writes intent. A wake is also web activity, so lastWebAt rides along in
- * the same write. No-op false when unconfigured.
+ * Stamp authenticated web activity (canonical stampWebActivity): throttled
+ * to one write per 5 minutes via the condition itself, so callers can
+ * stamp blindly. Data, not control — no version bump.
  */
-export async function requestWake(requestedBy: string): Promise<boolean> {
-	const now = new Date().toISOString()
-	return updatePowerAttributes({
-		desiredState: { S: 'AWAKE' },
-		wakeRequestedAt: { S: now },
-		wakeRequestedBy: { S: requestedBy },
-		lastWebAt: { S: now },
+export async function stampWebActivityRow(
+	nowMs: number = Date.now(),
+): Promise<PowerWriteResult> {
+	return conditionedUpdate({
+		label: 'lastWebAt stamp',
+		set: ['#web = :now', '#updatedAt = :now'],
+		condition:
+			'attribute_exists(#pk) AND (attribute_not_exists(#web) OR #web <= :cutoff)',
+		names: { '#web': 'lastWebAt', '#updatedAt': 'updatedAt' },
+		values: { ':now': nowMs, ':cutoff': nowMs - WEB_STAMP_THROTTLE_MS },
 	})
 }
 
 /**
- * SETs the given attributes on the power row, conditioned on the row
- * existing. Returns true on success, false when unconfigured, the row is
- * missing, or the write fails — never throws (stamps are best-effort).
+ * A wake request (canonical requestWake): flips desiredState to AWAKE,
+ * stamps web activity and bumps `version` so an in-flight DRAINING claim
+ * fenced on the old version loses and re-reads. The `desired <> AWAKE`
+ * condition is also the rate limit — once desired is AWAKE every further
+ * wake write no-ops ('condition-failed' = already waking = success for
+ * callers). Returns false only when unconfigured or on a hard error.
  */
-export async function updatePowerAttributes(
-	attrs: Record<string, AttributeValue>,
-): Promise<boolean> {
-	const config = powerConfig()
-	if (!config) {
-		log.debug('POWER_TABLE unset — skipping power row update', {
-			attrs: Object.keys(attrs),
-		})
-		return false
+export async function requestWake(requestedBy: string): Promise<boolean> {
+	const result = await conditionedUpdate({
+		label: 'wake request',
+		set: [
+			'#desired = :awake',
+			'#web = :now',
+			'#version = #version + :one',
+			'#updatedAt = :now',
+		],
+		condition: 'attribute_exists(#pk) AND #desired <> :awake',
+		names: {
+			'#desired': 'desiredState',
+			'#web': 'lastWebAt',
+			'#version': 'version',
+			'#updatedAt': 'updatedAt',
+		},
+		values: { ':awake': 'AWAKE', ':now': Date.now(), ':one': 1 },
+	})
+	if (result === 'applied') {
+		log.info('wake requested', { requestedBy })
+		return true
 	}
-	const names: Record<string, string> = {}
-	const values: Record<string, AttributeValue> = {}
-	const sets: string[] = []
+	return result === 'condition-failed'
+}
+
+/**
+ * The worker's per-cycle write, as ONE generation-fenced update (canonical
+ * fencing): heartbeat always; lastRealDeviceOnlineAt only when a
+ * NON-simulated device reported Online this cycle (monotonic, like the
+ * canonical stampRealDeviceOnline). A stale POWER_GENERATION (superseded
+ * task after a wake) loses the condition and writes nothing.
+ */
+export async function stampWorkerCycle(args: {
+	generation: number
+	realDeviceOnline: boolean
+	nowMs?: number
+}): Promise<PowerWriteResult> {
+	const now = args.nowMs ?? Date.now()
+	const set = ['#hb = :now', '#updatedAt = :now']
+	const names: Record<string, string> = {
+		'#hb': 'workerHeartbeatAt',
+		'#updatedAt': 'updatedAt',
+		'#generation': 'generation',
+	}
+	const values: Record<string, unknown> = {
+		':now': now,
+		':gen': args.generation,
+	}
+	let condition = 'attribute_exists(#pk) AND #generation = :gen'
+	if (args.realDeviceOnline) {
+		set.push('#device = :now')
+		names['#device'] = 'lastRealDeviceOnlineAt'
+		condition += ' AND (attribute_not_exists(#device) OR #device < :now)'
+	}
+	return conditionedUpdate({
+		label: 'worker cycle stamp',
+		set,
+		condition,
+		names,
+		values,
+	})
+}
+
+/**
+ * Generic attribute merge for app-owned extension attributes (JWKS
+ * mirror). Conditioned only on the row existing — never used for control
+ * or activity fields.
+ */
+export async function mergePowerAttributes(
+	attrs: Record<string, unknown>,
+): Promise<PowerWriteResult> {
+	const set: string[] = ['#updatedAt = :updatedAt']
+	const names: Record<string, string> = { '#updatedAt': 'updatedAt' }
+	const values: Record<string, unknown> = { ':updatedAt': Date.now() }
 	let i = 0
 	for (const [key, value] of Object.entries(attrs)) {
-		const nameRef = `#a${i}`
-		const valueRef = `:v${i}`
-		names[nameRef] = key
-		values[valueRef] = value
-		sets.push(`${nameRef} = ${valueRef}`)
+		names[`#m${i}`] = key
+		values[`:m${i}`] = value
+		set.push(`#m${i} = :m${i}`)
 		i++
 	}
-	try {
-		const client = await getClient(config.region)
-		await client.updateItem({
-			TableName: config.table,
-			Key: { pk: { S: config.rowKey } },
-			UpdateExpression: `SET ${sets.join(', ')}`,
-			ConditionExpression: 'attribute_exists(pk)',
-			ExpressionAttributeNames: names,
-			ExpressionAttributeValues: values,
-		})
-		return true
-	} catch (error) {
-		const name = error instanceof Error ? error.name : ''
-		if (name === 'ConditionalCheckFailedException') {
-			log.debug('power row absent — update skipped', {
-				attrs: Object.keys(attrs),
-			})
-		} else {
-			log.warn('power row update failed', {
-				attrs: Object.keys(attrs),
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
-		return false
-	}
+	return conditionedUpdate({
+		label: `attribute merge (${Object.keys(attrs).join(', ')})`,
+		set,
+		condition: 'attribute_exists(#pk)',
+		names,
+		values,
+	})
 }

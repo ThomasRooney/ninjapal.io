@@ -3,23 +3,28 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 /**
  * PowerGate — the warming UX for the scale-to-zero stack
  * (infra/aws/ARCHITECTURE.md). While the backing services sleep, an
- * authenticated dashboard visit must wake them and show honest progress
- * instead of a broken app.
+ * authenticated visit must wake them and show honest progress instead of a
+ * broken app.
  *
- * Triggers (DB-unavailable-style failures only — never the happy path):
- *  - /api/ready answering 202 on the mount check
- *  - Zero dropping offline (debounced, then confirmed against /api/ready)
+ * Two modes:
+ *  - provider (default): wraps the authed app shell; triggers on a 202
+ *    mount check or a confirmed Zero-offline signal, gates inputs behind
+ *    an inert overlay, reopens in place when ready.
+ *  - standalone: rendered by the ROOT route when SSR already knows the
+ *    stack is warming (fetchUser saw a non-AWAKE power row / DB-down) —
+ *    starts warming immediately and calls onReady (full reload) instead
+ *    of un-gating, so user loading is retried from scratch.
  *
- * While warming: POST /api/wake (re-posted periodically), poll /api/ready
- * every 2s, gate all inputs behind an inert overlay, and give up into a
- * retryable error state after the wake budget. Unconfigured environments
- * (Vercel/local) answer 200 immediately, so the gate never engages there.
+ * While warming: POST /api/wake exactly ONCE per warming episode (the
+ * server's desiredState<>AWAKE condition dedupes anyway), then poll
+ * /api/ready SEQUENTIALLY — each request awaits the previous response and
+ * honors its Retry-After — never on a fixed timer. Budget: 10 minutes
+ * (measured cold wake is ~7 minutes: RDS start dominates).
  */
 
 export const READY_POLL_INTERVAL_MS = 2_000
-/** ≥150s per the wake spec: RDS start alone can take minutes off a cold stop. */
-export const WAKE_BUDGET_MS = 180_000
-export const WAKE_REPOST_INTERVAL_MS = 30_000
+/** Measured cold wake ≈ 6m58s (RDS start) — budget must comfortably cover it. */
+export const WAKE_BUDGET_MS = 10 * 60_000
 /** Zero flaps offline briefly on token refresh — confirm before gating. */
 export const OFFLINE_CONFIRM_DELAY_MS = 3_000
 
@@ -35,7 +40,10 @@ const STATE_STEPS: Record<string, { label: string; step: number }> = {
 	SLEEP_MAINTENANCE: { label: 'Rousing the pit crew…', step: 1 },
 	STOPPING_DB: { label: 'Rousing the pit crew…', step: 1 },
 	DRAINING: { label: 'Rousing the pit crew…', step: 1 },
-	WAKING_DB: { label: 'Stoking the coals — starting the database…', step: 2 },
+	WAKING_DB: {
+		label: 'Stoking the coals — starting the database (the slow part)…',
+		step: 2,
+	},
 	WAKING_SERVICES: {
 		label: 'Rolling smoke — starting realtime sync…',
 		step: 3,
@@ -57,16 +65,29 @@ export interface PowerGateProps {
 	 * testable without a Zero instance.
 	 */
 	watchOnline?: (onChange: (online: boolean) => void) => () => void
+	/** Start warming immediately (SSR already saw a non-AWAKE stack). */
+	standalone?: boolean
+	/** Called on ready instead of un-gating (root shell: full reload). */
+	onReady?: () => void
 }
 
-export function PowerGate({ children, watchOnline }: PowerGateProps) {
-	const [phase, setPhase] = useState<GatePhase>('ready')
+export function PowerGate({
+	children,
+	watchOnline,
+	standalone,
+	onReady,
+}: PowerGateProps) {
+	const [phase, setPhase] = useState<GatePhase>(
+		standalone ? 'warming' : 'ready',
+	)
 	const [power, setPower] = useState<PowerInfo | null>(null)
 	const [elapsedS, setElapsedS] = useState(0)
 	const phaseRef = useRef(phase)
 	phaseRef.current = phase
+	const onReadyRef = useRef(onReady)
+	onReadyRef.current = onReady
 
-	/** One-shot readiness check; only 202/ERROR flip the gate closed. */
+	/** One-shot readiness check; only 202/503 flip the gate closed. */
 	const checkReady = useCallback(async () => {
 		if (phaseRef.current !== 'ready') return
 		try {
@@ -91,10 +112,11 @@ export function PowerGate({ children, watchOnline }: PowerGateProps) {
 		}
 	}, [])
 
-	// Mount check: an authenticated visit to a sleeping stack starts warming.
+	// Mount check (provider mode): an authenticated visit to a sleeping
+	// stack starts warming. Standalone mode starts warming already.
 	useEffect(() => {
-		void checkReady()
-	}, [checkReady])
+		if (!standalone) void checkReady()
+	}, [checkReady, standalone])
 
 	// Zero connection watcher: offline (debounced) → confirm with /api/ready.
 	useEffect(() => {
@@ -113,62 +135,69 @@ export function PowerGate({ children, watchOnline }: PowerGateProps) {
 		}
 	}, [watchOnline, checkReady])
 
-	// Warming loop: wake + poll until ready, failed, or budget spent.
+	// Warming loop: ONE wake POST, then sequential ready polling (each
+	// request awaits the previous response and honors Retry-After).
 	useEffect(() => {
 		if (phase !== 'warming') return
 		let cancelled = false
 		const startedMs = Date.now()
-		let lastWakeMs = 0
 		setElapsedS(0)
 
-		const postWake = () => {
-			lastWakeMs = Date.now()
-			fetch('/api/wake', {
-				method: 'POST',
-				credentials: 'same-origin',
-			}).catch(() => {
-				// Best-effort: the poll below keeps the state honest.
-			})
-		}
-		postWake()
+		// Exactly one wake write per warming episode; the server's
+		// desiredState<>AWAKE condition makes duplicates no-ops anyway.
+		fetch('/api/wake', { method: 'POST', credentials: 'same-origin' }).catch(
+			() => {
+				// Best-effort: the ready poll below keeps the state honest.
+			},
+		)
 
-		const tick = async () => {
-			if (cancelled) return
-			setElapsedS(Math.round((Date.now() - startedMs) / 1000))
-			if (Date.now() - startedMs > WAKE_BUDGET_MS) {
-				setPhase('failed')
-				return
-			}
-			if (Date.now() - lastWakeMs >= WAKE_REPOST_INTERVAL_MS) postWake()
-			try {
-				const res = await fetch('/api/ready', {
-					headers: { accept: 'application/json' },
-				})
-				if (cancelled) return
-				if (res.status === 200) {
-					setPhase('ready')
+		const sleep = (ms: number) =>
+			new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+		const loop = async () => {
+			while (!cancelled) {
+				setElapsedS(Math.round((Date.now() - startedMs) / 1000))
+				if (Date.now() - startedMs > WAKE_BUDGET_MS) {
+					if (!cancelled) setPhase('failed')
 					return
 				}
-				const body = (await res.json().catch(() => null)) as {
-					state?: string | null
-					progress?: string | null
-				} | null
-				if (cancelled) return
-				setPower({
-					state: body?.state ?? null,
-					progress: body?.progress ?? null,
-				})
-				if (res.status === 503 && body?.state === 'ERROR') {
-					setPhase('failed')
+				let delayMs = READY_POLL_INTERVAL_MS
+				try {
+					const res = await fetch('/api/ready', {
+						headers: { accept: 'application/json' },
+					})
+					if (cancelled) return
+					const retryAfterS = Number(res.headers.get('retry-after'))
+					if (Number.isFinite(retryAfterS) && retryAfterS > 0) {
+						delayMs = retryAfterS * 1000
+					}
+					if (res.status === 200) {
+						if (onReadyRef.current) onReadyRef.current()
+						else setPhase('ready')
+						return
+					}
+					const body = (await res.json().catch(() => null)) as {
+						state?: string | null
+						progress?: string | null
+					} | null
+					if (cancelled) return
+					setPower({
+						state: body?.state ?? null,
+						progress: body?.progress ?? null,
+					})
+					if (res.status === 503 && body?.state === 'ERROR') {
+						setPhase('failed')
+						return
+					}
+				} catch {
+					// Poll failure while warming: keep trying inside the budget.
 				}
-			} catch {
-				// Poll failure while warming: keep trying inside the budget.
+				await sleep(delayMs)
 			}
 		}
-		const interval = setInterval(() => void tick(), READY_POLL_INTERVAL_MS)
+		void loop()
 		return () => {
 			cancelled = true
-			clearInterval(interval)
 		}
 	}, [phase])
 
@@ -177,13 +206,15 @@ export function PowerGate({ children, watchOnline }: PowerGateProps) {
 
 	return (
 		<>
-			<div
-				className={gated ? 'contents pointer-events-none' : 'contents'}
-				inert={gated || undefined}
-				data-testid='power-gate-content'
-			>
-				{children}
-			</div>
+			{children !== undefined && (
+				<div
+					className={gated ? 'contents pointer-events-none' : 'contents'}
+					inert={gated || undefined}
+					data-testid='power-gate-content'
+				>
+					{children}
+				</div>
+			)}
 			{gated && (
 				<div
 					className='fixed inset-0 z-[100] flex flex-col items-center justify-center gap-6 bg-background px-6 text-center'
@@ -210,8 +241,12 @@ export function PowerGate({ children, watchOnline }: PowerGateProps) {
 						<>
 							<div className='space-y-2'>
 								<h1 className='text-2xl font-semibold tracking-tight'>
-									Firing up the pit…
+									Firing up the pit
 								</h1>
+								<p className='text-sm text-muted-foreground'>
+									The smoker&apos;s been idle, so everything was powered down —
+									waking up takes 6–8 minutes from cold.
+								</p>
 								<p
 									className='text-sm text-muted-foreground'
 									data-testid='power-gate-progress'
@@ -228,9 +263,10 @@ export function PowerGate({ children, watchOnline }: PowerGateProps) {
 									/>
 								</div>
 								<p className='mt-2 text-xs text-muted-foreground/70'>
-									The smoker&apos;s been idle — waking everything can take a
-									couple of minutes.
-									{elapsedS > 0 ? ` ${elapsedS}s` : ''}
+									Grab the pellets while you wait.
+									{elapsedS > 0
+										? ` ${Math.floor(elapsedS / 60)}:${String(elapsedS % 60).padStart(2, '0')} elapsed`
+										: ''}
 								</p>
 							</div>
 						</>

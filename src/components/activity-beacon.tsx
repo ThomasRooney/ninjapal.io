@@ -28,7 +28,8 @@ export function ActivityBeacon() {
 				// owns that recovery path.
 			})
 		}
-		ping() // opening the tab is itself activity
+		// No mount-time ping: the SSR fetchUser stamp already covered this
+		// page load — the beacon only keeps a VISIBLE tab counted as active.
 		const interval = setInterval(ping, ACTIVITY_BEACON_INTERVAL_MS)
 		const onVisibility = () => {
 			if (document.visibilityState === 'visible') ping()

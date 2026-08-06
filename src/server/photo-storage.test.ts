@@ -125,13 +125,30 @@ describe('presignPhotoGet', () => {
 describe('resolveStoredPhotoUrl', () => {
 	it('passes non-S3 urls through without touching the SDK', async () => {
 		const url = 'https://blob.vercel-storage.com/photo-abc.jpg'
-		await expect(resolveStoredPhotoUrl(url)).resolves.toBe(url)
+		await expect(resolveStoredPhotoUrl(url, 'u')).resolves.toBe(url)
 		expect(getSignedUrl).not.toHaveBeenCalled()
 	})
 
-	it('presigns s3:// markers', async () => {
-		const url = await resolveStoredPhotoUrl('s3://b/cook-photos/u/p.jpg')
+	it('presigns markers in the configured bucket + owner namespace', async () => {
+		vi.stubEnv('PHOTOS_BUCKET', 'b')
+		const url = await resolveStoredPhotoUrl('s3://b/cook-photos/u/p.jpg', 'u')
 		expect(url).toContain('https://signed.example/photo')
+	})
+
+	it('refuses markers pointing at a foreign bucket', async () => {
+		vi.stubEnv('PHOTOS_BUCKET', 'b')
+		await expect(
+			resolveStoredPhotoUrl('s3://evil-bucket/cook-photos/u/p.jpg', 'u'),
+		).rejects.toThrow(/PHOTOS_BUCKET/)
+		expect(getSignedUrl).not.toHaveBeenCalled()
+	})
+
+	it("refuses markers outside the owner's namespace", async () => {
+		vi.stubEnv('PHOTOS_BUCKET', 'b')
+		await expect(
+			resolveStoredPhotoUrl('s3://b/cook-photos/other-user/p.jpg', 'u'),
+		).rejects.toThrow(/owner namespace/)
+		expect(getSignedUrl).not.toHaveBeenCalled()
 	})
 })
 
@@ -168,14 +185,15 @@ describe('putPhotoObject', () => {
 describe('deleteStoredPhotoObject', () => {
 	it('returns false (no delete) for Blob urls', async () => {
 		await expect(
-			deleteStoredPhotoObject('https://blob.vercel.com/x.jpg'),
+			deleteStoredPhotoObject('https://blob.vercel.com/x.jpg', 'u'),
 		).resolves.toBe(false)
 		expect(send).not.toHaveBeenCalled()
 	})
 
-	it('deletes the object behind an s3:// marker', async () => {
+	it('deletes the object behind an owned s3:// marker', async () => {
+		vi.stubEnv('PHOTOS_BUCKET', 'pitminder-photos')
 		await expect(
-			deleteStoredPhotoObject('s3://pitminder-photos/cook-photos/u/p.jpg'),
+			deleteStoredPhotoObject('s3://pitminder-photos/cook-photos/u/p.jpg', 'u'),
 		).resolves.toBe(true)
 		const command = send.mock.calls[0][0] as {
 			input: Record<string, unknown>
@@ -184,5 +202,19 @@ describe('deleteStoredPhotoObject', () => {
 			Bucket: 'pitminder-photos',
 			Key: 'cook-photos/u/p.jpg',
 		})
+	})
+
+	it('refuses to delete outside the configured bucket or namespace', async () => {
+		vi.stubEnv('PHOTOS_BUCKET', 'pitminder-photos')
+		await expect(
+			deleteStoredPhotoObject('s3://other/cook-photos/u/p.jpg', 'u'),
+		).rejects.toThrow(/PHOTOS_BUCKET/)
+		await expect(
+			deleteStoredPhotoObject(
+				's3://pitminder-photos/cook-photos/victim/p.jpg',
+				'u',
+			),
+		).rejects.toThrow(/owner namespace/)
+		expect(send).not.toHaveBeenCalled()
 	})
 })

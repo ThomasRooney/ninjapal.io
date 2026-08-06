@@ -44,9 +44,17 @@ afterEach(() => {
 })
 
 describe('ActivityBeacon', () => {
-	it('pings /api/activity on mount while visible', () => {
+	it('does NOT ping on mount — the SSR stamp already covered this load', () => {
 		const { unmount } = renderBeacon()
-		expect(fetchMock).toHaveBeenCalledTimes(1)
+		expect(fetchMock).not.toHaveBeenCalled()
+		unmount()
+	})
+
+	it('pings with the session credentials once the interval elapses', () => {
+		const { unmount } = renderBeacon()
+		act(() => {
+			vi.advanceTimersByTime(ACTIVITY_BEACON_INTERVAL_MS + 10)
+		})
 		expect(fetchMock).toHaveBeenCalledWith('/api/activity', {
 			method: 'POST',
 			credentials: 'same-origin',
@@ -67,15 +75,14 @@ describe('ActivityBeacon', () => {
 
 	it('pings every interval while visible', () => {
 		const { unmount } = renderBeacon()
-		expect(fetchMock).toHaveBeenCalledTimes(1)
 		act(() => {
 			vi.advanceTimersByTime(ACTIVITY_BEACON_INTERVAL_MS + 10)
 		})
-		expect(fetchMock).toHaveBeenCalledTimes(2)
+		expect(fetchMock).toHaveBeenCalledTimes(1)
 		act(() => {
 			vi.advanceTimersByTime(ACTIVITY_BEACON_INTERVAL_MS)
 		})
-		expect(fetchMock).toHaveBeenCalledTimes(3)
+		expect(fetchMock).toHaveBeenCalledTimes(2)
 		unmount()
 	})
 

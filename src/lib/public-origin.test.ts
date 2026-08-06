@@ -25,9 +25,14 @@ describe('publicOriginEnv', () => {
 		expect(publicOriginEnv()).toBe('https://app.pitminder.com')
 	})
 
-	it('returns null for garbage values', () => {
+	it('throws for garbage values instead of silently falling back', () => {
 		vi.stubEnv('PUBLIC_ORIGIN', 'not a url')
-		expect(publicOriginEnv()).toBeNull()
+		expect(() => publicOriginEnv()).toThrow(/PUBLIC_ORIGIN/)
+	})
+
+	it('throws for origin-less URLs', () => {
+		vi.stubEnv('PUBLIC_ORIGIN', 'mailto:ops@pitminder.com')
+		expect(() => publicOriginEnv()).toThrow(/PUBLIC_ORIGIN/)
 	})
 })
 

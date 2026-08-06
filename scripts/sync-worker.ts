@@ -67,10 +67,7 @@ import {
 	deleteStoredPhotoObject,
 	resolveStoredPhotoUrl,
 } from '@/server/photo-storage'
-import {
-	stampRealDeviceOnline,
-	writeWorkerHeartbeat,
-} from '@/server/power/worker'
+import { stampWorkerCyclePower } from '@/server/power/worker'
 import {
 	assertSafeUpstream,
 	backoffOnFailure,
@@ -906,7 +903,7 @@ async function runPitDirector(
 			for (const p of rows) {
 				try {
 					photos.push({
-						url: await resolveStoredPhotoUrl(p.url),
+						url: await resolveStoredPhotoUrl(p.url, userId),
 						at: p.createdAt.toISOString(),
 					})
 				} catch (error) {
@@ -1515,7 +1512,11 @@ async function reapExpiredPhotos() {
 	)
 	const cutoff = new Date(Date.now() - PHOTO_TTL_DAYS * 24 * 3_600_000)
 	const expired = await db
-		.select({ id: cookPhotos.id, url: cookPhotos.url })
+		.select({
+			id: cookPhotos.id,
+			url: cookPhotos.url,
+			userId: cookPhotos.userId,
+		})
 		.from(cookPhotos)
 		.where(lte(cookPhotos.createdAt, cutoff))
 		.limit(100)
@@ -1523,7 +1524,8 @@ async function reapExpiredPhotos() {
 		try {
 			// S3 rows (s3:// marker) delete their object here too — idempotent
 			// with the bucket lifecycle rule; Blob rows keep the old path.
-			const wasS3 = await deleteStoredPhotoObject(photo.url)
+			// Bucket + owner-namespace enforced against the row's own user.
+			const wasS3 = await deleteStoredPhotoObject(photo.url, photo.userId)
 			if (!wasS3 && process.env.BLOB_READ_WRITE_TOKEN) await blobDel(photo.url)
 			await db.delete(cookPhotos).where(eq(cookPhotos.id, photo.id))
 			console.log(`photos: reaped expired ${photo.id}`)
@@ -1624,13 +1626,13 @@ async function cycle() {
 		}
 	}
 
-	// Scale-to-zero idle signals (no-ops when POWER_TABLE is unset): only
-	// real Online devices refresh lastRealDeviceOnlineAt — sims never do —
-	// and every cycle heartbeats with POWER_GENERATION for fencing.
-	if (stats.realDevicesOnline > 0) {
-		await stampRealDeviceOnline()
-	}
-	await writeWorkerHeartbeat()
+	// Scale-to-zero signals as ONE generation-fenced write per cycle
+	// (no-op when POWER_TABLE is unset; skipped+warned if POWER_GENERATION
+	// is missing): heartbeat always, lastRealDeviceOnlineAt only when a
+	// NON-simulated device reported Online — sims never count.
+	await stampWorkerCyclePower({
+		realDeviceOnline: stats.realDevicesOnline > 0,
+	})
 
 	return stats
 }

@@ -1,19 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { updatePowerAttributes } = vi.hoisted(() => ({
-	updatePowerAttributes: vi.fn(async (_attrs: unknown) => true),
+const { stampWorkerCycle } = vi.hoisted(() => ({
+	stampWorkerCycle: vi.fn(
+		async (_args: unknown) => 'applied' as 'applied' | 'condition-failed',
+	),
 }))
 
-vi.mock('./power-row', () => ({ updatePowerAttributes }))
+vi.mock('./power-row', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./power-row')>()
+	return { ...actual, stampWorkerCycle }
+})
 
 import {
+	__resetWorkerPowerWarningsForTests,
 	powerGeneration,
-	stampRealDeviceOnline,
-	writeWorkerHeartbeat,
+	stampWorkerCyclePower,
 } from './worker'
 
 beforeEach(() => {
-	updatePowerAttributes.mockClear()
+	stampWorkerCycle.mockClear()
+	stampWorkerCycle.mockResolvedValue('applied')
+	__resetWorkerPowerWarningsForTests()
 })
 
 afterEach(() => {
@@ -36,48 +43,53 @@ describe('powerGeneration', () => {
 	})
 })
 
-describe('stampRealDeviceOnline', () => {
-	it('writes lastRealDeviceOnlineAt without a generation when unset', async () => {
-		vi.stubEnv('POWER_GENERATION', '')
-		await stampRealDeviceOnline()
-		const attrs = updatePowerAttributes.mock.calls[0][0] as Record<
-			string,
-			{ S?: string; N?: string }
-		>
-		expect(Object.keys(attrs)).toEqual(['lastRealDeviceOnlineAt'])
-		expect(attrs.lastRealDeviceOnlineAt.S).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+describe('stampWorkerCyclePower', () => {
+	it('no-ops when POWER_TABLE is unset', async () => {
+		vi.stubEnv('POWER_TABLE', '')
+		await expect(
+			stampWorkerCyclePower({ realDeviceOnline: true }),
+		).resolves.toBe(false)
+		expect(stampWorkerCycle).not.toHaveBeenCalled()
 	})
 
-	it('includes the generation when POWER_GENERATION is set', async () => {
+	it('skips ALL power writes (warn) when POWER_TABLE is set but POWER_GENERATION is missing', async () => {
+		vi.stubEnv('POWER_TABLE', 'pitminder-power')
+		vi.stubEnv('POWER_GENERATION', '')
+		await expect(
+			stampWorkerCyclePower({ realDeviceOnline: true }),
+		).resolves.toBe(false)
+		expect(stampWorkerCycle).not.toHaveBeenCalled()
+	})
+
+	it('issues ONE generation-fenced update per cycle', async () => {
+		vi.stubEnv('POWER_TABLE', 'pitminder-power')
 		vi.stubEnv('POWER_GENERATION', '3')
-		await stampRealDeviceOnline()
-		const attrs = updatePowerAttributes.mock.calls[0][0] as Record<
-			string,
-			{ S?: string; N?: string }
-		>
-		expect(attrs.lastRealDeviceOnlineGeneration).toEqual({ N: '3' })
+		await expect(
+			stampWorkerCyclePower({ realDeviceOnline: true }),
+		).resolves.toBe(true)
+		expect(stampWorkerCycle).toHaveBeenCalledTimes(1)
+		expect(stampWorkerCycle).toHaveBeenCalledWith({
+			generation: 3,
+			realDeviceOnline: true,
+		})
 	})
-})
 
-describe('writeWorkerHeartbeat', () => {
-	it('stamps workerHeartbeatAt with the generation when set', async () => {
+	it('passes realDeviceOnline=false through (heartbeat only)', async () => {
+		vi.stubEnv('POWER_TABLE', 'pitminder-power')
 		vi.stubEnv('POWER_GENERATION', '5')
-		await writeWorkerHeartbeat()
-		const attrs = updatePowerAttributes.mock.calls[0][0] as Record<
-			string,
-			{ S?: string; N?: string }
-		>
-		expect(attrs.workerHeartbeatAt.S).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-		expect(attrs.workerGeneration).toEqual({ N: '5' })
+		await stampWorkerCyclePower({ realDeviceOnline: false })
+		expect(stampWorkerCycle).toHaveBeenCalledWith({
+			generation: 5,
+			realDeviceOnline: false,
+		})
 	})
 
-	it('omits the generation when unset', async () => {
-		vi.stubEnv('POWER_GENERATION', '')
-		await writeWorkerHeartbeat()
-		const attrs = updatePowerAttributes.mock.calls[0][0] as Record<
-			string,
-			unknown
-		>
-		expect(Object.keys(attrs)).toEqual(['workerHeartbeatAt'])
+	it('reports false when the generation fence is lost', async () => {
+		vi.stubEnv('POWER_TABLE', 'pitminder-power')
+		vi.stubEnv('POWER_GENERATION', '2')
+		stampWorkerCycle.mockResolvedValueOnce('condition-failed')
+		await expect(
+			stampWorkerCyclePower({ realDeviceOnline: false }),
+		).resolves.toBe(false)
 	})
 })

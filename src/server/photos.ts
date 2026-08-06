@@ -82,7 +82,7 @@ export async function uploadCookPhoto(args: {
 		})
 		storedUrl = s3PhotoUrl(bucket, key)
 		pathname = key
-		displayUrl = await resolveStoredPhotoUrl(storedUrl)
+		displayUrl = await resolveStoredPhotoUrl(storedUrl, user.id)
 	} else {
 		const ext = args.contentType.split('/')[1].replace('jpeg', 'jpg')
 		const blob = await put(`cook-photos/${user.id}/photo.${ext}`, args.bytes, {
@@ -122,7 +122,8 @@ export async function deleteCookPhoto(photoId: string): Promise<void> {
 	if (!photo) throw new Error('Photo not found')
 	const url = photo.url as string
 	// S3 rows carry an s3:// marker; anything else is a Vercel Blob URL.
-	const wasS3 = await deleteStoredPhotoObject(url)
+	// Bucket + owner-namespace checks run inside (tampered rows refuse).
+	const wasS3 = await deleteStoredPhotoObject(url, user.id)
 	if (!wasS3) await del(url)
 	await sql`delete from cook_photos where id = ${photoId}`
 }
@@ -148,9 +149,10 @@ export async function resolveCookPhotoUrls(
 		try {
 			resolved[row.id as string] = await resolveStoredPhotoUrl(
 				row.url as string,
+				user.id,
 			)
 		} catch {
-			// Presign failure for one photo must not sink the batch.
+			// Presign/ownership failure for one photo must not sink the batch.
 		}
 	}
 	return resolved
