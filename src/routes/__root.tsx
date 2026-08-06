@@ -92,6 +92,14 @@ export const Route = createRootRoute({
 				content: 'width=device-width, initial-scale=1',
 			},
 			{
+				name: 'color-scheme',
+				content: 'dark',
+			},
+			{
+				name: 'theme-color',
+				content: '#120d0a',
+			},
+			{
 				title: 'PitMinder',
 			},
 		],
@@ -148,8 +156,10 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	// PitMinder is dark-only: the class + colorScheme are locked at SSR time
+	// so there is never a light flash.
 	return (
-		<html lang='en'>
+		<html lang='en' className='dark' style={{ colorScheme: 'dark' }}>
 			<head>
 				<HeadContent />
 			</head>
