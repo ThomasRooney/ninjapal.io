@@ -9,7 +9,7 @@ Branch: `spike/lambda-streaming` · Status: **GATE PASSES** — all resources to
 |---|---|---|
 | 1 | nitro `aws-lambda` preset + `awsLambda.streaming: true` builds this app? | **YES** — builds clean through `@tanstack/nitro-v2-vite-plugin` (it spreads its arg straight into `createNitro`, so any nitro option passes through). But the stock streaming runtime only parses Function-URL (payload v2.0) events — see gotcha 1. |
 | 2 | SSE actually streams through Regional REST API `responseTransferMode=STREAM` from a VPC-private Lambda? | **YES.** Warm `/api/spike-stream` (10 SSE chunks @500ms): **TTFB 0.05–0.09s, total 5.07s**, chunks arrive at exact 500ms cadence (3 runs). Buffered would have been TTFB ≈ total ≈ 5s. |
-| 3 | Normal SSR loads through the same path? | **YES.** `/`→307`/app`; `/app`→307`/auth/login?redirect=%2Fapp` (auth guard, no DB needed); `/auth/login` 200 HTML (warm TTFB 0.11–0.31s); unknown path→404 HTML; two `Set-Cookie` headers survive intact; 302+`Location` intact; POST body → `/api/chat` 401 as expected; 445KB JS asset and binary favicon byte-identical (no `binaryMediaTypes` needed in STREAM mode). |
+| 3 | Normal SSR loads through the same path? | **YES.** `/`→307`/app`; `/app`→307`/auth/login?redirect=%2Fapp` (auth guard, no DB needed); `/auth/login` 200 HTML (warm TTFB 0.11–0.31s); unknown path→404 HTML; two `Set-Cookie` headers survive intact; 302+`Location` intact; POST body → `/api/chat` 401 as expected; 445KB JS asset and binary favicon byte-identical on the **response** path (no `binaryMediaTypes` needed in STREAM mode; binary *request* bodies unit-tested only — see gotcha 5). |
 | 4 | Cold start, 1024MB, p50 of 5 | **p50 TTFB 7.56s** (7.35/7.47/7.56/7.59/7.64). Init Duration is only ~250ms; ~7.2s is first-request module evaluation (TanStack `loadEntries` imports the whole route graph, CPU-bound). At 2048MB: 4.2–4.5s. Warm requests: 3–25ms Lambda duration. |
 | 5 | Fallback: Function URL streaming outside VPC | **Streams identically** (stock nitro runtime, v2.0 events): warm first-data 0.04s, same 500ms cadence. **BUT anonymous access is 403-blocked account-wide** despite a textbook `AuthType: NONE` + public `lambda:InvokeFunctionUrl` policy — works only with `AWS_IAM` + SigV4. Suspected org RCP or Lambda public-access-block (local aws-cli build lacks `get-public-access-block-config`; verify from the management account). A public Function URL fallback is NOT currently viable in this account without changing org guardrails. |
 
@@ -64,11 +64,15 @@ Output is the `awslambda.HttpResponseStream` prelude (metadata JSON `{statusCode
 2. **`awsLambda.streaming: true` + custom `entry` are mutually exclusive**: the preset's `rollup:before` hook appends `-streaming` to the rollup input path, which 404s a custom entry file. Keep `streaming: false` and let the custom entry do the streaming.
 3. **Permission is `lambda:InvokeFunction`, NOT `lambda:InvokeWithResponseStream`.** Granting only `InvokeWithResponseStream` (what the docs' transport implies) ⇒ instant 500 `{"message": "Internal server error"}` with the Lambda never invoked and *no log group created*. Granting `lambda:InvokeFunction` with `SourceArn: arn:aws:execute-api:{region}:{acct}:{apiId}/*` alone ⇒ works. Verified by bisection.
 4. **`test-invoke-method` is useless for streaming integrations**: it returns only `Execution log is not available for streaming response.`
-5. **Never coerce non-stream bodies with `String()`** in the entry: nitro returns static assets as Buffers; `String(buffer)` UTF-8-mangles them (favicon grew 4286→6608 bytes of U+FFFD). Write raw bytes. With that fixed, the STREAM path is binary-clean end-to-end **without** `binaryMediaTypes`.
+5. **Binary must stay bytes in BOTH directions — never round-trip through UTF-8 strings.**
+   *Response path:* nitro returns static assets as Buffers; `String(buffer)` mangles them (favicon grew 4286→6608 bytes of U+FFFD). Write raw bytes. With that fixed, the **response** path measured binary-clean through STREAM mode **without** `binaryMediaTypes` (byte-identical hashes on favicon + 445KB JS).
+   *Request path (found in review, fixed post-deploy):* the entry originally did `Buffer.from(body, 'base64').toString('utf8')` on `isBase64Encoded` request bodies — same U+FFFD mangling for multipart photo uploads, *before nitro ever parses them*. Now passes the `Buffer` through untouched; covered by a multipart-style unit test asserting byte-identical passthrough. **nitro's own buffered `aws-lambda` runtime has this same `.toString('utf8')` upstream** — worth an upstream issue before the real build.
+   Binary request bodies were only unit-tested, not re-deployed — re-verify through a live gateway when the real stack exists.
 6. **Module-scope env asserts fire for ALL routes on first request** — TanStack `loadEntries` imports the entire route graph, so `src/server/email/client.ts` (`RESEND_API_KEY`) and `src/lib/auth.ts` (`getDb()` → `ZERO_UPSTREAM_DB`; oauth-provider `new URL(baseURL)` → `BETTER_AUTH_URL`) throw even for `/api/spike-stream`. Dummies sufficed (postgres.js connects lazily; Resend doesn't dial on construction): `RESEND_API_KEY`, `ZERO_UPSTREAM_DB`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `ZERO_AUTH_SECRET`. **No code guards needed** — `fetchUser` already degrades to logged-out, and no-cookie requests never touch the DB.
 7. **Host header / stage prefix**: SSR HTML contains only root-relative URLs (no Host leakage — good), but the REST stage prefix (`/spike`) is not in them, so assets 404 when browsing execute-api directly. Irrelevant behind CloudFront with an origin path; noted for direct testing.
 8. **TanStack's dehydrated HTML legitimately contains `\x00` bytes** (route-ID separators in the seroval payload) — don't let "binary-looking HTML" send you chasing corruption (grep needs `-a`).
 9. Env-var/memory config updates recycle all sandboxes — cheap way to force cold starts (`COLDSTART_SALT`), but remember it also colds production-like traffic.
+10. **Duplicate query params (found in review, fixed post-deploy):** v1.0 events carry BOTH `queryStringParameters` (last value only) and `multiValueQueryStringParameters` (the complete list per AWS docs). The entry originally spread the single-value map last, collapsing `?tag=a&tag=b` to `b`. The multi-value map must win — same precedence as nitro's buffered runtime. Unit-tested with a repeated parameter.
 
 ## Numbers (timing log)
 
@@ -91,7 +95,9 @@ Vercel-like.
 
 ## Files
 
-- `infra/aws/spike/lambda-entry.mjs` — custom nitro entry (v1.0+v2.0, streaming)
+- `infra/aws/spike/lambda-entry.mjs` — custom nitro entry (streaming glue)
+- `infra/aws/spike/lambda-event.mjs` — pure v1.0/v2.0 event parsing (no nitro imports)
+- `infra/aws/spike/lambda-event.test.mjs` — vitest fixtures: path/method/headers/query, repeated query params, byte-identical binary multipart body, v2.0 cookies
 - `infra/aws/spike/stack.yaml` — the exact CFN that worked (incl. permission fix)
 - `vite.config.js` — `NITRO_PRESET_SPIKE` switch
 - `src/routes/api/spike-{stream,cookie,redirect}.ts` — spike routes (no DB/auth)
