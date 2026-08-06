@@ -9,6 +9,7 @@ import {
 import {
 	DEFAULT_LEASE_MS,
 	MAINTENANCE_AFTER_MS,
+	MAX_TRANSITION_ATTEMPTS,
 	type PowerRow,
 	TRANSITIONS,
 	bumpsGeneration,
@@ -35,6 +36,9 @@ function makeRow(overrides: Partial<PowerRow> = {}): PowerRow {
 function fakeStore(initial: PowerRow) {
 	const row: PowerRow = structuredClone(initial)
 	const claims: string[] = []
+	const counts = { writes: 0, heartbeats: 0, transfers: 0, takeovers: 0 }
+	/** Heartbeats sent after the lease already lapsed (must stay 0). */
+	let lateHeartbeats = 0
 	const store: PowerStore = {
 		async get() {
 			return structuredClone(row)
@@ -62,8 +66,10 @@ function fakeStore(initial: PowerRow) {
 					owner: input.owner,
 					expiresAt: input.now + DEFAULT_LEASE_MS,
 				}
+				row.attempts = 0
 			} else {
 				row.lease = undefined
+				row.attempts = undefined
 			}
 			if (input.to === 'SLEEPING') {
 				row.stoppedAt = input.now
@@ -72,6 +78,7 @@ function fakeStore(initial: PowerRow) {
 			if (input.to === 'AWAKE') row.lastError = undefined
 			if (input.to === 'ERROR') row.lastError = input.errorMessage ?? 'unknown'
 			claims.push(`${from}->${input.to}`)
+			counts.writes++
 			return { applied: true }
 		},
 		async takeover(r, owner, now) {
@@ -83,6 +90,9 @@ function fakeStore(initial: PowerRow) {
 			}
 			row.lease = { owner, expiresAt: now + DEFAULT_LEASE_MS }
 			row.version++
+			row.attempts = (row.attempts ?? 0) + 1
+			counts.writes++
+			counts.takeovers++
 			return { applied: true }
 		},
 		async heartbeat(owner, generation, now) {
@@ -93,13 +103,17 @@ function fakeStore(initial: PowerRow) {
 			) {
 				return { applied: false, reason: 'stale' }
 			}
+			if (row.lease.expiresAt < now) lateHeartbeats++
 			row.lease.expiresAt = now + DEFAULT_LEASE_MS
+			counts.writes++
+			counts.heartbeats++
 			return { applied: true }
 		},
 		async markComponentReady(component, generation) {
 			if (row.generation !== generation)
 				return { applied: false, reason: 'stale' }
 			row.componentReady[component] = generation
+			counts.writes++
 			return { applied: true }
 		},
 		async markMaintenanceProbed(r, owner, now) {
@@ -112,16 +126,30 @@ function fakeStore(initial: PowerRow) {
 			}
 			row.maintenanceProbedAt = now
 			row.version++
+			counts.writes++
+			return { applied: true }
+		},
+		async transfer(fromOwner, toOwner, now) {
+			if (!row.lease || row.lease.owner !== fromOwner) {
+				return { applied: false, reason: 'conflict' }
+			}
+			row.lease = { owner: toOwner, expiresAt: now + DEFAULT_LEASE_MS }
+			row.attempts = (row.attempts ?? 0) + 1
+			counts.writes++
+			counts.transfers++
 			return { applied: true }
 		},
 		async recordSoftError(message) {
 			row.lastError = message
+			counts.writes++
 			return { applied: true }
 		},
 	}
 	return {
 		store,
 		claims,
+		counts,
+		lateHeartbeats: () => lateHeartbeats,
 		current: () => row,
 		mutate: (fn: (r: PowerRow) => void) => fn(row),
 	}
@@ -221,7 +249,7 @@ describe('wake path', () => {
 		expect(row.lease).toBeUndefined()
 	})
 
-	it('refuses to start RDS when execution is disabled (fail closed)', async () => {
+	it('refuses to start RDS when execution is disabled: ONE conditional ERROR claim', async () => {
 		const { store, claims, current } = fakeStore(
 			makeRow({ desiredState: 'AWAKE' }),
 		)
@@ -232,10 +260,49 @@ describe('wake path', () => {
 				execution: { isEnabled: async () => false },
 			}),
 		)
-		expect(result.state).toBe('SLEEPING')
-		expect(claims).toEqual([])
+		expect(result.state).toBe('SLEEPING') // the state it read when refusing
+		expect(claims).toEqual(['SLEEPING->ERROR'])
 		expect(rds.calls.start).toBe(0)
+		expect(current().state).toBe('ERROR')
 		expect(current().lastError).toContain('execution disabled')
+	})
+
+	it('handler->stream->handler on a disabled gate terminates: no write loop', async () => {
+		// P0-B regression: an unconditional error write on every refusal would
+		// stream-trigger the orchestrator forever. Simulate the stream loop:
+		// re-drive after every drive that wrote; it must quiesce.
+		const fake = fakeStore(makeRow({ desiredState: 'AWAKE' }))
+		const rds = fakeRds('stopped')
+		const compute = fakeCompute()
+		const disabled = { isEnabled: async () => false }
+
+		let drives = 0
+		let before = -1
+		while (fake.counts.writes !== before) {
+			before = fake.counts.writes
+			drives++
+			expect(drives).toBeLessThanOrEqual(5)
+			await drive(
+				deps(fake.store, rds.control, compute.control, {
+					execution: disabled,
+					owner: `wake:stream-${drives}`,
+				}),
+			)
+		}
+		// Exactly one write in total (the ERROR claim), then silence — even
+		// for a reconciler-style drive with error recovery enabled.
+		expect(fake.counts.writes).toBe(1)
+		expect(fake.current().state).toBe('ERROR')
+		const writesBeforeReconcile = fake.counts.writes
+		await drive(
+			deps(fake.store, rds.control, compute.control, {
+				execution: disabled,
+				allowErrorRecovery: true,
+				owner: 'wake:reconcile',
+			}),
+		)
+		expect(fake.counts.writes).toBe(writesBeforeReconcile)
+		expect(rds.calls.start).toBe(0)
 	})
 })
 
@@ -456,5 +523,127 @@ describe('re-invocation on Lambda timeout', () => {
 		expect(reinvoked).toBe(1)
 		expect(result.state).toBe('WAKING_DB')
 		expect(result.steps).toContain('out of time: re-invoked self')
+	})
+
+	it('hands the live lease to the successor, which completes the wake (chained invocations)', async () => {
+		const fake = fakeStore(makeRow({ desiredState: 'AWAKE' }))
+		const rds = fakeRds('stopped', 3)
+		const compute = fakeCompute()
+
+		// Invocation 1: claims WAKING_DB + starts RDS, then runs out of time.
+		let checks = 0
+		let reinvoked = 0
+		const first = await drive(
+			deps(fake.store, rds.control, compute.control, {
+				owner: 'wake:first',
+				successorOwner: 'wake:successor',
+				remainingMs: () => (++checks <= 3 ? 10 * 60_000 : 30_000),
+				reinvoke: async () => {
+					reinvoked++
+				},
+			}),
+		)
+		expect(first.state).toBe('WAKING_DB')
+		expect(reinvoked).toBe(1)
+		expect(rds.calls.start).toBe(1)
+		// The live lease was CAS-transferred, not abandoned to expiry.
+		expect(fake.current().lease?.owner).toBe('wake:successor')
+		expect(fake.counts.transfers).toBe(1)
+		expect(fake.current().attempts).toBe(1)
+
+		// Invocation 2 (the successor): continues IMMEDIATELY under the
+		// transferred lease — no takeover, no stand-down — and finishes.
+		const second = await drive(
+			deps(fake.store, rds.control, compute.control, {
+				owner: 'wake:successor',
+			}),
+		)
+		expect(second.state).toBe('AWAKE')
+		expect(fake.counts.takeovers).toBe(0)
+		expect(fake.claims).toEqual([
+			'SLEEPING->WAKING_DB',
+			'WAKING_DB->WAKING_SERVICES',
+			'WAKING_SERVICES->AWAKE',
+		])
+	})
+})
+
+describe('lease renewal across long RDS waits', () => {
+	it('renews before expiry throughout a simulated 10-minute wait, about once a minute', async () => {
+		const fake = fakeStore(makeRow({ desiredState: 'AWAKE' }))
+		// 20 polls x 30s = 10 simulated minutes of `starting`.
+		const rds = fakeRds('stopped', 20)
+		const compute = fakeCompute()
+		let t = NOW
+		const result = await drive(
+			deps(fake.store, rds.control, compute.control, {
+				now: () => t,
+				pollMs: 30_000,
+				sleep: async (ms) => {
+					t += ms
+				},
+			}),
+		)
+		expect(result.state).toBe('AWAKE')
+		// Never heartbeated a lease that had already lapsed...
+		expect(fake.lateHeartbeats()).toBe(0)
+		// ...and renewed conditionally (~1/min), not on every 30s poll.
+		expect(fake.counts.heartbeats).toBeGreaterThanOrEqual(5)
+		expect(fake.counts.heartbeats).toBeLessThanOrEqual(12)
+	})
+
+	it('stands down mid-wait when another owner supersedes the lease', async () => {
+		const fake = fakeStore(
+			makeRow({
+				state: 'WAKING_DB',
+				desiredState: 'AWAKE',
+				generation: 1,
+				lease: { owner: 'wake:me', expiresAt: NOW + DEFAULT_LEASE_MS },
+			}),
+		)
+		const rds = fakeRds('starting', 1000)
+		const compute = fakeCompute()
+		let t = NOW
+		let polls = 0
+		const result = await drive(
+			deps(fake.store, rds.control, compute.control, {
+				owner: 'wake:me',
+				now: () => t,
+				pollMs: 30_000,
+				sleep: async (ms) => {
+					t += ms
+					// Another invocation steals the lease mid-wait.
+					if (++polls === 2) {
+						fake.mutate((r) => {
+							r.lease = { owner: 'wake:thief', expiresAt: t + DEFAULT_LEASE_MS }
+						})
+					}
+				},
+			}),
+		)
+		expect(result.state).toBe('WAKING_DB')
+		expect(result.steps.at(-1)).toContain('standing down')
+		expect(fake.claims).toEqual([])
+	})
+})
+
+describe('bounded transition attempts', () => {
+	it('parks a transition that keeps needing continuations in ERROR', async () => {
+		const fake = fakeStore(
+			makeRow({
+				state: 'WAKING_DB',
+				desiredState: 'AWAKE',
+				generation: 1,
+				attempts: MAX_TRANSITION_ATTEMPTS, // the takeover makes it 11
+				lease: { owner: 'wake:dead', expiresAt: NOW - 1 },
+			}),
+		)
+		const rds = fakeRds('starting', 1000)
+		const compute = fakeCompute()
+		const result = await drive(deps(fake.store, rds.control, compute.control))
+		expect(result.state).toBe('WAKING_DB')
+		expect(fake.current().state).toBe('ERROR')
+		expect(fake.claims).toEqual(['WAKING_DB->ERROR'])
+		expect(fake.current().lastError).toContain('continuations')
 	})
 })

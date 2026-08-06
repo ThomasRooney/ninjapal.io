@@ -11,6 +11,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as cdk from 'aws-cdk-lib'
 import * as budgets from 'aws-cdk-lib/aws-budgets'
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
+import * as cwactions from 'aws-cdk-lib/aws-cloudwatch-actions'
 import type * as dynamodb from 'aws-cdk-lib/aws-dynamodb'
 import * as events from 'aws-cdk-lib/aws-events'
 import * as targets from 'aws-cdk-lib/aws-events-targets'
@@ -24,6 +26,7 @@ import * as logs from 'aws-cdk-lib/aws-logs'
 import type * as rds from 'aws-cdk-lib/aws-rds'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions'
+import * as sqs from 'aws-cdk-lib/aws-sqs'
 import { Construct } from 'constructs'
 
 const lambdaDir = fileURLToPath(new URL('../lambda', import.meta.url))
@@ -76,6 +79,22 @@ export class Power extends Construct {
 				...overrides,
 			})
 
+		// The row is only ever touched with GetItem + conditional UpdateItem
+		// (seeding is an ops action under human credentials) — grant exactly
+		// that, not the grantReadWriteData superset (Put/Delete/Scan/Query).
+		const rowReadWrite = new iam.PolicyStatement({
+			actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem'],
+			resources: [props.table.tableArn],
+		})
+		const rowRead = new iam.PolicyStatement({
+			actions: ['dynamodb:GetItem'],
+			resources: [props.table.tableArn],
+		})
+		const rowWrite = new iam.PolicyStatement({
+			actions: ['dynamodb:UpdateItem'],
+			resources: [props.table.tableArn],
+		})
+
 		// --- wake orchestrator: the single driver of every transition -------
 		this.wake = fn('Wake', 'power/wake.ts', {
 			functionName: WAKE_FUNCTION_NAME,
@@ -87,7 +106,7 @@ export class Power extends Construct {
 				SELF_FUNCTION_NAME: WAKE_FUNCTION_NAME,
 			},
 		})
-		props.table.grantReadWriteData(this.wake)
+		this.wake.addToRolePolicy(rowReadWrite)
 		this.wake.addToRolePolicy(
 			new iam.PolicyStatement({
 				actions: [
@@ -152,7 +171,7 @@ export class Power extends Construct {
 			functionName: 'pitminder-power-idle-cron',
 			environment: { POWER_TABLE: props.table.tableName },
 		})
-		props.table.grantReadWriteData(idleCron)
+		idleCron.addToRolePolicy(rowReadWrite)
 		new events.Rule(this, 'IdleSchedule', {
 			ruleName: 'pitminder-power-idle',
 			schedule: events.Schedule.rate(cdk.Duration.minutes(30)),
@@ -167,7 +186,8 @@ export class Power extends Construct {
 				WAKE_FUNCTION_NAME,
 			},
 		})
-		props.table.grantReadData(reconciler)
+		// The reconciler only detects and delegates: read the row, invoke wake.
+		reconciler.addToRolePolicy(rowRead)
 		this.wake.grantInvoke(reconciler)
 		new events.Rule(this, 'ReconcileSchedule', {
 			ruleName: 'pitminder-power-reconcile',
@@ -195,9 +215,22 @@ export class Power extends Construct {
 			)
 		}
 
+		// Shutoff must not fail silently: async invocation failures land in a
+		// DLQ, and any message there raises an alarm to the alert topic.
+		const shutoffDlq = new sqs.Queue(this, 'BudgetShutoffDlq', {
+			queueName: 'pitminder-budget-shutoff-dlq',
+			retentionPeriod: cdk.Duration.days(14),
+			enforceSSL: true,
+		})
 		const shutoff = fn('BudgetShutoff', 'budget-shutoff.ts', {
 			functionName: 'pitminder-budget-shutoff',
-			environment: { EXECUTION_PARAM: EXECUTION_PARAM_NAME },
+			environment: {
+				EXECUTION_PARAM: EXECUTION_PARAM_NAME,
+				POWER_TABLE: props.table.tableName,
+				WAKE_FUNCTION_NAME,
+			},
+			deadLetterQueue: shutoffDlq,
+			retryAttempts: 2,
 		})
 		shutoff.addToRolePolicy(
 			new iam.PolicyStatement({
@@ -205,7 +238,24 @@ export class Power extends Construct {
 				resources: [executionParamArn],
 			}),
 		)
+		// The wind-down: force desiredState=SLEEPING + kick the orchestrator.
+		shutoff.addToRolePolicy(rowWrite)
+		this.wake.grantInvoke(shutoff)
 		shutoffTopic.addSubscription(new subscriptions.LambdaSubscription(shutoff))
+
+		new cloudwatch.Alarm(this, 'BudgetShutoffDlqAlarm', {
+			alarmName: 'pitminder-budget-shutoff-dlq',
+			alarmDescription:
+				'The budget shutoff Lambda failed after retries — the kill switch may NOT have been thrown. Investigate immediately.',
+			metric: shutoffDlq.metricApproximateNumberOfMessagesVisible({
+				period: cdk.Duration.minutes(5),
+			}),
+			threshold: 1,
+			evaluationPeriods: 1,
+			comparisonOperator:
+				cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+			treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+		}).addAlarmAction(new cwactions.SnsAction(alertTopic))
 
 		new budgets.CfnBudget(this, 'Budget', {
 			budget: {

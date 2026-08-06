@@ -1,9 +1,10 @@
 /**
  * The wake orchestrator ("wake" in the brief). Sole driver of the power-state
  * machine: triggered by DynamoDB Streams on the power row, by the reconciler,
- * by direct invokes (ops tooling), and by itself when a long RDS transition
- * outlives one Lambda invocation.
+ * by the budget shutoff, by direct invokes (ops tooling), and by itself when
+ * a long RDS transition outlives one Lambda invocation.
  */
+import { randomUUID } from 'node:crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda'
 import { RDSClient } from '@aws-sdk/client-rds'
@@ -36,6 +37,38 @@ interface WakePayload {
 	reason?: string
 	allowErrorRecovery?: boolean
 	checkDrift?: boolean
+	/** Successor owner identity handed over by the previous invocation. */
+	owner?: string
+}
+
+interface StreamRecordShape {
+	eventName?: string
+	dynamodb?: {
+		OldImage?: Record<string, { S?: string }>
+		NewImage?: Record<string, { S?: string }>
+	}
+}
+
+/**
+ * Stream no-op filter: the machine only needs driving when the row appears
+ * (INSERT) or `desiredState` changes. Every other MODIFY on the streamed row
+ * — activity stamps, lease heartbeats, the driver's own state claims (its
+ * in-process loop continues past them) — would otherwise re-invoke this
+ * handler just to stand down on the live lease. Direct invokes (no Records)
+ * always drive.
+ */
+export function shouldDrive(event: unknown): boolean {
+	const records = (event as { Records?: unknown[] } | null)?.Records
+	if (!Array.isArray(records)) return true
+	return records.some((record) => {
+		const r = record as StreamRecordShape
+		if (r.eventName === 'INSERT') return true
+		if (r.eventName !== 'MODIFY') return false
+		return (
+			r.dynamodb?.OldImage?.desiredState?.S !==
+			r.dynamodb?.NewImage?.desiredState?.S
+		)
+	})
 }
 
 export async function handler(
@@ -44,7 +77,14 @@ export async function handler(
 ): Promise<DriveResult | { state: string; steps: string[] }> {
 	const payload = (event ?? {}) as WakePayload
 	const depth = typeof payload.depth === 'number' ? payload.depth : 0
-	const owner = `wake:${context.awsRequestId}`
+	const owner = payload.owner ?? `wake:${context.awsRequestId}`
+
+	if (!shouldDrive(event)) {
+		return {
+			state: 'skipped',
+			steps: ['stream event without desiredState change'],
+		}
+	}
 
 	if (depth > MAX_REINVOKE_DEPTH) {
 		const row = await getRow(ddb, TABLE)
@@ -60,6 +100,7 @@ export async function handler(
 		return { state: 'ERROR', steps: ['reinvoke depth exhausted'] }
 	}
 
+	const successorOwner = `wake:${randomUUID()}`
 	const result = await drive({
 		store: createDdbPowerStore(ddb, TABLE),
 		rds: createRdsControl(rds, DB_INSTANCE_ID),
@@ -69,18 +110,21 @@ export async function handler(
 		allowErrorRecovery: payload.allowErrorRecovery === true,
 		checkDrift: payload.checkDrift === true,
 		remainingMs: () => context.getRemainingTimeInMillis(),
+		successorOwner,
 		reinvoke: async () => {
 			await lambda.send(
 				new InvokeCommand({
 					FunctionName: SELF_FUNCTION_NAME,
 					InvocationType: 'Event',
 					// Control fields only — a stream-event payload would otherwise
-					// re-send the entire Records batch through the chain.
+					// re-send the entire Records batch through the chain. The
+					// successor inherits the lease transferred to successorOwner.
 					Payload: JSON.stringify({
 						depth: depth + 1,
 						reason: 'reinvoke',
 						allowErrorRecovery: payload.allowErrorRecovery === true,
 						checkDrift: payload.checkDrift === true,
+						owner: successorOwner,
 					} satisfies WakePayload),
 				}),
 			)

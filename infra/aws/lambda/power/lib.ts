@@ -30,6 +30,10 @@ export const DEFAULT_LEASE_MS = 2 * 60 * 1000
  * stoppedAt + 6d18h with a controlled start -> probe -> restop cycle.
  */
 export const MAINTENANCE_AFTER_MS = (6 * 24 + 18) * 60 * 60 * 1000
+/** An operator keep-warm hold can defer the idle rule by at most 24h. */
+export const MAX_HOLD_MS = 24 * 60 * 60 * 1000
+/** Continuations (takeover/handoff) allowed per transition before ERROR. */
+export const MAX_TRANSITION_ATTEMPTS = 10
 
 /** Components that must report ready at the current generation for AWAKE. */
 export const COMPONENTS = ['zero-cache', 'sync-worker'] as const
@@ -105,6 +109,15 @@ export interface PowerRow {
 	maintenanceProbedAt?: number
 	/** component name -> generation it reported ready at. */
 	componentReady: Record<string, number>
+	/**
+	 * Continuations of the CURRENT transition (lease takeovers + reinvoke
+	 * handoffs). Reset by every claim; the driver claims ERROR past
+	 * MAX_TRANSITION_ATTEMPTS.
+	 */
+	attempts?: number
+	/** Operator hold: the idle rule is deferred while this is in the future.
+	 * Capped at now + MAX_HOLD_MS when written. Never affects requestWake. */
+	keepWarmUntil?: number
 	lastError?: string
 	updatedAt: number
 }
@@ -139,8 +152,12 @@ export function leaseActive(row: PowerRow, now: number): boolean {
 	return row.lease !== undefined && row.lease.expiresAt >= now
 }
 
-/** Idle rule: BOTH signals older than 8h (a missing signal counts as idle). */
+/**
+ * Idle rule: BOTH signals older than 8h (a missing signal counts as idle).
+ * An unexpired operator keep-warm hold defers idleness entirely.
+ */
 export function isIdle(row: PowerRow, now: number): boolean {
+	if (row.keepWarmUntil !== undefined && row.keepWarmUntil > now) return false
 	const web = row.lastWebAt ?? 0
 	const device = row.lastRealDeviceOnlineAt ?? 0
 	return now - web > IDLE_AFTER_MS && now - device > IDLE_AFTER_MS
@@ -430,12 +447,17 @@ export async function claimTransition(
 		'#updatedAt = :now',
 	]
 	const removes: string[] = []
+	names['#attempts'] = 'attempts'
 
 	if (isTransitional(to)) {
 		sets.push('#lease = :lease')
 		values[':lease'] = { owner, expiresAt: now + leaseMs } satisfies Lease
+		// A claim starts a fresh transition: its continuation budget resets.
+		sets.push('#attempts = :zero')
+		values[':zero'] = 0
 	} else {
 		removes.push('#lease')
+		removes.push('#attempts')
 	}
 	if (bumpsGeneration(from, to)) {
 		names['#generation'] = 'generation'
@@ -496,7 +518,8 @@ export async function takeoverLease(
 				TableName: table,
 				Key: { pk: POWER_PK },
 				UpdateExpression:
-					'SET #lease = :lease, #version = #version + :one, #updatedAt = :now',
+					'SET #lease = :lease, #version = #version + :one, ' +
+					'#attempts = if_not_exists(#attempts, :zero) + :one, #updatedAt = :now',
 				ConditionExpression:
 					'#state = :state AND #version = :v AND ' +
 					'(attribute_not_exists(#lease) OR #lease.expiresAt < :now)',
@@ -504,6 +527,7 @@ export async function takeoverLease(
 					'#state': 'state',
 					'#version': 'version',
 					'#lease': 'lease',
+					'#attempts': 'attempts',
 					'#updatedAt': 'updatedAt',
 				},
 				ExpressionAttributeValues: {
@@ -511,7 +535,55 @@ export async function takeoverLease(
 					':v': row.version,
 					':now': now,
 					':one': 1,
+					':zero': 0,
 					':lease': { owner, expiresAt: now + leaseMs } satisfies Lease,
+				},
+			}),
+		)
+		return { applied: true }
+	} catch (error) {
+		if (conditionFailed(error)) return { applied: false, reason: 'conflict' }
+		throw error
+	}
+}
+
+/**
+ * CAS-transfer a LIVE lease to a named successor — how an orchestrator
+ * invocation running out of time hands the in-flight transition to its
+ * self-reinvoked successor without waiting out the lease. Fenced on the
+ * current owner; counts as a continuation (attempts + 1).
+ */
+export async function transferLease(
+	ddb: DynamoDBDocumentClient,
+	table: string,
+	input: { fromOwner: string; toOwner: string; now: number; leaseMs?: number },
+): Promise<MutationResult> {
+	const leaseMs = input.leaseMs ?? DEFAULT_LEASE_MS
+	try {
+		await ddb.send(
+			new UpdateCommand({
+				TableName: table,
+				Key: { pk: POWER_PK },
+				UpdateExpression:
+					'SET #lease = :lease, ' +
+					'#attempts = if_not_exists(#attempts, :zero) + :one, #updatedAt = :now',
+				ConditionExpression:
+					'attribute_exists(#lease) AND #lease.#owner = :from',
+				ExpressionAttributeNames: {
+					'#lease': 'lease',
+					'#owner': 'owner',
+					'#attempts': 'attempts',
+					'#updatedAt': 'updatedAt',
+				},
+				ExpressionAttributeValues: {
+					':from': input.fromOwner,
+					':now': input.now,
+					':one': 1,
+					':zero': 0,
+					':lease': {
+						owner: input.toOwner,
+						expiresAt: input.now + leaseMs,
+					} satisfies Lease,
 				},
 			}),
 		)
@@ -634,6 +706,159 @@ export async function markMaintenanceProbed(
 		return { applied: true }
 	} catch (error) {
 		if (conditionFailed(error)) return { applied: false, reason: 'conflict' }
+		throw error
+	}
+}
+
+/**
+ * Force desiredState=SLEEPING regardless of activity — the budget shutoff's
+ * wind-down. The stream + a direct invoke then drive the drain. Bumps version
+ * like every desired-state change.
+ */
+export async function forceSleep(
+	ddb: DynamoDBDocumentClient,
+	table: string,
+	now: number,
+): Promise<MutationResult> {
+	try {
+		await ddb.send(
+			new UpdateCommand({
+				TableName: table,
+				Key: { pk: POWER_PK },
+				UpdateExpression:
+					'SET #desired = :sleeping, #version = #version + :one, #updatedAt = :now',
+				ConditionExpression: 'attribute_exists(#pk) AND #desired <> :sleeping',
+				ExpressionAttributeNames: {
+					'#pk': 'pk',
+					'#desired': 'desiredState',
+					'#version': 'version',
+					'#updatedAt': 'updatedAt',
+				},
+				ExpressionAttributeValues: {
+					':sleeping': 'SLEEPING',
+					':now': now,
+					':one': 1,
+				},
+			}),
+		)
+		return { applied: true }
+	} catch (error) {
+		if (conditionFailed(error))
+			return { applied: false, reason: 'already-desired' }
+		throw error
+	}
+}
+
+/**
+ * Operator keep-warm hold: defer the idle rule until `now + hours` (capped at
+ * MAX_HOLD_MS). Never shortens an existing longer hold — the condition
+ * rejects instead. Does not wake anything by itself.
+ */
+export async function holdWarm(
+	ddb: DynamoDBDocumentClient,
+	table: string,
+	now: number,
+	hours: number,
+): Promise<MutationResult & { until?: number }> {
+	const until = now + Math.min(Math.max(hours, 0) * 60 * 60 * 1000, MAX_HOLD_MS)
+	try {
+		await ddb.send(
+			new UpdateCommand({
+				TableName: table,
+				Key: { pk: POWER_PK },
+				UpdateExpression: 'SET #hold = :until, #updatedAt = :now',
+				ConditionExpression:
+					'attribute_exists(#pk) AND (attribute_not_exists(#hold) OR #hold < :until)',
+				ExpressionAttributeNames: {
+					'#pk': 'pk',
+					'#hold': 'keepWarmUntil',
+					'#updatedAt': 'updatedAt',
+				},
+				ExpressionAttributeValues: { ':until': until, ':now': now },
+			}),
+		)
+		return { applied: true, until }
+	} catch (error) {
+		if (conditionFailed(error)) return { applied: false, reason: 'stale' }
+		throw error
+	}
+}
+
+/** Release the keep-warm hold; the idle rule applies again immediately. */
+export async function releaseHold(
+	ddb: DynamoDBDocumentClient,
+	table: string,
+	now: number,
+): Promise<MutationResult> {
+	try {
+		await ddb.send(
+			new UpdateCommand({
+				TableName: table,
+				Key: { pk: POWER_PK },
+				UpdateExpression: 'REMOVE #hold SET #updatedAt = :now',
+				ConditionExpression:
+					'attribute_exists(#pk) AND attribute_exists(#hold)',
+				ExpressionAttributeNames: {
+					'#pk': 'pk',
+					'#hold': 'keepWarmUntil',
+					'#updatedAt': 'updatedAt',
+				},
+				ExpressionAttributeValues: { ':now': now },
+			}),
+		)
+		return { applied: true }
+	} catch (error) {
+		if (conditionFailed(error)) return { applied: false, reason: 'missing' }
+		throw error
+	}
+}
+
+/**
+ * The sync-worker's combined heartbeat: ONE generation-fenced write that
+ * marks the worker component ready and (when a NON-simulated device is
+ * online — the worker's check, not this library's) stamps
+ * lastRealDeviceOnlineAt. A write for a superseded generation is rejected
+ * whole, so a draining worker can never resurrect activity.
+ */
+export async function workerHeartbeat(
+	ddb: DynamoDBDocumentClient,
+	table: string,
+	input: {
+		generation: number
+		now: number
+		realDeviceOnline: boolean
+		component?: string
+	},
+): Promise<MutationResult> {
+	const sets = ['#ready.#c = :gen', '#updatedAt = :now']
+	const names: Record<string, string> = {
+		'#pk': 'pk',
+		'#ready': 'componentReady',
+		'#c': input.component ?? 'sync-worker',
+		'#generation': 'generation',
+		'#updatedAt': 'updatedAt',
+	}
+	if (input.realDeviceOnline) {
+		sets.push('#device = :now')
+		names['#device'] = 'lastRealDeviceOnlineAt'
+	}
+	try {
+		await ddb.send(
+			new UpdateCommand({
+				TableName: table,
+				Key: { pk: POWER_PK },
+				UpdateExpression: `SET ${sets.join(', ')}`,
+				ConditionExpression: 'attribute_exists(#pk) AND #generation = :gen',
+				ExpressionAttributeNames: names,
+				ExpressionAttributeValues: {
+					':gen': input.generation,
+					':now': input.now,
+				},
+			}),
+		)
+		return { applied: true }
+	} catch (error) {
+		if (conditionFailed(error)) return { applied: false, reason: 'stale' }
 		throw error
 	}
 }

@@ -9,6 +9,8 @@ import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
 import {
 	COMPONENTS,
 	type ClaimInput,
+	DEFAULT_LEASE_MS,
+	MAX_TRANSITION_ATTEMPTS,
 	type MutationResult,
 	type PowerRow,
 	type PowerState,
@@ -23,6 +25,7 @@ import {
 	markMaintenanceProbed,
 	recordSoftError,
 	takeoverLease,
+	transferLease,
 } from './lib'
 
 /** RDS instance control. Implementations must tolerate InvalidDBInstanceState
@@ -81,6 +84,11 @@ export interface PowerStore {
 		owner: string,
 		now: number,
 	): Promise<MutationResult>
+	transfer(
+		fromOwner: string,
+		toOwner: string,
+		now: number,
+	): Promise<MutationResult>
 	recordSoftError(message: string, now: number): Promise<MutationResult>
 }
 
@@ -98,6 +106,8 @@ export function createDdbPowerStore(
 			markComponentReady(ddb, table, { component, generation, now }),
 		markMaintenanceProbed: (row, owner, now) =>
 			markMaintenanceProbed(ddb, table, row, owner, now),
+		transfer: (fromOwner, toOwner, now) =>
+			transferLease(ddb, table, { fromOwner, toOwner, now }),
 		recordSoftError: (message, now) =>
 			recordSoftError(ddb, table, message, now),
 	}
@@ -121,6 +131,12 @@ export interface DriverDeps {
 	/** Lambda budget; when low the driver re-invokes itself and exits. */
 	remainingMs?: () => number
 	reinvoke?: () => Promise<void>
+	/**
+	 * Owner identity the reinvoked successor will run under. When set and we
+	 * hold the lease, the out-of-time path CAS-transfers the lease to it so
+	 * the successor continues immediately instead of waiting out the expiry.
+	 */
+	successorOwner?: string
 	log?: (message: string) => void
 }
 
@@ -159,11 +175,26 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 		steps,
 	})
 
-	/** Gate before paid mutations. Fail closed: any doubt refuses the spend. */
-	const gate = async (what: string): Promise<boolean> => {
+	/**
+	 * Gate before paid mutations. Fail closed: any doubt refuses the spend.
+	 * On refusal the machine transitions ONCE into ERROR via a conditional
+	 * claim; when the row is already ERROR nothing is written at all. (An
+	 * unconditional error write here would stream-trigger the orchestrator,
+	 * which would refuse and write again — an infinite loop.)
+	 */
+	const gate = async (row: PowerRow, what: string): Promise<boolean> => {
 		if (await execution.isEnabled()) return true
-		await store.recordSoftError(`execution disabled: refused ${what}`, now())
 		step(`refused ${what}: execution disabled`)
+		if (row.state !== 'ERROR') {
+			await store.claim({
+				row,
+				to: 'ERROR',
+				owner,
+				now: now(),
+				errorMessage: `execution disabled: refused ${what}`,
+			})
+			// A rejection means someone else already moved the row — fine.
+		}
 		return false
 	}
 
@@ -176,6 +207,10 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 	): Promise<'held' | 'taken' | 'lost'> => {
 		const t = now()
 		if (row.lease?.owner === owner) {
+			// Renew only once the lease has burned through half its TTL —
+			// with a 2-min lease that is one conditional write per ~minute of
+			// waiting, not one per poll tick (each write is a stream event).
+			if (row.lease.expiresAt - t > DEFAULT_LEASE_MS / 2) return 'held'
 			const hb = await store.heartbeat(owner, row.generation, t)
 			if (!hb.applied) {
 				step('heartbeat rejected: superseded')
@@ -202,6 +237,20 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 
 		if (remainingMs() < REINVOKE_THRESHOLD_MS) {
 			if (isTransitional(row.state) && deps.reinvoke) {
+				if (deps.successorOwner && row.lease?.owner === owner) {
+					// Hand the live lease to the successor so it continues
+					// immediately instead of standing down until expiry.
+					const transfer = await store.transfer(
+						owner,
+						deps.successorOwner,
+						now(),
+					)
+					step(
+						transfer.applied
+							? `lease handed to ${deps.successorOwner}`
+							: 'lease handoff lost',
+					)
+				}
 				await deps.reinvoke()
 				step('out of time: re-invoked self')
 			}
@@ -214,12 +263,23 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			const leaseState = await ensureLease(row)
 			if (leaseState === 'lost') return done(row.state)
 			if (leaseState === 'taken') continue
+			// Continuation budget: a transition that keeps needing takeovers
+			// or handoffs is stuck — park it in ERROR for the reconciler.
+			if ((row.attempts ?? 0) > MAX_TRANSITION_ATTEMPTS) {
+				await claimStep(
+					row,
+					'ERROR',
+					`transition ${row.state} exceeded ${MAX_TRANSITION_ATTEMPTS} continuations`,
+				)
+				return done(row.state)
+			}
 		}
 
 		switch (row.state) {
 			case 'SLEEPING': {
 				if (row.desiredState === 'AWAKE') {
-					if (!(await gate('StartDBInstance (wake)'))) return done(row.state)
+					if (!(await gate(row, 'StartDBInstance (wake)')))
+						return done(row.state)
 					const res = await claimStep(row, 'WAKING_DB')
 					if (!res) return done(row.state)
 					continue
@@ -248,7 +308,7 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					continue
 				}
 				if (status === 'stopped') {
-					if (!(await gate('StartDBInstance'))) return done(row.state)
+					if (!(await gate(row, 'StartDBInstance'))) return done(row.state)
 					await rds.start()
 					step('rds start requested')
 				}
@@ -257,7 +317,7 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			}
 
 			case 'WAKING_SERVICES': {
-				if (!(await gate('ECS scale-up'))) return done(row.state)
+				if (!(await gate(row, 'ECS scale-up'))) return done(row.state)
 				await compute.scaleUp(row.generation)
 				const ready = await compute.readyComponents(row.generation)
 				for (const component of ready) {
@@ -338,7 +398,7 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 						if (!(await claimStep(row, 'SLEEPING'))) return done(row.state)
 						continue
 					}
-					if (!(await gate('StartDBInstance (maintenance)')))
+					if (!(await gate(row, 'StartDBInstance (maintenance)')))
 						return done(row.state)
 					await rds.start()
 					step('maintenance rds start requested')
@@ -365,7 +425,10 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 				if (!allowErrorRecovery) return done(row.state)
 				const to: PowerState =
 					row.desiredState === 'AWAKE' ? 'WAKING_DB' : 'SLEEPING'
-				if (to === 'WAKING_DB' && !(await gate('StartDBInstance (recovery)')))
+				if (
+					to === 'WAKING_DB' &&
+					!(await gate(row, 'StartDBInstance (recovery)'))
+				)
 					return done(row.state)
 				if (!(await claimStep(row, to))) return done(row.state)
 				step(`recovered ERROR -> ${to}`)

@@ -13,6 +13,7 @@ import {
 	COMPONENTS,
 	IDLE_AFTER_MS,
 	MAINTENANCE_AFTER_MS,
+	MAX_HOLD_MS,
 	type PowerRow,
 	type PowerState,
 	STATES,
@@ -20,17 +21,22 @@ import {
 	WEB_STAMP_THROTTLE_MS,
 	allComponentsReady,
 	claimTransition,
+	forceSleep,
 	heartbeat,
+	holdWarm,
 	isIdle,
 	maintenanceDue,
 	markComponentReady,
 	markMaintenanceProbed,
+	releaseHold,
 	requestSleep,
 	requestWake,
 	seedRow,
 	stampRealDeviceOnline,
 	stampWebActivity,
 	takeoverLease,
+	transferLease,
+	workerHeartbeat,
 } from '../lambda/power/lib'
 
 const TABLE = 'pitminder-power-test'
@@ -139,15 +145,18 @@ describe('transition table — exhaustive from x to matrix', () => {
 				expect(
 					input.UpdateExpression?.includes('#generation = #generation + :one'),
 				).toBe(bumps)
-				// Transitional targets carry a lease; terminal targets drop it.
+				// Transitional targets carry a lease and a fresh continuation
+				// budget; terminal targets drop both.
 				if (TRANSITIONAL.has(to)) {
 					expect(input.UpdateExpression).toContain('#lease = :lease')
+					expect(input.UpdateExpression).toContain('#attempts = :zero')
 					expect(input.ExpressionAttributeValues?.[':lease']).toEqual({
 						owner: 'test-owner',
 						expiresAt: NOW + 2 * 60 * 1000,
 					})
 				} else {
 					expect(input.UpdateExpression).toMatch(/REMOVE .*#lease/)
+					expect(input.UpdateExpression).toMatch(/REMOVE .*#attempts/)
 				}
 				// Entering SLEEPING resets stoppedAt and clears the probe marker.
 				if (to === 'SLEEPING') {
@@ -458,5 +467,154 @@ describe('seeding', () => {
 		ddbMock.on(PutCommand).rejects(conditionFailure())
 		const res = await seedRow(doc, TABLE, NOW)
 		expect(res).toEqual({ applied: false, reason: 'exists' })
+	})
+})
+
+describe('lease transfer (reinvoke handoff)', () => {
+	it('is fenced on the CURRENT owner and counts as a continuation', async () => {
+		await transferLease(doc, TABLE, {
+			fromOwner: 'wake:first',
+			toOwner: 'wake:successor',
+			now: NOW,
+		})
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.ConditionExpression).toBe(
+			'attribute_exists(#lease) AND #lease.#owner = :from',
+		)
+		expect(input.ExpressionAttributeValues?.[':from']).toBe('wake:first')
+		expect(input.ExpressionAttributeValues?.[':lease']).toEqual({
+			owner: 'wake:successor',
+			expiresAt: NOW + 2 * 60 * 1000,
+		})
+		expect(input.UpdateExpression).toContain(
+			'#attempts = if_not_exists(#attempts, :zero) + :one',
+		)
+	})
+
+	it('rejects when the lease moved on', async () => {
+		ddbMock.on(UpdateCommand).rejects(conditionFailure())
+		const res = await transferLease(doc, TABLE, {
+			fromOwner: 'wake:stale',
+			toOwner: 'wake:successor',
+			now: NOW,
+		})
+		expect(res).toEqual({ applied: false, reason: 'conflict' })
+	})
+
+	it('takeover also counts as a continuation', async () => {
+		const row = makeRow({
+			state: 'WAKING_DB',
+			lease: { owner: 'dead', expiresAt: NOW - 1 },
+		})
+		await takeoverLease(doc, TABLE, row, 'me', NOW)
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.UpdateExpression).toContain(
+			'#attempts = if_not_exists(#attempts, :zero) + :one',
+		)
+	})
+})
+
+describe('budget wind-down (forceSleep)', () => {
+	it('forces desiredState=SLEEPING regardless of activity, version-bumped', async () => {
+		await forceSleep(doc, TABLE, NOW)
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.ConditionExpression).toBe(
+			'attribute_exists(#pk) AND #desired <> :sleeping',
+		)
+		expect(input.UpdateExpression).toContain('#desired = :sleeping')
+		expect(input.UpdateExpression).toContain('#version = #version + :one')
+	})
+
+	it('no-ops when already desired sleeping', async () => {
+		ddbMock.on(UpdateCommand).rejects(conditionFailure())
+		const res = await forceSleep(doc, TABLE, NOW)
+		expect(res).toEqual({ applied: false, reason: 'already-desired' })
+	})
+})
+
+describe('keep-warm hold', () => {
+	it('defers the idle rule while unexpired, and only then', () => {
+		const old = NOW - IDLE_AFTER_MS - 1
+		const idleRow = makeRow({
+			state: 'AWAKE',
+			lastWebAt: old,
+			lastRealDeviceOnlineAt: old,
+		})
+		expect(isIdle(idleRow, NOW)).toBe(true)
+		idleRow.keepWarmUntil = NOW + 1
+		expect(isIdle(idleRow, NOW)).toBe(false)
+		idleRow.keepWarmUntil = NOW // expired exactly now
+		expect(isIdle(idleRow, NOW)).toBe(true)
+	})
+
+	it('caps the hold at 24h', async () => {
+		const res = await holdWarm(doc, TABLE, NOW, 72)
+		expect(res.applied).toBe(true)
+		expect(res.until).toBe(NOW + MAX_HOLD_MS)
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.ExpressionAttributeValues?.[':until']).toBe(NOW + MAX_HOLD_MS)
+	})
+
+	it('never shortens an existing longer hold (condition rejects)', async () => {
+		const first = await holdWarm(doc, TABLE, NOW, 2)
+		expect(first.applied).toBe(true)
+		expect(first.applied && first.until).toBe(NOW + 2 * 60 * 60 * 1000)
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.ConditionExpression).toBe(
+			'attribute_exists(#pk) AND (attribute_not_exists(#hold) OR #hold < :until)',
+		)
+		ddbMock.on(UpdateCommand).rejects(conditionFailure())
+		const shorter = await holdWarm(doc, TABLE, NOW, 1)
+		expect(shorter).toEqual({ applied: false, reason: 'stale' })
+	})
+
+	it('release removes the hold conditionally', async () => {
+		await releaseHold(doc, TABLE, NOW)
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.UpdateExpression).toBe('REMOVE #hold SET #updatedAt = :now')
+		expect(input.ConditionExpression).toBe(
+			'attribute_exists(#pk) AND attribute_exists(#hold)',
+		)
+	})
+})
+
+describe('worker heartbeat (single generation-fenced write)', () => {
+	it('marks the worker ready and stamps device activity in ONE write', async () => {
+		await workerHeartbeat(doc, TABLE, {
+			generation: 4,
+			now: NOW,
+			realDeviceOnline: true,
+		})
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.UpdateExpression).toBe(
+			'SET #ready.#c = :gen, #updatedAt = :now, #device = :now',
+		)
+		expect(input.ConditionExpression).toBe(
+			'attribute_exists(#pk) AND #generation = :gen',
+		)
+		expect(input.ExpressionAttributeNames?.['#c']).toBe('sync-worker')
+	})
+
+	it('omits the device stamp when no real device is online (sim exclusion is the caller check)', async () => {
+		await workerHeartbeat(doc, TABLE, {
+			generation: 4,
+			now: NOW,
+			realDeviceOnline: false,
+		})
+		const input = ddbMock.commandCalls(UpdateCommand)[0].args[0].input
+		expect(input.UpdateExpression).toBe(
+			'SET #ready.#c = :gen, #updatedAt = :now',
+		)
+		expect(input.ExpressionAttributeNames?.['#device']).toBeUndefined()
+	})
+
+	it('a superseded-generation worker can neither mark ready nor resurrect activity', async () => {
+		ddbMock.on(UpdateCommand).rejects(conditionFailure())
+		const res = await workerHeartbeat(doc, TABLE, {
+			generation: 3,
+			now: NOW,
+			realDeviceOnline: true,
+		})
+		expect(res).toEqual({ applied: false, reason: 'stale' })
 	})
 })

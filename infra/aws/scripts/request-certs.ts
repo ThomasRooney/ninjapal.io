@@ -35,20 +35,74 @@ const REGIONS = ['eu-west-2', 'us-east-1'] as const
 const ssm = new SSMClient({ region: 'eu-west-2' })
 const route53 = new Route53Client({})
 
+/** The full SAN set a matching certificate must carry — exactly. */
+const EXPECTED_SANS = new Set([DOMAIN, ...SANS])
+
+function sanSetMatches(sans: string[] | undefined): boolean {
+	if (!sans) return false
+	const set = new Set(sans)
+	return (
+		set.size === EXPECTED_SANS.size &&
+		[...EXPECTED_SANS].every((d) => set.has(d))
+	)
+}
+
+/** Does this ARN point at a live cert with exactly our domain + SAN set? */
+async function verifyCert(acm: ACMClient, arn: string): Promise<boolean> {
+	try {
+		const res = await acm.send(
+			new DescribeCertificateCommand({ CertificateArn: arn }),
+		)
+		const cert = res.Certificate
+		return (
+			cert?.DomainName === DOMAIN &&
+			sanSetMatches(cert?.SubjectAlternativeNames) &&
+			(cert?.Status === 'PENDING_VALIDATION' || cert?.Status === 'ISSUED')
+		)
+	} catch {
+		return false
+	}
+}
+
 async function findOrRequest(region: string): Promise<string> {
 	const acm = new ACMClient({ region })
-	const list = await acm.send(
-		new ListCertificatesCommand({
-			CertificateStatuses: ['PENDING_VALIDATION', 'ISSUED'],
-		}),
-	)
-	const existing = list.CertificateSummaryList?.find(
-		(c) => c.DomainName === DOMAIN,
-	)
-	if (existing?.CertificateArn) {
-		console.log(`${region}: reusing ${existing.CertificateArn}`)
-		return existing.CertificateArn
+
+	// The SSM-stored ARN is authoritative: reuse it as long as it still
+	// points at a live cert with the exact domain + SAN set.
+	const paramName = `/pitminder/prod/data/acm-cert-arn-${region}`
+	try {
+		const stored = await ssm.send(new GetParameterCommand({ Name: paramName }))
+		const arn = stored.Parameter?.Value
+		if (arn && (await verifyCert(acm, arn))) {
+			console.log(`${region}: reusing SSM-stored ${arn}`)
+			return arn
+		}
+	} catch {
+		// parameter absent — first run
 	}
+
+	// Otherwise scan the account (paginated) for an exact-match certificate.
+	let nextToken: string | undefined
+	do {
+		const list = await acm.send(
+			new ListCertificatesCommand({
+				CertificateStatuses: ['PENDING_VALIDATION', 'ISSUED'],
+				NextToken: nextToken,
+			}),
+		)
+		for (const summary of list.CertificateSummaryList ?? []) {
+			if (
+				summary.DomainName === DOMAIN &&
+				summary.CertificateArn &&
+				(await verifyCert(acm, summary.CertificateArn))
+			) {
+				console.log(`${region}: reusing ${summary.CertificateArn}`)
+				return summary.CertificateArn
+			}
+		}
+		nextToken = list.NextToken
+	} while (nextToken)
+
 	const requested = await acm.send(
 		new RequestCertificateCommand({
 			DomainName: DOMAIN,

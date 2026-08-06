@@ -5,6 +5,8 @@
  *   bun scripts/power-tool.ts seed [STATE]      # create the row (default SLEEPING)
  *   bun scripts/power-tool.ts wake              # desiredState=AWAKE (stream drives the orchestrator)
  *   bun scripts/power-tool.ts force-idle        # backdate activity >8h, then invoke the idle cron
+ *   bun scripts/power-tool.ts hold <hours>     # keep-warm hold (defers idle; capped 24h)
+ *   bun scripts/power-tool.ts release           # release the keep-warm hold
  *   bun scripts/power-tool.ts invoke-reconciler
  *   bun scripts/power-tool.ts watch             # poll row + RDS every 5s, log every change with timings
  */
@@ -17,6 +19,8 @@ import {
 	type PowerState,
 	STATES,
 	getRow,
+	holdWarm,
+	releaseHold,
 	requestWake,
 	seedRow,
 } from '../lambda/power/lib'
@@ -131,6 +135,27 @@ switch (command) {
 	case 'force-idle':
 		await forceIdle()
 		break
+	case 'hold': {
+		const hours = Number(process.argv[3])
+		if (!Number.isFinite(hours) || hours <= 0) {
+			console.error('usage: power-tool.ts hold <hours>')
+			process.exit(1)
+		}
+		const res = await holdWarm(ddb, TABLE, Date.now(), hours)
+		console.log(
+			res.applied
+				? `held warm until ${new Date(res.until ?? 0).toISOString()}`
+				: `not applied: ${res.reason} (an existing hold reaches further)`,
+		)
+		break
+	}
+	case 'release': {
+		const res = await releaseHold(ddb, TABLE, Date.now())
+		console.log(
+			res.applied ? 'hold released' : `no hold to release (${res.reason})`,
+		)
+		break
+	}
 	case 'invoke-reconciler':
 		await invokeReconciler()
 		break
@@ -139,7 +164,7 @@ switch (command) {
 		break
 	default:
 		console.error(
-			'usage: power-tool.ts <status|seed [STATE]|wake|force-idle|invoke-reconciler|watch>',
+			'usage: power-tool.ts <status|seed [STATE]|wake|force-idle|hold <hours>|release|invoke-reconciler|watch>',
 		)
 		process.exit(1)
 }
