@@ -14,13 +14,15 @@ async function serveAuthServerMetadata(request: Request): Promise<Response> {
 	return oauthProviderAuthServerMetadata(auth)(request)
 }
 
-export const Route = createFileRoute('/.well-known/oauth-authorization-server')({
-	server: {
-		handlers: {
-			GET: ({ request }: { request: Request }) =>
-				serveAuthServerMetadata(request),
+export const Route = createFileRoute('/.well-known/oauth-authorization-server')(
+	{
+		server: {
+			handlers: {
+				GET: ({ request }: { request: Request }) =>
+					serveAuthServerMetadata(request),
+			},
 		},
 	},
-})
+)
 
 export { serveAuthServerMetadata }

@@ -5,7 +5,9 @@ import { createFileRoute } from '@tanstack/react-router'
  * with a path component (ours is {origin}/api/auth) request
  * /.well-known/oauth-authorization-server/api/auth — serve the same document.
  */
-export const Route = createFileRoute('/.well-known/oauth-authorization-server/$')({
+export const Route = createFileRoute(
+	'/.well-known/oauth-authorization-server/$',
+)({
 	server: {
 		handlers: {
 			GET: async ({ request }: { request: Request }) => {
