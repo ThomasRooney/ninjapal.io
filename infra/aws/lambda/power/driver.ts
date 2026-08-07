@@ -317,6 +317,15 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			}
 
 			case 'WAKING_DB': {
+				// Sleep cancels waking (budget shutoff / operator abort): route
+				// into the UNGATED cleanup half BEFORE consulting the gate —
+				// stops only reduce spend, and a tripped breaker must never
+				// strand a started NAT/RDS behind a refused paid mutation.
+				if (row.desiredState === 'SLEEPING') {
+					if (!(await claimStep(row, 'STOPPING_DB'))) return done(row.state)
+					step('wake aborted: emergency cleanup')
+					continue
+				}
 				const status = await rds.status()
 				if (status === 'available') {
 					if (!(await claimStep(row, 'WAKING_SERVICES'))) return done(row.state)
@@ -337,6 +346,13 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			}
 
 			case 'WAKING_SERVICES': {
+				// Sleep cancels waking: services may already be up — drain them
+				// (ungated), then STOPPING_DB handles NAT + RDS.
+				if (row.desiredState === 'SLEEPING') {
+					if (!(await claimStep(row, 'DRAINING'))) return done(row.state)
+					step('wake aborted: draining services')
+					continue
+				}
 				if (!(await gate(row, 'ECS scale-up'))) return done(row.state)
 				await compute.scaleUp(row.generation)
 				const ready = await compute.readyComponents(row.generation)

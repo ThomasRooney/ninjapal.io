@@ -77,8 +77,10 @@ beforeEach(() => {
  */
 const SPEC: Record<PowerState, PowerState[]> = {
 	SLEEPING: ['WAKING_DB', 'SLEEP_MAINTENANCE', 'ERROR'],
-	WAKING_DB: ['WAKING_SERVICES', 'ERROR'],
-	WAKING_SERVICES: ['AWAKE', 'ERROR'],
+	// STOPPING_DB / DRAINING are "sleep cancels waking" (budget shutoff or
+	// operator abort mid-wake) — the ungated emergency cleanup path.
+	WAKING_DB: ['WAKING_SERVICES', 'STOPPING_DB', 'ERROR'],
+	WAKING_SERVICES: ['AWAKE', 'DRAINING', 'ERROR'],
 	AWAKE: ['DRAINING', 'ERROR'],
 	DRAINING: ['STOPPING_DB', 'WAKING_SERVICES', 'ERROR'],
 	STOPPING_DB: ['SLEEPING', 'ERROR'],
