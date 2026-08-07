@@ -29,6 +29,7 @@ export const Route = createFileRoute('/api/chat')({
 					{ InMemoryTransport },
 					{ createLogger },
 					{ partsWithinCap, selectRecentTurns, steerRowsToUIMessages },
+					{ waitUntil },
 				] = await Promise.all([
 					import('@/lib/auth'),
 					import('@/server/mcp/pitminder-server'),
@@ -39,6 +40,7 @@ export const Route = createFileRoute('/api/chat')({
 					import('@modelcontextprotocol/sdk/inMemory.js'),
 					import('@/lib/log'),
 					import('@/lib/steer-chat'),
+					import('@/server/lambda-wait-until'),
 				])
 
 				const log = createLogger('chat')
@@ -232,61 +234,70 @@ export const Route = createFileRoute('/api/chat')({
 				// HTTP response's own onFinish fires early with whatever the
 				// client saw when it disconnects — this reader does not, so the
 				// assistant half lands even mid-refresh.
-				void (async () => {
-					try {
-						let assistantMessage: { parts?: unknown[] } | undefined
-						for await (const uiMessage of ai.readUIMessageStream({
-							stream: result.toUIMessageStream(),
-						})) {
-							assistantMessage = uiMessage
-						}
-						const parts = assistantMessage?.parts ?? []
-						if (parts.length === 0) {
-							log.warn('assistant turn empty — not persisted', {
+				//
+				// On Lambda this MUST be registered with the invocation's
+				// waitUntil registry: the sandbox freezes at response end
+				// (callbackWaitsForEmptyEventLoop=false) and a detached
+				// promise thaws minutes later inside another request, where
+				// its insert times out (observed live). Elsewhere waitUntil
+				// is a no-op and the promise stays detached as before.
+				waitUntil(
+					(async () => {
+						try {
+							let assistantMessage: { parts?: unknown[] } | undefined
+							for await (const uiMessage of ai.readUIMessageStream({
+								stream: result.toUIMessageStream(),
+							})) {
+								assistantMessage = uiMessage
+							}
+							const parts = assistantMessage?.parts ?? []
+							if (parts.length === 0) {
+								log.warn('assistant turn empty — not persisted', {
+									userId,
+									threadId,
+									turnId,
+								})
+								return
+							}
+							if (!partsWithinCap(parts)) {
+								// Server-generated and bounded by stepCountIs(8); log
+								// loudly but keep the history rather than lose the turn.
+								log.warn('assistant parts over size cap — persisting anyway', {
+									userId,
+									threadId,
+									turnId,
+								})
+							}
+							// Persist against the thread captured at request start
+							// even if a reset closed it mid-stream: history is
+							// preserved in the archived thread and the UI already
+							// shows the fresh one.
+							const inserted = await sql`
+								insert into steer_messages
+									(thread_id, user_id, device_id, session_id, turn_id, role, parts)
+								values
+									(${threadId}::uuid, ${userId}::uuid, ${deviceId}::uuid,
+									${sessionId}, ${turnId}::uuid, 'assistant',
+									${JSON.stringify(parts)}::jsonb)
+								on conflict (thread_id, turn_id, role) do nothing
+								returning id
+							`
+							log.info('assistant turn persisted', {
 								userId,
 								threadId,
 								turnId,
+								deduped: inserted.length === 0,
 							})
-							return
-						}
-						if (!partsWithinCap(parts)) {
-							// Server-generated and bounded by stepCountIs(8); log
-							// loudly but keep the history rather than lose the turn.
-							log.warn('assistant parts over size cap — persisting anyway', {
+						} catch (error) {
+							log.error('assistant turn persistence failed', {
 								userId,
 								threadId,
 								turnId,
+								error: chatErrorForLog(error),
 							})
 						}
-						// Persist against the thread captured at request start
-						// even if a reset closed it mid-stream: history is
-						// preserved in the archived thread and the UI already
-						// shows the fresh one.
-						const inserted = await sql`
-							insert into steer_messages
-								(thread_id, user_id, device_id, session_id, turn_id, role, parts)
-							values
-								(${threadId}::uuid, ${userId}::uuid, ${deviceId}::uuid,
-								${sessionId}, ${turnId}::uuid, 'assistant',
-								${JSON.stringify(parts)}::jsonb)
-							on conflict (thread_id, turn_id, role) do nothing
-							returning id
-						`
-						log.info('assistant turn persisted', {
-							userId,
-							threadId,
-							turnId,
-							deduped: inserted.length === 0,
-						})
-					} catch (error) {
-						log.error('assistant turn persistence failed', {
-							userId,
-							threadId,
-							turnId,
-							error: chatErrorForLog(error),
-						})
-					}
-				})()
+					})(),
+				)
 
 				return result.toUIMessageStreamResponse({
 					originalMessages: contextMessages,

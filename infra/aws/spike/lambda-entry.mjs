@@ -22,6 +22,7 @@ import {
 	normalizeLambdaOutgoingHeaders,
 } from 'nitropack/runtime/internal'
 import { parseLambdaEvent } from './lambda-event.mjs'
+import { createWaitUntilRegistry } from './lambda-wait-until.mjs'
 
 const nitroApp = useNitroApp()
 
@@ -37,6 +38,16 @@ export const handler = awslambda.streamifyResponse(
 		// the sandbox and thaw on the next invoke (the classic Lambda+RDBMS
 		// pattern).
 		context.callbackWaitsForEmptyEventLoop = false
+		// ...but that freeze must NOT strand legitimate background work
+		// (P0, CloudWatch-proven: the chat persistence tee thawed 5 minutes
+		// later inside another request and ETIMEDOUT'd). App code registers
+		// such promises via globalThis.__pitminderWaitUntil (see
+		// src/server/lambda-wait-until.ts); they are flushed after the
+		// response stream has fully ended, before the handler resolves. One
+		// invocation at a time per sandbox, so a per-invocation global is
+		// race-free.
+		const waitUntil = createWaitUntilRegistry()
+		globalThis.__pitminderWaitUntil = waitUntil.register
 		// Pure, unit-tested parsing (v1.0 + v2.0): infra/aws/spike/lambda-event.mjs
 		const { url, method, query, headers, body } = parseLambdaEvent(event)
 
@@ -82,15 +93,18 @@ export const handler = awslambda.streamifyResponse(
 			// favicon.ico 4286B -> 6608B with U+FFFD replacements).
 			writer.write(typeof resBody === 'string' ? Buffer.from(resBody) : resBody)
 			writer.end()
-			return
+		} else {
+			const reader = resBody.getReader()
+			let readResult = await reader.read()
+			while (!readResult.done) {
+				writer.write(readResult.value)
+				readResult = await reader.read()
+			}
+			writer.end()
 		}
 
-		const reader = resBody.getReader()
-		let readResult = await reader.read()
-		while (!readResult.done) {
-			writer.write(readResult.value)
-			readResult = await reader.read()
-		}
-		writer.end()
+		// Response fully streamed; now settle registered background work.
+		// The client never waits on this — only the sandbox does.
+		await waitUntil.flush()
 	},
 )
