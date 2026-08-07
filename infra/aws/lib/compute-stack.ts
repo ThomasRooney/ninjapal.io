@@ -85,6 +85,15 @@ export interface ComputeStackProps extends cdk.StackProps {
 	 */
 	appSecretVersion: string
 	/**
+	 * Reserved concurrency for the SSR Lambda (P1-c cost guard). Deploy-time
+	 * FACT (verified live): this account's TOTAL Lambda concurrency quota is
+	 * 10 — a reservation must leave >=10 unreserved, so ANY value fails
+	 * today, and the account quota itself already caps the function harder
+	 * than the intended 10. Set (-c ssrReservedConcurrency=10) only after a
+	 * Service Quotas raise; 0/undefined = no reservation.
+	 */
+	ssrReservedConcurrency?: number
+	/**
 	 * REHEARSAL ONLY (pre-cutover): hostname CloudFront can resolve to the
 	 * CURRENT zero-cache task public IP (e.g. `18-168-220-173.sslip.io` —
 	 * the zone isn't delegated yet, so zero-origin.pitminder.com does not
@@ -260,10 +269,12 @@ export class ComputeStack extends cdk.Stack {
 			// 4.3s vs 7.6s at 1024 (spike FINDINGS.md). Worth it.
 			memorySize: 2048,
 			timeout: cdk.Duration.seconds(29),
-			// Pre-cutover cost guard (P1-c): a public default-cert domain can
-			// be crawled/abused; 10 concurrent 2GB sandboxes caps the worst
-			// case at pennies. Revisit after cutover with real traffic.
-			reservedConcurrentExecutions: 10,
+			// Pre-cutover cost guard (P1-c): today the ACCOUNT quota (10
+			// concurrent, verified live — new-account default) is the cap;
+			// an explicit reservation only becomes legal after a quota raise.
+			...(props.ssrReservedConcurrency
+				? { reservedConcurrentExecutions: props.ssrReservedConcurrency }
+				: {}),
 			vpc,
 			vpcSubnets: { subnets: vpc.isolatedSubnets },
 			securityGroups: [ssrSg],

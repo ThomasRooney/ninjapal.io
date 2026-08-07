@@ -58,11 +58,7 @@ describe('pitminder-compute synth (rehearsal mode)', () => {
 		}
 	})
 
-	it('cost guards: reserved concurrency on the SSR Lambda + stage throttling (P1-c)', () => {
-		template.hasResourceProperties('AWS::Lambda::Function', {
-			FunctionName: 'pitminder-ssr',
-			ReservedConcurrentExecutions: 10,
-		})
+	it('cost guards: stage throttling always; concurrency reservation opt-in (P1-c)', () => {
 		template.hasResourceProperties('AWS::ApiGateway::Stage', {
 			StageName: 'prod',
 			MethodSettings: Match.arrayWith([
@@ -71,6 +67,31 @@ describe('pitminder-compute synth (rehearsal mode)', () => {
 					ThrottlingBurstLimit: 50,
 				}),
 			]),
+		})
+		// Verified live: the account Lambda quota is 10 total — a reservation
+		// is invalid until a quota raise (and the quota is itself the cap),
+		// so the default synth must NOT carry one.
+		const functions = template.findResources('AWS::Lambda::Function')
+		const ssr = Object.values(functions).find(
+			(f) => f.Properties?.FunctionName === 'pitminder-ssr',
+		)
+		expect(ssr?.Properties?.ReservedConcurrentExecutions).toBeUndefined()
+	})
+
+	it('opt-in reserved concurrency lands after a quota raise', () => {
+		const app = new App()
+		const stack = new ComputeStack(app, 'pitminder-compute-rc', {
+			env: { account: '111111111111', region: 'eu-west-2' },
+			imageTag: 'sha-test',
+			publicOrigin: 'https://pending.invalid',
+			postCutover: false,
+			natAmiId: DEFAULT_NAT_AMI_EU_WEST_2,
+			appSecretVersion: 'v1',
+			ssrReservedConcurrency: 10,
+		})
+		Template.fromStack(stack).hasResourceProperties('AWS::Lambda::Function', {
+			FunctionName: 'pitminder-ssr',
+			ReservedConcurrentExecutions: 10,
 		})
 	})
 

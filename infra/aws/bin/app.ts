@@ -49,6 +49,11 @@ new ComputeStack(app, 'pitminder-compute', {
 	// Bump alongside every /pitminder/prod/app/env rotation so the resolved
 	// values actually replace (see ComputeStackProps docs + README ordering).
 	appSecretVersion: app.node.tryGetContext('appSecretVersion') ?? 'v1',
+	// Only after a Service Quotas raise — the account's 10-concurrency
+	// default makes any reservation invalid AND is itself the cap.
+	ssrReservedConcurrency: Number(
+		app.node.tryGetContext('ssrReservedConcurrency') ?? 0,
+	),
 	// -c rehearsalZeroOrigin=<ip-dashes>.sslip.io — pre-cutover /sync/*
 	// behavior to the CURRENT task IP (see ComputeStackProps docs).
 	rehearsalZeroOrigin: app.node.tryGetContext('rehearsalZeroOrigin'),
