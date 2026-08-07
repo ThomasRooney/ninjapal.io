@@ -12,6 +12,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
 	CreateSecretCommand,
 	GetSecretValueCommand,
@@ -64,7 +65,9 @@ function parseEnvFile(path: string): Record<string, string> {
 }
 
 async function main() {
-	const envPath = resolve(process.argv[2] ?? resolve(import.meta.dir, '../../../.env'))
+	const envPath = resolve(
+		process.argv[2] ?? fileURLToPath(new URL('../../../.env', import.meta.url)),
+	)
 	const env = parseEnvFile(envPath)
 	const missing = COPIED_KEYS.filter((key) => !env[key])
 	if (missing.length > 0) {
@@ -119,7 +122,9 @@ async function main() {
 				Tags: [{ Key: 'Project', Value: 'pitminder' }],
 			}),
 		)
-		console.log(`created ${SECRET_NAME} with keys: ${Object.keys(payload).join(', ')}`)
+		console.log(
+			`created ${SECRET_NAME} with keys: ${Object.keys(payload).join(', ')}`,
+		)
 	} catch (error) {
 		if (error instanceof Error && error.name === 'ResourceExistsException') {
 			await secrets.send(

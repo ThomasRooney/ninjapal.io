@@ -708,15 +708,19 @@ export class ComputeStack extends cdk.Stack {
 					resources: ['*'],
 				}),
 				new iam.PolicyStatement({
-					actions: ['ssm:GetParameter', 'ssm:PutParameter'],
-					resources: [
-						`arn:aws:ssm:${this.region}:${this.account}:parameter/pitminder/prod/compute/*`,
+					// GetParametersByPath evaluates against the path WITH its
+					// trailing slash (parameter/pitminder/prod/compute/) — the
+					// /* form covers it ('*' matches empty); keep the slashless
+					// form too for the bare-path variant. Verified live: the
+					// slashless-only grant AccessDenied'd the wake Lambda.
+					actions: [
+						'ssm:GetParameter',
+						'ssm:PutParameter',
+						'ssm:GetParametersByPath',
 					],
-				}),
-				new iam.PolicyStatement({
-					actions: ['ssm:GetParametersByPath'],
 					resources: [
 						`arn:aws:ssm:${this.region}:${this.account}:parameter/pitminder/prod/compute`,
+						`arn:aws:ssm:${this.region}:${this.account}:parameter/pitminder/prod/compute/*`,
 					],
 				}),
 				new iam.PolicyStatement({
