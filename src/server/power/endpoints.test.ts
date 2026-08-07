@@ -83,7 +83,9 @@ describe('handleReadyRequest — configured power table', () => {
 		})
 		const res = await handleReadyRequest()
 		expect(res.status).toBe(202)
-		expect(res.headers.get('retry-after')).toBe('2')
+		// Phase-aware Retry-After (P1-d): WAKING_DB is the minutes-long RDS
+		// start — poll slowly there.
+		expect(res.headers.get('retry-after')).toBe('8')
 		expect(await res.json()).toMatchObject({
 			ready: false,
 			state: 'WAKING_DB',
@@ -91,6 +93,16 @@ describe('handleReadyRequest — configured power table', () => {
 			generation: 3,
 		})
 		expect(probeDb).not.toHaveBeenCalled()
+	})
+
+	it('polls the fast service phases quicker (Retry-After 3)', async () => {
+		readPowerRow.mockResolvedValue({
+			state: 'WAKING_SERVICES',
+			generation: 3,
+		})
+		const res = await handleReadyRequest()
+		expect(res.status).toBe(202)
+		expect(res.headers.get('retry-after')).toBe('3')
 	})
 
 	it('503 on ERROR without touching SQL', async () => {

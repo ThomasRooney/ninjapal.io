@@ -6,6 +6,7 @@ import {
 	type PowerGateProps,
 	READY_POLL_INTERVAL_MS,
 	WAKE_BUDGET_MS,
+	WAKE_DELAYED_AFTER_MS,
 } from './power-gate'
 
 // Raw createRoot+act instead of @testing-library/react: RTL 16.x binds its
@@ -178,7 +179,29 @@ describe('PowerGate (provider mode)', () => {
 		const gate = renderGate()
 		await flush()
 		expect(gate.byTestId('power-gate-warming')?.textContent).toContain(
-			'6–8 minutes',
+			'9–15 minutes',
+		)
+		// Not yet delayed — the notice must be absent early in the wake.
+		expect(gate.byTestId('power-gate-delayed')).toBeNull()
+		gate.unmount()
+	})
+
+	it('shifts to delayed-but-working at 15 minutes without failing (P1-d)', async () => {
+		readyDefault = { status: 202, body: { ready: false, state: 'WAKING_DB' } }
+		const gate = renderGate()
+		await flush()
+		expect(gate.byTestId('power-gate-warming')).not.toBeNull()
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(
+				WAKE_DELAYED_AFTER_MS + READY_POLL_INTERVAL_MS * 2,
+			)
+		})
+		// Still warming (no failure), with the delayed notice shown.
+		expect(gate.byTestId('power-gate-warming')).not.toBeNull()
+		expect(gate.byTestId('power-gate-error')).toBeNull()
+		expect(gate.byTestId('power-gate-delayed')?.textContent).toContain(
+			'longer than usual',
 		)
 		gate.unmount()
 	})
@@ -208,7 +231,7 @@ describe('PowerGate (provider mode)', () => {
 		expect(unsubscribe).toHaveBeenCalled()
 	})
 
-	it('fails after the 10-minute budget and retries from the error state', async () => {
+	it('fails only after the 20-minute hard budget and retries from the error state', async () => {
 		readyDefault = { status: 202, body: { ready: false, state: 'WAKING_DB' } }
 		const gate = renderGate()
 		await flush()
