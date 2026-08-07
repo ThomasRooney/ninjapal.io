@@ -319,6 +319,7 @@ sleeps — RDS transition times vary A LOT between runs, budget the top end):
 | steer-chat SSE TTFB through the edge (mid-generation stream) | 0.17–0.45s (short answer total 1.3–2.2s) |
 | cold Lambda TTFB (2048MB, 5 live samples: 4.24/4.27/4.37/4.50/4.53) | **p50 4.37s** |
 | stream-filter suppression | 46 wake invocations in a 70-min awake window, 1 actual drive — 45 no-op stream events (heartbeats/stamps) skipped in ~2ms |
+| post-review abbreviated cycle (stepwise drain + probe-gated scale-up live) | wake 9m01s (db-probe invoked pre-scale-up — log group's FIRST stream; worker booted gen 4), sleep 6m50s, end state clean |
 
 ## Post-cutover flips (after the owner-approved nameserver switch)
 
@@ -361,3 +362,8 @@ In order, once ACM validation completes:
   does not account for raw `ResponseTransferMode` property overrides — if
   you ever change ONLY that override, force a new deployment (touch the
   stage description or method config).
+- **Lambda account concurrency quota is 10** (new-account default,
+  verified live): it currently caps the SSR Lambda harder than the
+  intended per-function reservation, and makes any reservation invalid
+  (must leave >=10 unreserved). After a Service Quotas raise, apply
+  `-c ssrReservedConcurrency=10`.
