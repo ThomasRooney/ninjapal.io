@@ -188,7 +188,13 @@ function fakeRds(initialStatus: string, ticks = 2) {
 }
 
 function fakeCompute(overrides: Partial<ComputeControl> = {}) {
-	const calls = { scaleUp: 0, drain: 0, probeDb: 0, natStart: 0, natStop: 0 }
+	const calls = {
+		scaleUp: 0,
+		drainSteps: 0,
+		probeDb: 0,
+		natStart: 0,
+		natStop: 0,
+	}
 	const control: ComputeControl = {
 		async startNat() {
 			calls.natStart++
@@ -202,9 +208,9 @@ function fakeCompute(overrides: Partial<ComputeControl> = {}) {
 		async readyComponents() {
 			return ['zero-cache', 'sync-worker']
 		},
-		async drain() {
-			calls.drain++
-			return true
+		async drainStep() {
+			calls.drainSteps++
+			return 'drained' as const
 		},
 		async probeDb() {
 			calls.probeDb++
@@ -331,7 +337,7 @@ describe('sleep path', () => {
 			'DRAINING->STOPPING_DB',
 			'STOPPING_DB->SLEEPING',
 		])
-		expect(compute.calls.drain).toBe(1)
+		expect(compute.calls.drainSteps).toBe(1)
 		expect(rds.calls.stop).toBe(1)
 		expect(current().stoppedAt).toBe(NOW)
 		expect(rds.get()).toBe('stopped')
@@ -345,13 +351,14 @@ describe('wake cancels draining', () => {
 		)
 		const rds = fakeRds('available')
 		const compute = fakeCompute({
-			// The wake request lands while services are draining.
-			drain: async () => {
+			// The wake request lands while a drain step is in flight; the next
+			// loop iteration sees desiredState=AWAKE and cancels.
+			drainStep: async () => {
 				fake.mutate((r) => {
 					r.desiredState = 'AWAKE'
 					r.version++
 				})
-				return true
+				return 'draining' as const
 			},
 		})
 		const result = await drive(deps(fake.store, rds.control, compute.control))
@@ -374,7 +381,7 @@ describe('wake cancels draining', () => {
 		const compute = fakeCompute()
 		const result = await drive(deps(fake.store, rds.control, compute.control))
 		expect(result.state).toBe('AWAKE')
-		expect(compute.calls.drain).toBe(0)
+		expect(compute.calls.drainSteps).toBe(0)
 		expect(rds.calls.stop).toBe(0)
 	})
 })
@@ -674,9 +681,9 @@ describe('NAT instance lifecycle', () => {
 		)
 		const rds = fakeRds('available')
 		const compute = fakeCompute({
-			drain: async () => {
+			drainStep: async () => {
 				events.push('drain')
-				return true
+				return 'drained' as const
 			},
 			stopNat: async () => {
 				events.push('stopNat')
@@ -775,7 +782,7 @@ describe('sleep cancels waking (P0: budget trip mid-wake must not strand NAT/RDS
 			'STOPPING_DB->SLEEPING',
 		])
 		expect(compute.calls.scaleUp).toBe(0)
-		expect(compute.calls.drain).toBe(1)
+		expect(compute.calls.drainSteps).toBe(1)
 		expect(rds.calls.stop).toBe(1)
 	})
 
@@ -790,12 +797,12 @@ describe('sleep cancels waking (P0: budget trip mid-wake must not strand NAT/RDS
 		)
 		const rds = fakeRds('available')
 		const compute = fakeCompute({
-			drain: async () => {
+			drainStep: async () => {
 				fake.mutate((r) => {
 					r.desiredState = 'AWAKE'
 					r.version++
 				})
-				return true
+				return 'draining' as const
 			},
 		})
 		const result = await drive(deps(fake.store, rds.control, compute.control))
@@ -805,34 +812,38 @@ describe('sleep cancels waking (P0: budget trip mid-wake must not strand NAT/RDS
 	})
 })
 
-describe('drain keep-alive', () => {
-	it('heartbeats the lease through a long drain and completes', async () => {
+describe('stepwise drain (P1: no blocking loop inside the orchestrator)', () => {
+	it('renews the lease between drain steps of a long drain — never lets it lapse', async () => {
 		const fake = fakeStore(
 			makeRow({ state: 'AWAKE', desiredState: 'SLEEPING' }),
 		)
 		const rds = fakeRds('available')
 		let t = NOW
+		let steps = 0
 		const compute = fakeCompute({
-			drain: async (keepAlive) => {
-				// Simulate a multi-minute drain: 8 x 30s waits, keepAlive between.
-				for (let i = 0; i < 8; i++) {
-					t += 30_000
-					expect(keepAlive).toBeDefined()
-					if (keepAlive) expect(await keepAlive()).toBe(true)
-				}
-				return true
+			// 8 x 30s of simulated wind-down, one step per driver iteration.
+			drainStep: async () => {
+				if (++steps < 8) return 'draining'
+				return 'drained'
 			},
 		})
 		const result = await drive(
-			deps(fake.store, rds.control, compute.control, { now: () => t }),
+			deps(fake.store, rds.control, compute.control, {
+				now: () => t,
+				pollMs: 30_000,
+				sleep: async (ms) => {
+					t += ms
+				},
+			}),
 		)
 		expect(result.state).toBe('SLEEPING')
-		// The lease was renewed inside the drain — never allowed to lapse.
+		expect(steps).toBe(8)
+		// The lease was renewed BETWEEN steps by the outer loop.
 		expect(fake.lateHeartbeats()).toBe(0)
 		expect(fake.counts.heartbeats).toBeGreaterThanOrEqual(1)
 	})
 
-	it('aborts the drain and stands down when the lease is stolen mid-drain', async () => {
+	it('stands down between steps when another owner steals the lease', async () => {
 		const fake = fakeStore(
 			makeRow({
 				state: 'DRAINING',
@@ -842,26 +853,54 @@ describe('drain keep-alive', () => {
 			}),
 		)
 		const rds = fakeRds('available')
-		let stole = false
+		let steps = 0
 		const compute = fakeCompute({
-			drain: async (keepAlive) => {
-				if (!keepAlive) throw new Error('keepAlive missing')
+			drainStep: async () => {
+				steps++
+				// The thief takes over while this step is in flight.
 				fake.mutate((r) => {
 					r.lease = { owner: 'wake:thief', expiresAt: NOW + DEFAULT_LEASE_MS }
 				})
-				stole = true
-				const alive = await keepAlive()
-				expect(alive).toBe(false)
-				return false
+				return 'draining'
 			},
 		})
 		const result = await drive(
 			deps(fake.store, rds.control, compute.control, { owner: 'wake:me' }),
 		)
-		expect(stole).toBe(true)
+		expect(steps).toBe(1) // exactly one step before standing down
 		expect(result.state).toBe('DRAINING')
-		expect(result.steps).toContain('drain aborted: superseded')
-		expect(fake.claims).toEqual([]) // no STOPPING_DB claim after the abort
+		expect(result.steps.at(-1)).toContain('standing down')
+		expect(fake.claims).toEqual([]) // no STOPPING_DB claim
 		expect(rds.calls.stop).toBe(0)
+	})
+
+	it('a Lambda running out of time mid-drain hands off instead of blocking', async () => {
+		const fake = fakeStore(
+			makeRow({
+				state: 'DRAINING',
+				desiredState: 'SLEEPING',
+				generation: 1,
+				lease: { owner: 'wake:me', expiresAt: NOW + 60_000 },
+			}),
+		)
+		const rds = fakeRds('available')
+		const compute = fakeCompute({
+			drainStep: async () => 'draining' as const,
+		})
+		let budget = 2
+		let reinvoked = 0
+		const result = await drive(
+			deps(fake.store, rds.control, compute.control, {
+				owner: 'wake:me',
+				successorOwner: 'wake:successor',
+				remainingMs: () => (budget-- > 0 ? 10 * 60_000 : 30_000),
+				reinvoke: async () => {
+					reinvoked++
+				},
+			}),
+		)
+		expect(reinvoked).toBe(1)
+		expect(result.state).toBe('DRAINING')
+		expect(fake.current().lease?.owner).toBe('wake:successor')
 	})
 })

@@ -56,12 +56,15 @@ export interface ComputeControl {
 	/** Component names verified ready (probe-passed) for this generation. */
 	readyComponents(generation: number): Promise<string[]>
 	/**
-	 * Drain sync-worker first, then zero-cache; resolve at runningCount 0.
-	 * `keepAlive` is invoked between waits so the driver can heartbeat its
-	 * lease; when it returns false the drain aborts and resolves false
-	 * (superseded — the caller re-reads and stands down).
+	 * ONE idempotent drain step (never an internal wait loop): restore the
+	 * placeholder record (DNS mode), request sync-worker to 0 and observe
+	 * running+pending, then zero-cache likewise. 'draining' = still winding
+	 * down, call again next poll; 'drained' = both services fully at zero.
+	 * The OUTER driver loop re-reads the row between steps, so lease
+	 * renewal, the reinvoke handoff, and wake-cancels-drain all interpose
+	 * naturally — a 13-min Lambda budget can never be blown inside a drain.
 	 */
-	drain(keepAlive?: () => Promise<boolean>): Promise<boolean>
+	drainStep(): Promise<'draining' | 'drained'>
 	/** SQL probe (TLS connect + slot/publication check) once RDS is up. */
 	probeDb(): Promise<void>
 }
@@ -395,17 +398,13 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					step('drain cancelled by wake')
 					continue
 				}
-				// The drain blocks for minutes; keepAlive heartbeats the lease
-				// between waits and aborts the drain when superseded (the fenced
-				// claims protect the row either way).
-				const drained = await compute.drain(async () => {
-					const fresh = await store.get()
-					if (!fresh || fresh.state !== 'DRAINING') return false
-					return (await ensureLease(fresh)) !== 'lost'
-				})
-				if (!drained) {
-					step('drain aborted: superseded')
-					return done(row.state)
+				// One idempotent step per loop iteration: the loop re-reads the
+				// row and renews the lease between steps, and a wake request
+				// interrupts naturally at the next iteration's desiredState
+				// check (mid-drain cancellation).
+				if ((await compute.drainStep()) === 'draining') {
+					await sleep(pollMs)
+					continue
 				}
 				step('services drained')
 				const fresh = await store.get()

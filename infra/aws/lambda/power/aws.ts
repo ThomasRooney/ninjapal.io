@@ -90,8 +90,8 @@ export function createStubComputeControl(
 		async readyComponents() {
 			return [...components]
 		},
-		async drain() {
-			return true
+		async drainStep() {
+			return 'drained' as const
 		},
 		async probeDb() {},
 	}

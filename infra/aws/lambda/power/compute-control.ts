@@ -22,12 +22,11 @@
  *    passing zero-cache probe also UPSERTs the zero-origin A record —
  *    generation-fenced: the row is re-read and a superseded generation
  *    never publishes.
- *  - drain(keepAlive): worker first (SIGTERM + side-effect leases, task defs
- *    carry stopTimeout 60), then zero-cache; each waits for runningCount 0.
- *    keepAlive runs between polls so the caller can heartbeat its lease; a
- *    false return aborts the drain (superseded — the fenced claims protect
- *    the row). In DNS mode the placeholder record is restored FIRST so no
- *    resolver is left pointing at a dying task.
+ *  - drainStep(): ONE idempotent step — placeholder restore (DNS mode),
+ *    worker to 0 first (SIGTERM + side-effect leases, stopTimeout 60),
+ *    zero-cache only once the worker is FULLY down (pending counts as
+ *    active). No internal wait loop: the driver calls it once per poll, so
+ *    lease renewal/reinvoke and wake-cancels-drain interpose between steps.
  *  - probeDb: invokes the in-VPC db-probe Lambda (TLS SQL + logical
  *    slot/publication check) — the orchestrator itself lives outside the VPC.
  */
@@ -64,9 +63,6 @@ export const PLACEHOLDER_IP = '192.0.2.1'
 
 const ZERO_PORT = 4848
 const DEFAULT_PROBE_TIMEOUT_MS = 2_500
-const DEFAULT_DRAIN_POLL_MS = 5_000
-/** stopTimeout is 60s in the task defs; 10 min covers slow deregistration. */
-const DEFAULT_DRAIN_MAX_WAIT_MS = 10 * 60_000
 const ZERO_SYNC_PROBE_KEY = 'dGhlIHNhbXBsZSBub25jZQ=='
 
 export interface ComputeConfig {
@@ -83,8 +79,6 @@ export interface ComputeConfig {
 	hostedZoneId?: string
 	zeroOriginHost?: string
 	probeTimeoutMs?: number
-	drainPollMs?: number
-	drainMaxWaitMs?: number
 }
 
 export interface ComputeClients {
@@ -95,7 +89,6 @@ export interface ComputeClients {
 	lambda?: LambdaClient
 	/** ConsistentRead of the power row (worker heartbeat + generation fence). */
 	readRow: () => Promise<PowerRow | null>
-	sleep?: (ms: number) => Promise<void>
 	/** Injectable raw-socket probe (tests). Resolves on websocket 101. */
 	probeSocket?: (host: string, path: string, timeoutMs: number) => Promise<void>
 	log?: (message: string) => void
@@ -170,13 +163,9 @@ export function createComputeControl(
 	config: ComputeConfig,
 	clients: ComputeClients,
 ): ComputeControl {
-	const sleep =
-		clients.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
 	const probeSocket = clients.probeSocket ?? probeZeroWebsocket
 	const log = clients.log ?? (() => {})
 	const probeTimeoutMs = config.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
-	const drainPollMs = config.drainPollMs ?? DEFAULT_DRAIN_POLL_MS
-	const drainMaxWaitMs = config.drainMaxWaitMs ?? DEFAULT_DRAIN_MAX_WAIT_MS
 
 	const describeService = async (serviceName: string) => {
 		const res = await clients.ecs.send(
@@ -331,34 +320,34 @@ export function createComputeControl(
 			return ready
 		},
 
-		async drain(keepAlive) {
+		async drainStep() {
 			if (config.dnsEnabled) {
-				// Restore the placeholder BEFORE the task dies so the 30s-TTL
-				// record never points a resolver at a draining IP.
+				// Restore the placeholder BEFORE the tasks die so the 30s-TTL
+				// record never points a resolver at a draining IP. Idempotent
+				// UPSERT, re-issued each step.
 				await upsertZeroOrigin(PLACEHOLDER_IP)
 			}
-			// Worker first: SIGTERM + side-effect leases (stopTimeout 60 in the
-			// task def), then zero-cache.
+			// Worker first (SIGTERM + side-effect leases, stopTimeout 60), and
+			// zero-cache is not touched until the worker is FULLY down —
+			// pending tasks count as active (a provisioning task would
+			// otherwise slip through the drain).
 			for (const serviceName of [
 				config.syncWorkerService,
 				config.zeroCacheService,
 			]) {
-				await setDesired(serviceName, 0)
-				const startedAt = Date.now()
-				for (;;) {
-					if (keepAlive && !(await keepAlive())) return false
-					const service = await describeService(serviceName)
-					if ((service?.runningCount ?? 0) === 0) break
-					if (Date.now() - startedAt > drainMaxWaitMs) {
-						throw new Error(
-							`drain: ${serviceName} still has ${service?.runningCount} running task(s) after ${drainMaxWaitMs}ms`,
-						)
-					}
-					await sleep(drainPollMs)
+				const service = await describeService(serviceName)
+				const desired = service?.desiredCount ?? 0
+				const active =
+					(service?.runningCount ?? 0) + (service?.pendingCount ?? 0)
+				if (desired > 0) await setDesired(serviceName, 0)
+				if (desired > 0 || active > 0) {
+					log(
+						`drainStep: ${serviceName} desired=${desired} active=${active} — draining`,
+					)
+					return 'draining'
 				}
-				log(`drain: ${serviceName} at runningCount 0`)
 			}
-			return true
+			return 'drained'
 		},
 
 		async probeDb() {

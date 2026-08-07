@@ -61,7 +61,6 @@ function makeConfig(overrides: Partial<ComputeConfig> = {}): ComputeConfig {
 		natInstanceId: 'i-0123456789abcdef0',
 		zeroProbePath: '/sync/v16/connect',
 		dnsEnabled: false,
-		drainPollMs: 0,
 		...overrides,
 	}
 }
@@ -74,7 +73,6 @@ function makeClients(overrides: Partial<ComputeClients> = {}): ComputeClients {
 		route53: new Route53Client({}),
 		lambda: new LambdaClient({}),
 		readRow: async () => makeRow(),
-		sleep: async () => {},
 		probeSocket: async () => {},
 		...overrides,
 	}
@@ -341,47 +339,70 @@ describe('readyComponents', () => {
 	})
 })
 
-describe('drain', () => {
-	it('drains worker first, then zero-cache, waiting for runningCount 0', async () => {
-		const events: string[] = []
-		ecsMock.on(UpdateServiceCommand).callsFake(async (input) => {
-			events.push(`update:${input.service}:${input.desiredCount}`)
-			return {}
-		})
-		let describes = 0
-		ecsMock.on(DescribeServicesCommand).callsFake(async (input) => {
-			events.push(`describe:${input.services?.[0]}`)
-			// Each service needs two polls before reaching 0.
-			return { services: [{ runningCount: ++describes % 2 === 0 ? 0 : 1 }] }
-		})
-		const control = createComputeControl(makeConfig(), makeClients())
-		await expect(control.drain()).resolves.toBe(true)
-		expect(events).toEqual([
-			'update:pitminder-sync-worker:0',
-			'describe:pitminder-sync-worker',
-			'describe:pitminder-sync-worker',
-			'update:pitminder-zero-cache:0',
-			'describe:pitminder-zero-cache',
-			'describe:pitminder-zero-cache',
-		])
+describe('drainStep (idempotent, no internal waits)', () => {
+	const service = (desired: number, running: number, pending = 0) => ({
+		desiredCount: desired,
+		runningCount: running,
+		pendingCount: pending,
 	})
 
-	it('keepAlive false aborts before touching zero-cache and returns false', async () => {
+	it('requests worker 0 first and reports draining — zero-cache untouched', async () => {
 		ecsMock.on(UpdateServiceCommand).resolves({})
-		ecsMock.on(DescribeServicesCommand).resolves({
-			services: [{ runningCount: 1 }],
-		})
-		let calls = 0
+		ecsMock.on(DescribeServicesCommand).resolves({ services: [service(1, 1)] })
 		const control = createComputeControl(makeConfig(), makeClients())
-		await expect(control.drain(async () => ++calls < 3)).resolves.toBe(false)
+		await expect(control.drainStep()).resolves.toBe('draining')
 		const updates = ecsMock
 			.commandCalls(UpdateServiceCommand)
 			.map((c) => c.args[0].input)
-		expect(updates).toHaveLength(1)
-		expect(updates[0]?.service).toBe('pitminder-sync-worker')
+		expect(updates).toEqual([
+			expect.objectContaining({
+				service: 'pitminder-sync-worker',
+				desiredCount: 0,
+			}),
+		])
 	})
 
-	it('dns mode restores the placeholder BEFORE scaling anything down', async () => {
+	it('a worker with only PENDING tasks still counts as draining', async () => {
+		ecsMock.on(UpdateServiceCommand).resolves({})
+		ecsMock
+			.on(DescribeServicesCommand)
+			.resolves({ services: [service(0, 0, 1)] })
+		const control = createComputeControl(makeConfig(), makeClients())
+		await expect(control.drainStep()).resolves.toBe('draining')
+		// desired already 0 — no redundant update
+		expect(ecsMock.commandCalls(UpdateServiceCommand)).toHaveLength(0)
+	})
+
+	it('once the worker is fully down, the step moves on to zero-cache', async () => {
+		ecsMock.on(UpdateServiceCommand).resolves({})
+		ecsMock.on(DescribeServicesCommand).callsFake(async (input) => ({
+			services: [
+				input.services?.[0] === 'pitminder-sync-worker'
+					? service(0, 0)
+					: service(1, 1),
+			],
+		}))
+		const control = createComputeControl(makeConfig(), makeClients())
+		await expect(control.drainStep()).resolves.toBe('draining')
+		const updates = ecsMock
+			.commandCalls(UpdateServiceCommand)
+			.map((c) => c.args[0].input)
+		expect(updates).toEqual([
+			expect.objectContaining({
+				service: 'pitminder-zero-cache',
+				desiredCount: 0,
+			}),
+		])
+	})
+
+	it('reports drained when both services are fully at zero — no updates issued', async () => {
+		ecsMock.on(DescribeServicesCommand).resolves({ services: [service(0, 0)] })
+		const control = createComputeControl(makeConfig(), makeClients())
+		await expect(control.drainStep()).resolves.toBe('drained')
+		expect(ecsMock.commandCalls(UpdateServiceCommand)).toHaveLength(0)
+	})
+
+	it('dns mode restores the placeholder on EVERY step before touching services', async () => {
 		const events: string[] = []
 		route53Mock.on(ChangeResourceRecordSetsCommand).callsFake(async (input) => {
 			events.push(
@@ -393,9 +414,7 @@ describe('drain', () => {
 			events.push(`update:${input.service}`)
 			return {}
 		})
-		ecsMock.on(DescribeServicesCommand).resolves({
-			services: [{ runningCount: 0 }],
-		})
+		ecsMock.on(DescribeServicesCommand).resolves({ services: [service(1, 1)] })
 		const control = createComputeControl(
 			makeConfig({
 				dnsEnabled: true,
@@ -404,24 +423,26 @@ describe('drain', () => {
 			}),
 			makeClients(),
 		)
-		await expect(control.drain()).resolves.toBe(true)
+		await expect(control.drainStep()).resolves.toBe('draining')
 		expect(events[0]).toBe(`dns:${PLACEHOLDER_IP}`)
-		expect(events.slice(1)).toEqual([
-			'update:pitminder-sync-worker',
-			'update:pitminder-zero-cache',
-		])
+		expect(events[1]).toBe('update:pitminder-sync-worker')
 	})
 
-	it('throws when a service never reaches runningCount 0 inside the budget', async () => {
+	it('successive steps converge: worker down, then zero-cache down, then drained', async () => {
 		ecsMock.on(UpdateServiceCommand).resolves({})
-		ecsMock.on(DescribeServicesCommand).resolves({
-			services: [{ runningCount: 1 }],
-		})
-		const control = createComputeControl(
-			makeConfig({ drainMaxWaitMs: -1 }),
-			makeClients(),
-		)
-		await expect(control.drain()).rejects.toThrow(/still has 1 running/)
+		const live: Record<string, ReturnType<typeof service>> = {
+			'pitminder-sync-worker': service(1, 1),
+			'pitminder-zero-cache': service(1, 1),
+		}
+		ecsMock.on(DescribeServicesCommand).callsFake(async (input) => ({
+			services: [live[input.services?.[0] as string]],
+		}))
+		const control = createComputeControl(makeConfig(), makeClients())
+		await expect(control.drainStep()).resolves.toBe('draining')
+		live['pitminder-sync-worker'] = service(0, 0)
+		await expect(control.drainStep()).resolves.toBe('draining')
+		live['pitminder-zero-cache'] = service(0, 0)
+		await expect(control.drainStep()).resolves.toBe('drained')
 	})
 })
 
