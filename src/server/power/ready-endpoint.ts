@@ -41,12 +41,22 @@ export async function handleReadyRequest(): Promise<Response> {
 	if (state !== null && state !== 'AWAKE') {
 		// Known non-AWAKE: answer from DynamoDB alone — thousands of warming
 		// polls must never amplify into SQL attempts against a stopped RDS.
-		return json(202, { ready: false, ...passthrough }, { 'Retry-After': '2' })
+		// Retry-After is phase-aware (P1-d): WAKING_DB is the minutes-long
+		// RDS start — 2s polling there is ~450 requests/tab over a slow
+		// wake; 8s cuts it ~4x with no perceptible UX cost. The service
+		// phases move in seconds, so they poll faster.
+		const retryAfter =
+			state === 'WAKING_DB' || state === 'STOPPING_DB' ? '8' : '3'
+		return json(
+			202,
+			{ ready: false, ...passthrough },
+			{ 'Retry-After': retryAfter },
+		)
 	}
 	// AWAKE or row absent/unknown → verify with the DB probe.
 	const { probeDb } = await import('@/server/db/probe')
 	if (await probeDb()) {
 		return json(200, { ready: true, ...passthrough })
 	}
-	return json(202, { ready: false, ...passthrough }, { 'Retry-After': '2' })
+	return json(202, { ready: false, ...passthrough }, { 'Retry-After': '3' })
 }

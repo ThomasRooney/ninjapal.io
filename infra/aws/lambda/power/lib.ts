@@ -58,13 +58,18 @@ export type DesiredState = 'AWAKE' | 'SLEEPING'
  * - DRAINING -> WAKING_SERVICES is "wake cancels draining" (DB never stopped).
  * - SLEEP_MAINTENANCE -> WAKING_SERVICES is a real wake during the 7-day
  *   maintenance start; the restop is skipped.
+ * - WAKING_DB -> STOPPING_DB and WAKING_SERVICES -> DRAINING are "sleep
+ *   cancels waking": a desiredState=SLEEPING that lands mid-wake (budget
+ *   shutoff's forceSleep, operator abort) routes straight into the UNGATED
+ *   cleanup half — stops only reduce spend, so a tripped breaker must never
+ *   strand a started NAT/RDS behind a refused gate (P0, review-found).
  * - ERROR recovery is reconciler-gated (desired AWAKE -> WAKING_DB, desired
  *   SLEEPING -> SLEEPING, where drift repair then restops a running DB).
  */
 export const TRANSITIONS: Record<PowerState, readonly PowerState[]> = {
 	SLEEPING: ['WAKING_DB', 'SLEEP_MAINTENANCE', 'ERROR'],
-	WAKING_DB: ['WAKING_SERVICES', 'ERROR'],
-	WAKING_SERVICES: ['AWAKE', 'ERROR'],
+	WAKING_DB: ['WAKING_SERVICES', 'STOPPING_DB', 'ERROR'],
+	WAKING_SERVICES: ['AWAKE', 'DRAINING', 'ERROR'],
 	AWAKE: ['DRAINING', 'ERROR'],
 	DRAINING: ['STOPPING_DB', 'WAKING_SERVICES', 'ERROR'],
 	STOPPING_DB: ['SLEEPING', 'ERROR'],

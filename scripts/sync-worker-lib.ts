@@ -162,3 +162,40 @@ export function countsAsRealDeviceOnline(device: {
 }): boolean {
 	return device.isSimulated !== true && isDeviceOnline(device.connectionStatus)
 }
+
+/**
+ * Resolve the POWER_GENERATION the worker should fence its power writes on
+ * (CONTRACT.md writer 3: "the generation the worker was started for").
+ *
+ * On Fargate the task definition is static, so the generation cannot arrive
+ * as a baked env var; the entrypoint (scripts/sync-worker-entry.ts) reads the
+ * power row's CURRENT generation at boot instead — the orchestrator bumps
+ * `generation` before scaling the service up, and force-redeploys the service
+ * whenever a new wake cycle supersedes a still-running task, so "generation
+ * at boot" IS "generation started for".
+ *
+ * Precedence:
+ *  - explicit POWER_GENERATION env (Railway/manual override) wins untouched
+ *  - no POWER_TABLE → power writes are disabled anyway → null (skip lookup)
+ *  - otherwise the row's generation, or null when the row is unreadable
+ *    (worker.ts then skips ALL power writes rather than writing unfenced)
+ */
+export async function resolveWorkerGeneration(
+	env: Record<string, string | undefined>,
+	readRowGeneration: () => Promise<number | null>,
+): Promise<number | null> {
+	const explicit = env.POWER_GENERATION?.trim()
+	if (explicit) {
+		const parsed = Number(explicit)
+		return Number.isFinite(parsed) ? parsed : null
+	}
+	if (!env.POWER_TABLE?.trim()) return null
+	try {
+		const generation = await readRowGeneration()
+		return typeof generation === 'number' && Number.isFinite(generation)
+			? generation
+			: null
+	} catch {
+		return null
+	}
+}

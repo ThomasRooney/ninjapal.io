@@ -15,4 +15,6 @@ RUN bun install --frozen-lockfile --ignore-scripts || true
 COPY . .
 RUN bun install --frozen-lockfile
 
-CMD ["bun", "scripts/sync-worker.ts"]
+# Entry resolves POWER_GENERATION from the power row at boot (Fargate task
+# defs are static), then starts sync-worker.ts. No POWER_TABLE → passthrough.
+CMD ["bun", "scripts/sync-worker-entry.ts"]

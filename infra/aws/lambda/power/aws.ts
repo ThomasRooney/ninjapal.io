@@ -74,29 +74,25 @@ export function createExecutionControl(
 }
 
 /**
- * STUB — the pitminder-compute stack does not exist yet.
- *
- * When it lands, replace this with an ECS-backed implementation discovered
- * via `/pitminder/prod/compute/*` SSM parameters:
- * - scaleUp: UpdateService desiredCount 1 for zero-cache + sync-worker
- * - readyComponents: websocket-upgrade probe (zero-cache) and heartbeat row
- *   (sync-worker), each fenced on the wake generation
- * - drain: worker first (SIGTERM + side-effect leases), then zero-cache
- *   (placeholder DNS restored before drain), wait runningCount 0
- * - probeDb: TLS SQL probe + logical slot/publication check from in-VPC
- *
- * Until then every component is reported ready immediately, which makes the
- * DB half of the machine fully exercisable end to end.
+ * STUB — used only while the pitminder-compute stack's SSM contract
+ * (`/pitminder/prod/compute/*`) is absent; wake.ts switches to the real
+ * ECS-backed control (compute-control.ts) as soon as it appears. Every
+ * component is reported ready immediately, which makes the DB half of the
+ * machine fully exercisable without any compute resources.
  */
 export function createStubComputeControl(
 	components: readonly string[],
 ): ComputeControl {
 	return {
+		async startNat() {},
+		async stopNat() {},
 		async scaleUp() {},
 		async readyComponents() {
 			return [...components]
 		},
-		async drain() {},
+		async drainStep() {
+			return 'drained' as const
+		},
 		async probeDb() {},
 	}
 }

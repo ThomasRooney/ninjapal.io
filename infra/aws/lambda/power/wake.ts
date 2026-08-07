@@ -6,8 +6,11 @@
  */
 import { randomUUID } from 'node:crypto'
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { EC2Client } from '@aws-sdk/client-ec2'
+import { ECSClient } from '@aws-sdk/client-ecs'
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda'
 import { RDSClient } from '@aws-sdk/client-rds'
+import { Route53Client } from '@aws-sdk/client-route-53'
 import { SSMClient } from '@aws-sdk/client-ssm'
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
 import type { Context } from 'aws-lambda'
@@ -16,13 +19,42 @@ import {
 	createRdsControl,
 	createStubComputeControl,
 } from './aws'
-import { type DriveResult, createDdbPowerStore, drive } from './driver'
+import { createComputeControl, loadComputeConfig } from './compute-control'
+import {
+	type ComputeControl,
+	type DriveResult,
+	createDdbPowerStore,
+	drive,
+} from './driver'
 import { COMPONENTS, claimTransition, getRow, isTransitional } from './lib'
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}))
 const rds = new RDSClient({})
 const ssm = new SSMClient({})
 const lambda = new LambdaClient({})
+const ecs = new ECSClient({})
+const ec2 = new EC2Client({})
+const route53 = new Route53Client({})
+
+/**
+ * The real ECS/NAT compute control when the compute stack's SSM contract
+ * exists, the stub otherwise. Resolved fresh per invocation: a config error
+ * must fail the invocation loudly (retry) — NEVER silently fall back to the
+ * stub, which fakes readiness over real services.
+ */
+async function resolveComputeControl(): Promise<ComputeControl> {
+	const config = await loadComputeConfig(ssm)
+	if (!config) return createStubComputeControl(COMPONENTS)
+	return createComputeControl(config, {
+		ecs,
+		ec2,
+		ssm,
+		route53,
+		lambda,
+		readRow: () => getRow(ddb, TABLE),
+		log: (message) => console.log(JSON.stringify({ compute: message })),
+	})
+}
 
 const TABLE = process.env.POWER_TABLE ?? ''
 const DB_INSTANCE_ID = process.env.DB_INSTANCE_ID ?? ''
@@ -104,7 +136,7 @@ export async function handler(
 	const result = await drive({
 		store: createDdbPowerStore(ddb, TABLE),
 		rds: createRdsControl(rds, DB_INSTANCE_ID),
-		compute: createStubComputeControl(COMPONENTS),
+		compute: await resolveComputeControl(),
 		execution: createExecutionControl(ssm, EXECUTION_PARAM),
 		owner,
 		allowErrorRecovery: payload.allowErrorRecovery === true,

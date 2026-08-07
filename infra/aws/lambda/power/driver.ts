@@ -37,19 +37,34 @@ export interface RdsControl {
 }
 
 /**
- * ECS scaling interface — STUBBED until the pitminder-compute stack exists.
- * The compute stack will provide an implementation that scales the zero-cache
- * and sync-worker Fargate services 0<->1, probes readiness (websocket upgrade
- * for zero-cache), drains with SIGTERM lease-respect, and runs the TLS SQL
- * probe from inside the VPC.
+ * ECS + NAT scaling interface. The pitminder-compute stack provides the real
+ * implementation (compute-control.ts): Fargate services 0<->1, websocket
+ * readiness probes, SIGTERM draining, NAT instance start/stop, and the
+ * in-VPC SQL probe. createStubComputeControl remains for environments where
+ * the compute stack does not exist yet.
  */
 export interface ComputeControl {
+	/** Start the NAT instance. Idempotent; re-issued every WAKING_DB poll so
+	 * it rides up in parallel with the RDS start. */
+	startNat(): Promise<void>
+	/** Stop the NAT instance. Idempotent, unpaid (never gated) — issued in
+	 * STOPPING_DB and while holding SLEEPING so a crashed wake can never
+	 * leak a running instance. */
+	stopNat(): Promise<void>
 	/** Scale all components up for this generation. Must be idempotent. */
 	scaleUp(generation: number): Promise<void>
 	/** Component names verified ready (probe-passed) for this generation. */
 	readyComponents(generation: number): Promise<string[]>
-	/** Drain sync-worker first, then zero-cache; resolve at runningCount 0. */
-	drain(): Promise<void>
+	/**
+	 * ONE idempotent drain step (never an internal wait loop): restore the
+	 * placeholder record (DNS mode), request sync-worker to 0 and observe
+	 * running+pending, then zero-cache likewise. 'draining' = still winding
+	 * down, call again next poll; 'drained' = both services fully at zero.
+	 * The OUTER driver loop re-reads the row between steps, so lease
+	 * renewal, the reinvoke handoff, and wake-cancels-drain all interpose
+	 * naturally — a 13-min Lambda budget can never be blown inside a drain.
+	 */
+	drainStep(): Promise<'draining' | 'drained'>
 	/** SQL probe (TLS connect + slot/publication check) once RDS is up. */
 	probeDb(): Promise<void>
 }
@@ -298,17 +313,34 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					if (!res) return done(row.state)
 					continue
 				}
+				// Holding SLEEPING: belt-and-braces NAT-down (unpaid,
+				// idempotent) so a crashed wake never leaks a running NAT.
+				await compute.stopNat()
 				return done(row.state)
 			}
 
 			case 'WAKING_DB': {
+				// Sleep cancels waking (budget shutoff / operator abort): route
+				// into the UNGATED cleanup half BEFORE consulting the gate —
+				// stops only reduce spend, and a tripped breaker must never
+				// strand a started NAT/RDS behind a refused paid mutation.
+				if (row.desiredState === 'SLEEPING') {
+					if (!(await claimStep(row, 'STOPPING_DB'))) return done(row.state)
+					step('wake aborted: emergency cleanup')
+					continue
+				}
 				const status = await rds.status()
 				if (status === 'available') {
 					if (!(await claimStep(row, 'WAKING_SERVICES'))) return done(row.state)
 					continue
 				}
+				// Paid mutations below (NAT + RDS start) — re-check the budget
+				// breaker every poll, not just at the claim into WAKING_DB.
+				if (!(await gate(row, 'NAT/RDS start'))) return done(row.state)
+				// The NAT rides up in parallel with the RDS start; idempotent,
+				// re-issued every poll so a resumed invocation converges.
+				await compute.startNat()
 				if (status === 'stopped') {
-					if (!(await gate(row, 'StartDBInstance'))) return done(row.state)
 					await rds.start()
 					step('rds start requested')
 				}
@@ -317,7 +349,27 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			}
 
 			case 'WAKING_SERVICES': {
+				// Sleep cancels waking: services may already be up — drain them
+				// (ungated), then STOPPING_DB handles NAT + RDS.
+				if (row.desiredState === 'SLEEPING') {
+					if (!(await claimStep(row, 'DRAINING'))) return done(row.state)
+					step('wake aborted: draining services')
+					continue
+				}
 				if (!(await gate(row, 'ECS scale-up'))) return done(row.state)
+				// In-VPC SQL probe BEFORE spending on ECS (P1-b): RDS
+				// 'available' alone is not DB-ready — TLS SELECT 1 must pass
+				// and wal_level must be logical or zero-cache would boot into
+				// a broken replication setup. Failure just retries the poll.
+				try {
+					await compute.probeDb()
+				} catch (error) {
+					step(
+						`db probe failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+					await sleep(pollMs)
+					continue
+				}
 				await compute.scaleUp(row.generation)
 				const ready = await compute.readyComponents(row.generation)
 				for (const component of ready) {
@@ -359,7 +411,14 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					step('drain cancelled by wake')
 					continue
 				}
-				await compute.drain()
+				// One idempotent step per loop iteration: the loop re-reads the
+				// row and renews the lease between steps, and a wake request
+				// interrupts naturally at the next iteration's desiredState
+				// check (mid-drain cancellation).
+				if ((await compute.drainStep()) === 'draining') {
+					await sleep(pollMs)
+					continue
+				}
 				step('services drained')
 				const fresh = await store.get()
 				if (!fresh || fresh.state !== 'DRAINING') continue
@@ -370,6 +429,9 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 			}
 
 			case 'STOPPING_DB': {
+				// Services are already drained — the NAT is idle. Stopping it is
+				// unpaid and idempotent; re-issued every poll.
+				await compute.stopNat()
 				const status = await rds.status()
 				if (status === 'stopped') {
 					if (!(await claimStep(row, 'SLEEPING'))) return done(row.state)

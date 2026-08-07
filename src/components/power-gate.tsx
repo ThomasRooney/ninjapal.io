@@ -18,13 +18,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * While warming: POST /api/wake exactly ONCE per warming episode (the
  * server's desiredState<>AWAKE condition dedupes anyway), then poll
  * /api/ready SEQUENTIALLY — each request awaits the previous response and
- * honors its Retry-After — never on a fixed timer. Budget: 10 minutes
- * (measured cold wake is ~7 minutes: RDS start dominates).
+ * honors its Retry-After — never on a fixed timer.
+ *
+ * Timing honesty (P1-d, measured live 2026-08-07): cold wakes ran 8m50s to
+ * ~15m — the RDS start alone varied 7m01s..13m12s between runs. Copy says
+ * "typically 9–15 minutes"; at 15 minutes the gate shifts to a
+ * delayed-but-working notice; only the 20-minute hard budget (or an ERROR
+ * row) fails it.
  */
 
 export const READY_POLL_INTERVAL_MS = 2_000
-/** Measured cold wake ≈ 6m58s (RDS start) — budget must comfortably cover it. */
-export const WAKE_BUDGET_MS = 10 * 60_000
+/** Measured RDS starts vary 7–13+ min; 20 min is the hard failure budget. */
+export const WAKE_BUDGET_MS = 20 * 60_000
+/** After this, still warming but flagged "taking longer than usual". */
+export const WAKE_DELAYED_AFTER_MS = 15 * 60_000
 /** Zero flaps offline briefly on token refresh — confirm before gating. */
 export const OFFLINE_CONFIRM_DELAY_MS = 3_000
 
@@ -245,7 +252,7 @@ export function PowerGate({
 								</h1>
 								<p className='text-sm text-muted-foreground'>
 									The smoker&apos;s been idle, so everything was powered down —
-									waking up takes 6–8 minutes from cold.
+									waking up typically takes 9–15 minutes from cold.
 								</p>
 								<p
 									className='text-sm text-muted-foreground'
@@ -254,6 +261,15 @@ export function PowerGate({
 									{label}
 									{power?.progress ? ` ${power.progress}` : ''}
 								</p>
+								{elapsedS * 1000 > WAKE_DELAYED_AFTER_MS && (
+									<p
+										className='text-sm text-amber-500'
+										data-testid='power-gate-delayed'
+									>
+										Taking longer than usual — still working on it. The database
+										start sometimes runs slow; hang tight.
+									</p>
+								)}
 							</div>
 							<div className='w-64'>
 								<div className='h-1.5 w-full overflow-hidden rounded-full bg-muted'>
