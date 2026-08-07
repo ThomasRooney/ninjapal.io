@@ -98,7 +98,7 @@ export class DataStack extends cdk.Stack {
 			stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
 			removalPolicy: cdk.RemovalPolicy.RETAIN,
 		})
-		new Power(this, 'Power', { table: power, db })
+		const powerOrchestration = new Power(this, 'Power', { table: power, db })
 
 		// --- photos (Vercel Blob replacement) -------------------------------
 		const photos = new s3.Bucket(this, 'Photos', {
@@ -144,10 +144,19 @@ export class DataStack extends cdk.Stack {
 		// cert would block the deploy until the nameserver cutover).
 		const params: Record<string, string> = {
 			'vpc-id': vpc.vpcId,
+			'vpc-cidr': vpc.vpcCidrBlock,
 			'public-subnet-ids': vpc.publicSubnets.map((s) => s.subnetId).join(','),
 			'private-subnet-ids': vpc.isolatedSubnets
 				.map((s) => s.subnetId)
 				.join(','),
+			// The compute stack routes private-subnet egress through its NAT
+			// instance; publish the route tables so it never needs a VPC lookup.
+			'private-route-table-ids': vpc.isolatedSubnets
+				.map((s) => s.routeTable.routeTableId)
+				.join(','),
+			// The compute stack attaches ECS/EC2/Route53 grants to the wake
+			// orchestrator's role (it drives the compute half of the machine).
+			'power-wake-role-name': powerOrchestration.wake.role?.roleName ?? '',
 			'db-instance-id': db.instanceIdentifier,
 			'db-instance-arn': db.instanceArn,
 			'db-endpoint': db.dbInstanceEndpointAddress,
