@@ -75,6 +75,18 @@ export interface ComputeStackProps extends cdk.StackProps {
 	/** Nameserver cutover happened: custom domains, certs, zero-origin DNS. */
 	postCutover: boolean
 	natAmiId: string
+	/**
+	 * REHEARSAL ONLY (pre-cutover): hostname CloudFront can resolve to the
+	 * CURRENT zero-cache task public IP (e.g. `18-168-220-173.sslip.io` —
+	 * the zone isn't delegated yet, so zero-origin.pitminder.com does not
+	 * resolve publicly). Adds a `/sync/*` behavior on the app distribution
+	 * so the client can speak wss:// to the same domain (browsers hard-block
+	 * insecure websockets from https pages — no flag bypasses it). Task IP
+	 * changes on every wake: re-set + redeploy, or leave unset outside
+	 * rehearsals. Post-cutover the sync.pitminder.com distribution replaces
+	 * this entirely.
+	 */
+	rehearsalZeroOrigin?: string
 }
 
 export class ComputeStack extends cdk.Stack {
@@ -604,6 +616,22 @@ export class ComputeStack extends cdk.Stack {
 					allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
 					cachePolicy: assetsCache,
 				},
+				...(props.rehearsalZeroOrigin
+					? {
+							'/sync/*': {
+								origin: new origins.HttpOrigin(props.rehearsalZeroOrigin, {
+									httpPort: 4848,
+									protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+								}),
+								viewerProtocolPolicy:
+									cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+								allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+								cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+								originRequestPolicy:
+									cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+							},
+						}
+					: {}),
 			},
 			...(props.postCutover && certificate
 				? { domainNames: ['app.pitminder.com'], certificate }
