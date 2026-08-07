@@ -690,10 +690,14 @@ export class ComputeStack extends cdk.Stack {
 					],
 				}),
 				new iam.PolicyStatement({
+					// Verified live: ListTasks authorizes against
+					// container-instance/<cluster>/*, DescribeTasks against
+					// task/<cluster>/* — grant all three shapes.
 					actions: ['ecs:ListTasks', 'ecs:DescribeTasks'],
 					resources: [
 						cluster.clusterArn,
 						`arn:aws:ecs:${this.region}:${this.account}:task/${CLUSTER_NAME}/*`,
+						`arn:aws:ecs:${this.region}:${this.account}:container-instance/${CLUSTER_NAME}/*`,
 					],
 				}),
 				new iam.PolicyStatement({
