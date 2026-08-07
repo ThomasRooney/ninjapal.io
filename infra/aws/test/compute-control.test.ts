@@ -275,6 +275,40 @@ describe('readyComponents', () => {
 		await expect(control.readyComponents(2)).resolves.toEqual([])
 	})
 
+	it('zero-cache is NOT ready when the replication artifacts are missing (P1-b)', async () => {
+		mockZeroTask('3.9.1.2')
+		lambdaMock.on(InvokeCommand).resolves({
+			Payload: lambdaPayload({
+				ok: true,
+				logicalReplication: true,
+				slots: [],
+				publications: [],
+			}),
+		})
+		const control = createComputeControl(
+			makeConfig({ dbProbeFunctionName: 'pitminder-db-probe' }),
+			makeClients({ readRow: async () => makeRow({ componentReady: {} }) }),
+		)
+		await expect(control.readyComponents(2)).resolves.toEqual([])
+	})
+
+	it('zero-cache ready once slot + publication exist upstream', async () => {
+		mockZeroTask('3.9.1.2')
+		lambdaMock.on(InvokeCommand).resolves({
+			Payload: lambdaPayload({
+				ok: true,
+				logicalReplication: true,
+				slots: ['pitminder_0_1786096504430'],
+				publications: ['_pitminder_public_0'],
+			}),
+		})
+		const control = createComputeControl(
+			makeConfig({ dbProbeFunctionName: 'pitminder-db-probe' }),
+			makeClients({ readRow: async () => makeRow({ componentReady: {} }) }),
+		)
+		await expect(control.readyComponents(2)).resolves.toEqual(['zero-cache'])
+	})
+
 	it('a stale worker heartbeat generation does not count', async () => {
 		ecsMock.on(ListTasksCommand).resolves({ taskArns: [] })
 		const control = createComputeControl(
@@ -454,9 +488,9 @@ function lambdaPayload(value: unknown) {
 }
 
 describe('probeDb', () => {
-	it('passes on {ok:true} from the in-VPC probe function', async () => {
+	it('passes on ok:true WITH logical replication', async () => {
 		lambdaMock.on(InvokeCommand).resolves({
-			Payload: lambdaPayload({ ok: true }),
+			Payload: lambdaPayload({ ok: true, logicalReplication: true }),
 		})
 		const control = createComputeControl(
 			makeConfig({ dbProbeFunctionName: 'pitminder-db-probe' }),
@@ -466,6 +500,17 @@ describe('probeDb', () => {
 		expect(
 			lambdaMock.commandCalls(InvokeCommand)[0]?.args[0].input,
 		).toMatchObject({ FunctionName: 'pitminder-db-probe' })
+	})
+
+	it('throws when the DB answers but wal_level is not logical (P1-b)', async () => {
+		lambdaMock.on(InvokeCommand).resolves({
+			Payload: lambdaPayload({ ok: true, logicalReplication: false }),
+		})
+		const control = createComputeControl(
+			makeConfig({ dbProbeFunctionName: 'pitminder-db-probe' }),
+			makeClients(),
+		)
+		await expect(control.probeDb()).rejects.toThrow(/not logical/)
 	})
 
 	it('throws on FunctionError or a not-ok payload', async () => {

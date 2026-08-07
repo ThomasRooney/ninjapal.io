@@ -17,6 +17,8 @@ import postgres from 'postgres'
 export interface DbProbeResult {
 	ok: boolean
 	error?: string
+	/** wal_level === 'logical' — Zero cannot replicate without it. */
+	logicalReplication?: boolean
 	slots?: string[]
 	publications?: string[]
 	latencyMs?: number
@@ -33,11 +35,15 @@ export async function handler(): Promise<DbProbeResult> {
 	const startedAt = Date.now()
 	try {
 		await sql`SELECT 1`
+		const [wal] = await sql`SHOW wal_level`
 		const slots = await sql`SELECT slot_name FROM pg_replication_slots`
 		const publications = await sql`SELECT pubname FROM pg_publication`
 		return {
 			ok: true,
 			latencyMs: Date.now() - startedAt,
+			// rds.logical_replication=1 surfaces as wal_level=logical; SHOW
+			// works on any Postgres, unlike the RDS-specific GUC.
+			logicalReplication: wal?.wal_level === 'logical',
 			slots: slots.map((row) => String(row.slot_name)),
 			publications: publications.map((row) => String(row.pubname)),
 		}

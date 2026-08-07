@@ -357,6 +357,19 @@ export async function drive(deps: DriverDeps): Promise<DriveResult> {
 					continue
 				}
 				if (!(await gate(row, 'ECS scale-up'))) return done(row.state)
+				// In-VPC SQL probe BEFORE spending on ECS (P1-b): RDS
+				// 'available' alone is not DB-ready — TLS SELECT 1 must pass
+				// and wal_level must be logical or zero-cache would boot into
+				// a broken replication setup. Failure just retries the poll.
+				try {
+					await compute.probeDb()
+				} catch (error) {
+					step(
+						`db probe failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+					await sleep(pollMs)
+					continue
+				}
 				await compute.scaleUp(row.generation)
 				const ready = await compute.readyComponents(row.generation)
 				for (const component of ready) {

@@ -727,6 +727,51 @@ describe('NAT instance lifecycle', () => {
 	})
 })
 
+describe('db probe gates the ECS spend (P1-b)', () => {
+	it('probes the DB before every scale-up, in order', async () => {
+		const events: string[] = []
+		const fake = fakeStore(makeRow({ desiredState: 'AWAKE' }))
+		const rds = fakeRds('stopped')
+		const compute = fakeCompute({
+			probeDb: async () => {
+				events.push('probeDb')
+			},
+			scaleUp: async () => {
+				events.push('scaleUp')
+			},
+		})
+		const result = await drive(deps(fake.store, rds.control, compute.control))
+		expect(result.state).toBe('AWAKE')
+		expect(events[0]).toBe('probeDb')
+		expect(events.indexOf('scaleUp')).toBeGreaterThan(events.indexOf('probeDb'))
+	})
+
+	it('a failing probe delays the scale-up and retries — never scales onto a broken DB', async () => {
+		const fake = fakeStore(
+			makeRow({
+				state: 'WAKING_SERVICES',
+				desiredState: 'AWAKE',
+				generation: 1,
+				lease: { owner: 'wake:test', expiresAt: NOW + 60_000 },
+			}),
+		)
+		const rds = fakeRds('available')
+		let probes = 0
+		const compute = fakeCompute({
+			probeDb: async () => {
+				if (++probes < 3) throw new Error('wal_level is not logical')
+			},
+		})
+		const result = await drive(deps(fake.store, rds.control, compute.control))
+		expect(result.state).toBe('AWAKE')
+		expect(probes).toBe(3)
+		expect(compute.calls.scaleUp).toBe(1) // only after the probe passed
+		expect(
+			result.steps.filter((s) => s.startsWith('db probe failed')).length,
+		).toBe(2)
+	})
+})
+
 describe('sleep cancels waking (P0: budget trip mid-wake must not strand NAT/RDS)', () => {
 	it('WAKING_DB + desired SLEEPING + tripped breaker: ungated cleanup to SLEEPING', async () => {
 		// The budget shutoff forced desiredState=SLEEPING while RDS was

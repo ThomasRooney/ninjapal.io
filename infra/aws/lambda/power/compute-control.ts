@@ -8,13 +8,11 @@
  *    (parallel with the RDS start) and down during STOPPING_DB. Both are
  *    idempotent and re-issued every poll; transitional EC2 states
  *    (IncorrectInstanceState) are tolerated and converge on the next poll.
- *  - scaleUp(generation): zero-cache + sync-worker Fargate services 0→1.
- *    The worker fences its power writes on the generation it booted with
- *    (scripts/sync-worker-entry.ts reads the row), so when a NEW generation
- *    supersedes a still-running worker task (wake-cancels-draining), the
- *    worker service is force-redeployed. The last-scaled generation is
- *    tracked in an SSM parameter so repeated idempotent scaleUp calls for
- *    the same generation never restart-loop the service.
+ *  - scaleUp(generation): zero-cache + sync-worker Fargate services 0→1,
+ *    idempotent, marker-free. The worker fences its power writes on the
+ *    generation it booted with (scripts/sync-worker-entry.ts reads the row)
+ *    and PROVES it before every cycle — a superseded task drains itself and
+ *    ECS restarts a fresh one, so no force-redeploy bookkeeping exists here.
  *  - readyComponents(generation): zero-cache = raw-socket websocket-upgrade
  *    probe against the task's public IP (reflow's production probe shape);
  *    sync-worker = its own generation-fenced heartbeat read back from the
@@ -225,6 +223,53 @@ export function createComputeControl(
 		return network.NetworkInterfaces?.[0]?.Association?.PublicIp ?? null
 	}
 
+	/** RequestResponse invoke of the in-VPC db-probe; parsed payload, or
+	 * null when no probe function is configured. */
+	const invokeDbProbe = async (): Promise<{
+		ok?: boolean
+		logicalReplication?: boolean
+		slots?: string[]
+		publications?: string[]
+	} | null> => {
+		if (!config.dbProbeFunctionName || !clients.lambda) return null
+		const res = await clients.lambda.send(
+			new InvokeCommand({
+				FunctionName: config.dbProbeFunctionName,
+				InvocationType: 'RequestResponse',
+			}),
+		)
+		if (res.FunctionError) {
+			throw new Error(`db probe failed: ${res.FunctionError}`)
+		}
+		return res.Payload
+			? JSON.parse(Buffer.from(res.Payload).toString('utf8'))
+			: null
+	}
+
+	/**
+	 * After the zero-cache websocket probe passes, verify the replication
+	 * artifacts it should have created exist upstream (P1-b): a
+	 * pitminder-prefixed logical slot AND a pitminder publication. Skipped
+	 * when no probe function is configured.
+	 */
+	const verifyReplicationArtifacts = async (): Promise<void> => {
+		const payload = await invokeDbProbe()
+		if (payload === null) return
+		if (payload.ok !== true) {
+			throw new Error('replication check: db probe not ok')
+		}
+		const slots = payload.slots ?? []
+		const publications = payload.publications ?? []
+		if (
+			!slots.some((slot) => slot.startsWith('pitminder')) ||
+			!publications.some((publication) => publication.includes('pitminder'))
+		) {
+			throw new Error(
+				`zero replication artifacts missing (slots=${slots.join(',')} publications=${publications.join(',')})`,
+			)
+		}
+	}
+
 	const upsertZeroOrigin = async (value: string): Promise<void> => {
 		if (!clients.route53 || !config.hostedZoneId || !config.zeroOriginHost) {
 			throw new Error('dns mode enabled but route53/zone/host unconfigured')
@@ -292,6 +337,11 @@ export function createComputeControl(
 				const ip = await zeroCacheTaskIp()
 				if (ip) {
 					await probeSocket(ip, config.zeroProbePath, probeTimeoutMs)
+					// The socket answering is necessary but not sufficient:
+					// zero-cache must also have created its logical slot +
+					// publication upstream (P1-b) — otherwise "ready" could
+					// mean an idle port in front of a broken replication setup.
+					await verifyReplicationArtifacts()
 					if (config.dnsEnabled) {
 						// Generation fence: never publish a DNS record for a
 						// superseded wake cycle.
@@ -355,20 +405,16 @@ export function createComputeControl(
 				log('probeDb: no db-probe function configured — skipping')
 				return
 			}
-			const res = await clients.lambda.send(
-				new InvokeCommand({
-					FunctionName: config.dbProbeFunctionName,
-					InvocationType: 'RequestResponse',
-				}),
-			)
-			if (res.FunctionError) {
-				throw new Error(`db probe failed: ${res.FunctionError}`)
-			}
-			const payload = res.Payload
-				? JSON.parse(Buffer.from(res.Payload).toString('utf8'))
-				: null
+			const payload = await invokeDbProbe()
 			if (payload?.ok !== true) {
 				throw new Error(`db probe not ok: ${JSON.stringify(payload)}`)
+			}
+			// RDS 'available' alone is not DB-ready for Zero: logical
+			// replication must be on before ECS money is spent (P1-b).
+			if (payload.logicalReplication !== true) {
+				throw new Error(
+					'db probe: wal_level is not logical — zero-cache cannot replicate',
+				)
 			}
 		},
 	}
