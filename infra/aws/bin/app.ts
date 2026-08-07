@@ -46,6 +46,9 @@ new ComputeStack(app, 'pitminder-compute', {
 		app.node.tryGetContext('postCutover') === 'true' ||
 		app.node.tryGetContext('postCutover') === true,
 	natAmiId: app.node.tryGetContext('natAmiId') ?? DEFAULT_NAT_AMI_EU_WEST_2,
+	// Bump alongside every /pitminder/prod/app/env rotation so the resolved
+	// values actually replace (see ComputeStackProps docs + README ordering).
+	appSecretVersion: app.node.tryGetContext('appSecretVersion') ?? 'v1',
 	// -c rehearsalZeroOrigin=<ip-dashes>.sslip.io — pre-cutover /sync/*
 	// behavior to the CURRENT task IP (see ComputeStackProps docs).
 	rehearsalZeroOrigin: app.node.tryGetContext('rehearsalZeroOrigin'),

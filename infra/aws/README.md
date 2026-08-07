@@ -118,6 +118,22 @@ Post-deploy, stop the NAT instance unless a wake is imminent (CloudFormation
 launches it running; the orchestrator owns it from then on):
 `aws ec2 stop-instances --instance-ids <NatInstanceId output>`.
 
+### Rotating /pitminder/prod/app/env
+
+Lambda env values are CFN dynamic references (deploy-time) and ECS secrets
+resolve at task START — rotating the secret alone changes NOTHING running.
+The stack stamps a non-secret `APP_SECRET_VERSION` token into the Lambda env
+and both task definitions; bumping it forces the resolved values to replace.
+Order matters:
+
+1. `bun scripts/power-tool.ts force-idle` (or wait for idle) — SLEEPING.
+2. Rotate: update the secret (`bun scripts/create-app-secret.ts` re-runs it).
+3. Deploy with `-c appSecretVersion=v<next>` (plus the usual context).
+4. `bun scripts/power-tool.ts wake` — services boot with the new values.
+
+Skipping step 1 leaves live tasks on the OLD credentials until their next
+natural restart — fine for additive rotations, wrong for revocations.
+
 ## Schema onto RDS (rehearsed 2026-08-07)
 
 RDS is private; the least-machinery path is an SSM port-forward through the

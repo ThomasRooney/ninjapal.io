@@ -76,6 +76,15 @@ export interface ComputeStackProps extends cdk.StackProps {
 	postCutover: boolean
 	natAmiId: string
 	/**
+	 * NON-SECRET rotation token stamped into the Lambda env and both task
+	 * definitions. CFN dynamic references and ECS secrets resolve at
+	 * deploy/task-start — bumping this (-c appSecretVersion=v2) forces the
+	 * function config + task-def revisions to replace so rotated values in
+	 * /pitminder/prod/app/env actually land. Rotation ordering: sleep →
+	 * rotate the secret → deploy with the bumped token → wake (README).
+	 */
+	appSecretVersion: string
+	/**
 	 * REHEARSAL ONLY (pre-cutover): hostname CloudFront can resolve to the
 	 * CURRENT zero-cache task public IP (e.g. `18-168-220-173.sslip.io` —
 	 * the zone isn't delegated yet, so zero-origin.pitminder.com does not
@@ -261,6 +270,7 @@ export class ComputeStack extends cdk.Stack {
 			logGroup: ssrLogs,
 			environment: {
 				NODE_ENV: 'production',
+				APP_SECRET_VERSION: props.appSecretVersion,
 				PUBLIC_ORIGIN: publicOrigin,
 				BETTER_AUTH_URL: publicOrigin,
 				PITMINDER_MCP_RESOURCE: `${publicOrigin}/api/mcp`,
@@ -351,6 +361,7 @@ export class ComputeStack extends cdk.Stack {
 				// Dynamic reference: NO runtime AWS calls — the probe must work
 				// during SLEEP_MAINTENANCE with the NAT stopped.
 				DB_URL: secretRef('DATABASE_URL'),
+				APP_SECRET_VERSION: props.appSecretVersion,
 			},
 		})
 
@@ -415,6 +426,7 @@ export class ComputeStack extends cdk.Stack {
 			},
 			environment: {
 				NODE_ENV: 'production',
+				APP_SECRET_VERSION: props.appSecretVersion,
 				DO_NOT_TRACK: '1',
 				ZERO_PORT: '4848',
 				ZERO_APP_ID: 'pitminder',
@@ -483,6 +495,7 @@ export class ComputeStack extends cdk.Stack {
 			stopTimeout: cdk.Duration.seconds(60),
 			environment: {
 				NODE_ENV: 'production',
+				APP_SECRET_VERSION: props.appSecretVersion,
 				POWER_TABLE: data('power-table-name'),
 				PHOTOS_BUCKET: data('photos-bucket-name'),
 				PITMINDER_ALLOW_REMOTE_DB: 'true',
@@ -746,7 +759,8 @@ export class ComputeStack extends cdk.Stack {
 				}),
 				new iam.PolicyStatement({
 					// Describe* has no resource-level scoping (read-only).
-					actions: ['ec2:DescribeNetworkInterfaces', 'ec2:DescribeInstances'],
+					// DescribeInstances dropped: ComputeControl never calls it.
+					actions: ['ec2:DescribeNetworkInterfaces'],
 					resources: ['*'],
 				}),
 				new iam.PolicyStatement({

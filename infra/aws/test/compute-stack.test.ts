@@ -18,6 +18,7 @@ function synth(postCutover = false) {
 		publicOrigin: 'https://pending.invalid',
 		postCutover,
 		natAmiId: DEFAULT_NAT_AMI_EU_WEST_2,
+		appSecretVersion: 'v1',
 	})
 	return { stack, template: Template.fromStack(stack) }
 }
@@ -41,6 +42,20 @@ describe('pitminder-compute synth (rehearsal mode)', () => {
 				SubnetIds: Match.anyValue(),
 			}),
 		})
+	})
+
+	it('stamps the secret-version rotation token into the Lambda AND both task defs (P2)', () => {
+		template.hasResourceProperties('AWS::Lambda::Function', {
+			FunctionName: 'pitminder-ssr',
+			Environment: {
+				Variables: Match.objectLike({ APP_SECRET_VERSION: 'v1' }),
+			},
+		})
+		const taskDefs = template.findResources('AWS::ECS::TaskDefinition')
+		for (const taskDef of Object.values(taskDefs)) {
+			const env = taskDef.Properties?.ContainerDefinitions?.[0]?.Environment
+			expect(env).toContainEqual({ Name: 'APP_SECRET_VERSION', Value: 'v1' })
+		}
 	})
 
 	it('cost guards: reserved concurrency on the SSR Lambda + stage throttling (P1-c)', () => {
