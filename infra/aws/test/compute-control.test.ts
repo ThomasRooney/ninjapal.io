@@ -19,12 +19,7 @@ import {
 	ChangeResourceRecordSetsCommand,
 	Route53Client,
 } from '@aws-sdk/client-route-53'
-import {
-	GetParameterCommand,
-	GetParametersByPathCommand,
-	PutParameterCommand,
-	SSMClient,
-} from '@aws-sdk/client-ssm'
+import { GetParametersByPathCommand, SSMClient } from '@aws-sdk/client-ssm'
 import { mockClient } from 'aws-sdk-client-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -180,26 +175,13 @@ describe('startNat / stopNat', () => {
 })
 
 describe('scaleUp', () => {
-	it('first scale for a generation: starts NAT, records it, desired 1 both — no force', async () => {
+	it('starts the NAT and sets desired 1 for both services — marker-free, never forces', async () => {
 		ec2Mock.on(StartInstancesCommand).resolves({})
-		ssmMock
-			.on(GetParameterCommand)
-			.rejects(
-				Object.assign(new Error('missing'), { name: 'ParameterNotFound' }),
-			)
-		ssmMock.on(PutParameterCommand).resolves({})
 		ecsMock.on(UpdateServiceCommand).resolves({})
 		const control = createComputeControl(makeConfig(), makeClients())
 		await control.scaleUp(2)
 
 		expect(ec2Mock.commandCalls(StartInstancesCommand)).toHaveLength(1)
-		expect(
-			ssmMock.commandCalls(PutParameterCommand)[0]?.args[0].input,
-		).toMatchObject({
-			Name: GENERATION_PARAM_NAME,
-			Value: '2',
-			Overwrite: true,
-		})
 		const updates = ecsMock
 			.commandCalls(UpdateServiceCommand)
 			.map((c) => c.args[0].input)
@@ -213,61 +195,19 @@ describe('scaleUp', () => {
 				desiredCount: 1,
 			}),
 		])
-		expect(updates[1]?.forceNewDeployment).toBeUndefined()
-		// No stale-task probe needed on a fresh scale.
-		expect(ecsMock.commandCalls(DescribeServicesCommand)).toHaveLength(0)
+		// P0-2: no generation marker, no forceNewDeployment — a superseded
+		// worker self-terminates via its per-cycle generation proof instead.
+		expect(updates.every((u) => u.forceNewDeployment === undefined)).toBe(true)
+		expect(ssmMock.calls()).toHaveLength(0)
 	})
 
-	it('same generation re-issue: no parameter write, no force', async () => {
+	it('is idempotent — a second call issues the same desired-1 updates', async () => {
 		ec2Mock.on(StartInstancesCommand).resolves({})
-		ssmMock.on(GetParameterCommand).resolves({ Parameter: { Value: '2' } })
 		ecsMock.on(UpdateServiceCommand).resolves({})
 		const control = createComputeControl(makeConfig(), makeClients())
 		await control.scaleUp(2)
-		expect(ssmMock.commandCalls(PutParameterCommand)).toHaveLength(0)
-		const updates = ecsMock
-			.commandCalls(UpdateServiceCommand)
-			.map((c) => c.args[0].input)
-		expect(updates.every((u) => !u.forceNewDeployment)).toBe(true)
-	})
-
-	it('superseding generation with a still-running worker: force-redeploys the worker only', async () => {
-		ec2Mock.on(StartInstancesCommand).resolves({})
-		ssmMock.on(GetParameterCommand).resolves({ Parameter: { Value: '1' } })
-		ssmMock.on(PutParameterCommand).resolves({})
-		ecsMock
-			.on(DescribeServicesCommand)
-			.resolves({ services: [{ runningCount: 1, desiredCount: 1 }] })
-		ecsMock.on(UpdateServiceCommand).resolves({})
-		const control = createComputeControl(makeConfig(), makeClients())
 		await control.scaleUp(2)
-		const updates = ecsMock
-			.commandCalls(UpdateServiceCommand)
-			.map((c) => c.args[0].input)
-		const zero = updates.find((u) => u.service === 'pitminder-zero-cache')
-		const worker = updates.find((u) => u.service === 'pitminder-sync-worker')
-		expect(zero?.forceNewDeployment).toBeUndefined()
-		expect(worker?.forceNewDeployment).toBe(true)
-		expect(
-			ssmMock.commandCalls(PutParameterCommand)[0]?.args[0].input.Value,
-		).toBe('2')
-	})
-
-	it('superseding generation with everything at zero: records it without forcing', async () => {
-		ec2Mock.on(StartInstancesCommand).resolves({})
-		ssmMock.on(GetParameterCommand).resolves({ Parameter: { Value: '1' } })
-		ssmMock.on(PutParameterCommand).resolves({})
-		ecsMock
-			.on(DescribeServicesCommand)
-			.resolves({ services: [{ runningCount: 0, desiredCount: 0 }] })
-		ecsMock.on(UpdateServiceCommand).resolves({})
-		const control = createComputeControl(makeConfig(), makeClients())
-		await control.scaleUp(2)
-		const worker = ecsMock
-			.commandCalls(UpdateServiceCommand)
-			.map((c) => c.args[0].input)
-			.find((u) => u.service === 'pitminder-sync-worker')
-		expect(worker?.forceNewDeployment).toBeUndefined()
+		expect(ecsMock.commandCalls(UpdateServiceCommand)).toHaveLength(4)
 	})
 })
 

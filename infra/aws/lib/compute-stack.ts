@@ -745,11 +745,9 @@ export class ComputeStack extends cdk.Stack {
 					// /* form covers it ('*' matches empty); keep the slashless
 					// form too for the bare-path variant. Verified live: the
 					// slashless-only grant AccessDenied'd the wake Lambda.
-					actions: [
-						'ssm:GetParameter',
-						'ssm:PutParameter',
-						'ssm:GetParametersByPath',
-					],
+					// Read-only: the generation marker (the one PutParameter
+					// consumer) was dropped with the worker's per-cycle proof.
+					actions: ['ssm:GetParameter', 'ssm:GetParametersByPath'],
 					resources: [
 						`arn:aws:ssm:${this.region}:${this.account}:parameter/pitminder/prod/compute`,
 						`arn:aws:ssm:${this.region}:${this.account}:parameter/pitminder/prod/compute/*`,

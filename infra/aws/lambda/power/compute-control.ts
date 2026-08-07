@@ -49,17 +49,15 @@ import { InvokeCommand } from '@aws-sdk/client-lambda'
 import type { Route53Client } from '@aws-sdk/client-route-53'
 import { ChangeResourceRecordSetsCommand } from '@aws-sdk/client-route-53'
 import type { SSMClient } from '@aws-sdk/client-ssm'
-import {
-	GetParameterCommand,
-	GetParametersByPathCommand,
-	PutParameterCommand,
-} from '@aws-sdk/client-ssm'
+import { GetParametersByPathCommand } from '@aws-sdk/client-ssm'
 import type { ComputeControl } from './driver'
 import type { PowerRow } from './lib'
 
 /** SSM prefix the compute stack publishes its contract under. */
 export const COMPUTE_PARAM_PREFIX = '/pitminder/prod/compute/'
-/** Last generation scaleUp acted on (owned by the orchestrator, not CFN). */
+/** LEGACY name only (ignored by loadComputeConfig): the generation marker
+ * was dropped — stale workers self-terminate via their per-cycle proof
+ * (src/server/power/worker.ts), so scaleUp never force-redeploys. */
 export const GENERATION_PARAM_NAME = `${COMPUTE_PARAM_PREFIX}worker-generation`
 /** Permanent placeholder (TEST-NET-1) defeating NXDOMAIN negative caching. */
 export const PLACEHOLDER_IP = '192.0.2.1'
@@ -84,7 +82,6 @@ export interface ComputeConfig {
 	dnsEnabled: boolean
 	hostedZoneId?: string
 	zeroOriginHost?: string
-	generationParamName?: string
 	probeTimeoutMs?: number
 	drainPollMs?: number
 	drainMaxWaitMs?: number
@@ -177,7 +174,6 @@ export function createComputeControl(
 		clients.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
 	const probeSocket = clients.probeSocket ?? probeZeroWebsocket
 	const log = clients.log ?? (() => {})
-	const generationParam = config.generationParamName ?? GENERATION_PARAM_NAME
 	const probeTimeoutMs = config.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
 	const drainPollMs = config.drainPollMs ?? DEFAULT_DRAIN_POLL_MS
 	const drainMaxWaitMs = config.drainMaxWaitMs ?? DEFAULT_DRAIN_MAX_WAIT_MS
@@ -192,17 +188,12 @@ export function createComputeControl(
 		return res.services?.[0] ?? null
 	}
 
-	const setDesired = async (
-		serviceName: string,
-		desiredCount: number,
-		forceNewDeployment = false,
-	) => {
+	const setDesired = async (serviceName: string, desiredCount: number) => {
 		await clients.ecs.send(
 			new UpdateServiceCommand({
 				cluster: config.clusterArn,
 				service: serviceName,
 				desiredCount,
-				...(forceNewDeployment && { forceNewDeployment: true }),
 			}),
 		)
 	}
@@ -295,44 +286,15 @@ export function createComputeControl(
 			// DRAINING/SLEEP_MAINTENANCE→WAKING_SERVICES paths that skip
 			// WAKING_DB entirely.
 			await this.startNat()
-
-			let lastScaled: string | null = null
-			try {
-				const res = await clients.ssm.send(
-					new GetParameterCommand({ Name: generationParam }),
-				)
-				lastScaled = res.Parameter?.Value ?? null
-			} catch (error) {
-				if (!(error instanceof Error && error.name === 'ParameterNotFound')) {
-					throw error
-				}
-			}
-
-			let forceWorker = false
-			if (lastScaled !== String(generation)) {
-				// A still-running worker from a superseded generation booted with
-				// a stale POWER_GENERATION (drain-cancelled wake) — its fenced
-				// heartbeats can never satisfy this generation. Restart it.
-				if (lastScaled !== null) {
-					const worker = await describeService(config.syncWorkerService)
-					forceWorker =
-						(worker?.runningCount ?? 0) > 0 || (worker?.desiredCount ?? 0) > 0
-				}
-				await clients.ssm.send(
-					new PutParameterCommand({
-						Name: generationParam,
-						Value: String(generation),
-						Type: 'String',
-						Overwrite: true,
-					}),
-				)
-			}
-
+			// No generation marker, no force-redeploys: a still-running worker
+			// from a superseded generation FAILS its per-cycle generation
+			// proof (src/server/power/worker.ts, fail-closed) and exits; ECS
+			// restarts a fresh task whose entry reads the CURRENT row
+			// generation at boot. Simpler, and the worker can never run
+			// unfenced even if this method is skipped entirely.
 			await setDesired(config.zeroCacheService, 1)
-			await setDesired(config.syncWorkerService, 1, forceWorker)
-			if (forceWorker) {
-				log(`scaleUp: forced worker redeploy for generation ${generation}`)
-			}
+			await setDesired(config.syncWorkerService, 1)
+			log(`scaleUp: desired 1 for generation ${generation}`)
 		},
 
 		async readyComponents(generation) {

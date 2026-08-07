@@ -24,9 +24,14 @@ async function main(): Promise<void> {
 			`sync-worker-entry: POWER_GENERATION=${generation} (from power row)`,
 		)
 	} else if (process.env.POWER_TABLE?.trim()) {
-		console.warn(
-			'sync-worker-entry: POWER_TABLE is set but no generation was readable from the power row — power writes will be skipped (worker.ts refuses unfenced writes)',
+		// FAIL CLOSED (CONTRACT.md writer 3): a fenced deployment whose
+		// generation cannot be proven must NOT run — an unfenced worker
+		// would execute device commands and director runs it can never
+		// stamp. Exit non-zero; ECS restarts the task and retries the read.
+		console.error(
+			'sync-worker-entry: POWER_TABLE is set but no generation was readable from the power row — refusing to start unfenced',
 		)
+		process.exit(1)
 	}
 	await import('./sync-worker')
 }

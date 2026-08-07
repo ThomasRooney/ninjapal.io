@@ -78,7 +78,10 @@ import {
 	deleteStoredPhotoObject,
 	resolveStoredPhotoUrl,
 } from '@/server/photo-storage'
-import { stampWorkerCyclePower } from '@/server/power/worker'
+import {
+	proveWorkerGeneration,
+	stampWorkerCyclePower,
+} from '@/server/power/worker'
 import {
 	assertSafeUpstream,
 	backoffOnFailure,
@@ -1671,14 +1674,15 @@ async function cycle() {
 	}
 
 	// Scale-to-zero signals as ONE generation-fenced write per cycle
-	// (no-op when POWER_TABLE is unset; skipped+warned if POWER_GENERATION
-	// is missing): heartbeat always, lastRealDeviceOnlineAt only when a
-	// NON-simulated device reported Online — sims never count.
-	await stampWorkerCyclePower({
+	// (no-op when POWER_TABLE is unset): heartbeat always,
+	// lastRealDeviceOnlineAt only when a NON-simulated device reported
+	// Online — sims never count. 'fence-lost' means a newer wake superseded
+	// this task mid-cycle: the MAIN LOOP must drain and exit on it.
+	const stampOutcome = await stampWorkerCyclePower({
 		realDeviceOnline: stats.realDevicesOnline > 0,
 	})
 
-	return stats
+	return { ...stats, stampOutcome }
 }
 
 /** Last poll start per connection (userId → epoch ms) for cadence warnings. */
@@ -1715,12 +1719,41 @@ process.on('SIGTERM', () => requestShutdown('SIGTERM'))
 process.on('SIGINT', () => requestShutdown('SIGINT'))
 
 let cycleCount = 0
+let fenceLost = false
 while (!drain.isDraining()) {
 	const start = Date.now()
 	let cycleFailed = false
+	// FENCE PROOF FIRST (CONTRACT.md writer 3, fail-closed): prove the row
+	// generation is still ours BEFORE any side effects (device commands,
+	// director runs, pushes). 'stale' = superseded by a newer wake → drain
+	// and exit immediately; ECS restarts a fresh task that reads the
+	// current generation at boot. 'unavailable' = transient row-read
+	// failure → skip the cycle entirely rather than act unproven.
+	const proof = await proveWorkerGeneration()
+	if (proof === 'stale') {
+		log.error(
+			'generation fence lost before the cycle — superseded by a newer wake; draining and exiting',
+		)
+		fenceLost = true
+		break
+	}
+	if (proof === 'unavailable') {
+		log.warn(
+			'power row unreadable — skipping this cycle (no side effects without a proven fence)',
+		)
+		await drain.sleep(Math.max(5_000, INTERVAL_MS))
+		continue
+	}
 	try {
 		const stats = await cycle()
 		cycleCount++
+		if (stats.stampOutcome === 'fence-lost') {
+			log.error(
+				'cycle stamp lost the generation fence — superseded mid-cycle; draining and exiting',
+			)
+			fenceLost = true
+			break
+		}
 		log.info('cycle complete', {
 			cycle: cycleCount,
 			...stats,
@@ -1748,8 +1781,11 @@ while (!drain.isDraining()) {
 	await drain.sleep(Math.max(5_000, INTERVAL_MS - elapsed))
 }
 
-log.info('drained — closing the db pool and exiting 0', {
-	cyclesCompleted: cycleCount,
-})
+log.info(
+	fenceLost
+		? 'generation fence lost — closing the db pool and exiting for restart'
+		: 'drained — closing the db pool and exiting 0',
+	{ cyclesCompleted: cycleCount },
+)
 await sql.end({ timeout: 5 }).catch(() => {})
 process.exit(0)
