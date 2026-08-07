@@ -27,6 +27,16 @@ const nitroApp = useNitroApp()
 
 export const handler = awslambda.streamifyResponse(
 	async (event, responseStream, context) => {
+		// Freeze the sandbox as soon as the response completes instead of
+		// waiting for the event loop to drain. Measured live (2026-08-07):
+		// postgres.js keeps idle pooled sockets (idle_timeout 20s in
+		// src/server/db/client.ts) on the loop, so without this EVERY
+		// invocation ran ~20s past its response — billed 24s for a 4s page,
+		// sandboxes never freed, and each sequential request paid a fresh
+		// ~4s first-request module eval. With it, connections freeze warm in
+		// the sandbox and thaw on the next invoke (the classic Lambda+RDBMS
+		// pattern).
+		context.callbackWaitsForEmptyEventLoop = false
 		// Pure, unit-tested parsing (v1.0 + v2.0): infra/aws/spike/lambda-event.mjs
 		const { url, method, query, headers, body } = parseLambdaEvent(event)
 
