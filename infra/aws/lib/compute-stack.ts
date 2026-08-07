@@ -251,6 +251,10 @@ export class ComputeStack extends cdk.Stack {
 			// 4.3s vs 7.6s at 1024 (spike FINDINGS.md). Worth it.
 			memorySize: 2048,
 			timeout: cdk.Duration.seconds(29),
+			// Pre-cutover cost guard (P1-c): a public default-cert domain can
+			// be crawled/abused; 10 concurrent 2GB sandboxes caps the worst
+			// case at pennies. Revisit after cutover with real traffic.
+			reservedConcurrentExecutions: 10,
 			vpc,
 			vpcSubnets: { subnets: vpc.isolatedSubnets },
 			securityGroups: [ssrSg],
@@ -293,7 +297,13 @@ export class ComputeStack extends cdk.Stack {
 		const api = new apigateway.RestApi(this, 'Api', {
 			restApiName: 'pitminder',
 			endpointConfiguration: { types: [apigateway.EndpointType.REGIONAL] },
-			deployOptions: { stageName: 'prod' },
+			deployOptions: {
+				stageName: 'prod',
+				// Pre-cutover cost guard (P1-c): modest stage throttle in front
+				// of the reserved-concurrency Lambda.
+				throttlingRateLimit: 25,
+				throttlingBurstLimit: 50,
+			},
 			cloudWatchRole: false,
 		})
 		// The 2021-11-15 path + /response-streaming-invocations makes API GW

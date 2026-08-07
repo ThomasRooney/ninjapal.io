@@ -43,6 +43,22 @@ describe('pitminder-compute synth (rehearsal mode)', () => {
 		})
 	})
 
+	it('cost guards: reserved concurrency on the SSR Lambda + stage throttling (P1-c)', () => {
+		template.hasResourceProperties('AWS::Lambda::Function', {
+			FunctionName: 'pitminder-ssr',
+			ReservedConcurrentExecutions: 10,
+		})
+		template.hasResourceProperties('AWS::ApiGateway::Stage', {
+			StageName: 'prod',
+			MethodSettings: Match.arrayWith([
+				Match.objectLike({
+					ThrottlingRateLimit: 25,
+					ThrottlingBurstLimit: 50,
+				}),
+			]),
+		})
+	})
+
 	it('SSR env carries secret dynamic references + power/photos config', () => {
 		template.hasResourceProperties('AWS::Lambda::Function', {
 			FunctionName: 'pitminder-ssr',
