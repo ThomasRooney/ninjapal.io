@@ -40,6 +40,7 @@ import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as route53 from 'aws-cdk-lib/aws-route53'
 import * as targets53 from 'aws-cdk-lib/aws-route53-targets'
+import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
 import type { Construct } from 'constructs'
@@ -613,14 +614,26 @@ export class ComputeStack extends cdk.Stack {
 				protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
 			},
 		)
-		const assetsCache = new cloudfront.CachePolicy(this, 'AssetsCache', {
-			cachePolicyName: 'pitminder-assets',
-			comment: 'hashed /assets from the SSR Lambda — modest TTLs',
-			defaultTtl: cdk.Duration.hours(1),
-			maxTtl: cdk.Duration.days(1),
-			minTtl: cdk.Duration.seconds(0),
-			enableAcceptEncodingGzip: true,
-			enableAcceptEncodingBrotli: true,
+		// S3 assets offload (post-cutover incident, 2026-08-09): a cold-pop
+		// first load fans out 20+ parallel /assets/* fetches — more than the
+		// account's 10-concurrency Lambda quota, so uncached chunks 500'd
+		// through APIGW. Hashed assets are synced here by
+		// scripts/sync-assets.sh (aws s3 sync, reflow-style — never
+		// BucketDeployment) and served via OAC. RETAIN: recreating the bucket
+		// under the live distribution would 404 /assets until a re-sync.
+		const assets = new s3.Bucket(this, 'Assets', {
+			blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+			enforceSSL: true,
+			encryption: s3.BucketEncryption.S3_MANAGED,
+			removalPolicy: cdk.RemovalPolicy.RETAIN,
+		})
+		// Origin group: S3 primary, Lambda (serveStatic) fallback on miss —
+		// covers the deploy-before-sync window AND open tabs lazy-loading
+		// chunks from a previous build that was never synced.
+		const assetsOrigin = new origins.OriginGroup({
+			primaryOrigin: origins.S3BucketOrigin.withOriginAccessControl(assets),
+			fallbackOrigin: apiOrigin,
+			fallbackStatusCodes: [403, 404, 500, 502, 503, 504],
 		})
 		const certificate = props.postCutover
 			? acm.Certificate.fromCertificateArn(
@@ -643,12 +656,15 @@ export class ComputeStack extends cdk.Stack {
 					cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
 			},
 			additionalBehaviors: {
+				// Immutable content-hashed files: long TTLs are safe, and the
+				// managed CACHING_OPTIMIZED policy honours the immutable
+				// Cache-Control the sync writes.
 				'/assets/*': {
-					origin: apiOrigin,
+					origin: assetsOrigin,
 					viewerProtocolPolicy:
 						cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
 					allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-					cachePolicy: assetsCache,
+					cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
 				},
 				...(props.rehearsalZeroOrigin
 					? {
@@ -812,6 +828,8 @@ export class ComputeStack extends cdk.Stack {
 			'zero-origin-host': ZERO_ORIGIN_HOST,
 			'api-url': api.url,
 			'cloudfront-domain': distribution.distributionDomainName,
+			'cloudfront-distribution-id': distribution.distributionId,
+			'assets-bucket-name': assets.bucketName,
 			'public-origin': publicOrigin,
 			'image-tag': props.imageTag,
 		}
