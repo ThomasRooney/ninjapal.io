@@ -1,6 +1,15 @@
 # Project Status — PitMinder (repo: ninjapal.io)
 
-> Last updated: 2026-08-07 (`pitminder-compute` deployed + full wake/sleep rehearsal). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
+> Last updated: 2026-08-09 (**AWS CUTOVER COMPLETE** — app.pitminder.com serves from prod-pitminder 836003244283). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
+
+## PRODUCTION IS NOW AWS (cutover 2026-08-07→09)
+
+- **app.pitminder.com** → CloudFront → APIGW STREAM → SSR Lambda; **sync.pitminder.com** → CloudFront → zero-cache Fargate task (zero-origin record, generation-fenced); worker on Fargate; RDS `pitminder-prod` (db `pitminder`); power machine governs wake/sleep (idle 8h both-signals, 30-min cron; wake typically 9–15 min).
+- Cutover record: Neon frozen via owner-password rotation, final dump restored to RDS with **identical row counts across all 11 tables**; zero permissions hash `5aba566` re-applied (schema drop cascades over `pitminder.permissions` — remember this on any future schema-reset); nameservers switched to Route53 **via the Vercel API** (`PATCH /v3/domains/pitminder.com` with `customNameservers`); ACM issued both regions post-delegation.
+- Known issue (fix in flight): first-load `/assets/*` fan-out exceeds the new-account Lambda concurrency cap (10) → 500s until the edge warms; LHR pop warmed manually; proper fix = S3 assets origin (`feat/assets-s3-offload`).
+- Curl gotcha: testing the wss path with curl requires `--http1.1` — h2 drops upgrade headers and the origin answers 404, which looks like a routing bug and isn't.
+- **OLD PROVIDERS (Vercel app+marketing, Railway, Neon) are STALE but intact** as rollback until a week of green incl. a real cook — then owner-confirmed teardown. Neon owner password was rotated during the freeze (the old connstring in `.env` comments is dead).
+- Migration artifacts purged (S3 dump deleted, migrate task defs INACTIVE, local secrets shredded).
 
 ## Landed 2026-08-07 (AWS compute — `pitminder-compute` deployed, wake/sleep REHEARSED end to end)
 
