@@ -112,7 +112,27 @@ bunx cdk deploy pitminder-compute -c imageTag=sha-$SHA --require-approval never
 #    so no client rebuild is needed for this)
 bunx cdk deploy pitminder-compute -c imageTag=sha-$SHA \
   -c publicOrigin=https://<CloudFrontDomain> --require-approval never
+
+# 4. Hashed assets -> the S3 assets origin (see below). Run after EVERY
+#    deploy that changed the client bundle.
+scripts/sync-assets.sh
 ```
+
+### /assets/* comes from S3, not the Lambda
+
+Incident (post-cutover, 2026-08-09): a cold-pop first load fans out 20+
+parallel `/assets/*` fetches — over the account's 10-concurrency Lambda
+quota — so uncached chunks 500'd through APIGW and dynamic imports failed
+until the edge warmed. The `/assets/*` behavior now serves a private S3
+bucket via OAC (`CACHING_OPTIMIZED`, GET/HEAD) wrapped in an ORIGIN GROUP
+whose fallback is the Lambda origin (serveStatic stays on): chunks missing
+from S3 — the deploy-before-sync window, or an open tab lazy-loading a
+build that predates the bucket — fall back instead of 404ing. Root-level
+public files (`sw.js` for web push, favicons, `manifest.json`) still come
+from the Lambda default behavior. `scripts/sync-assets.sh` uploads
+`dist/ssr/public/assets` with `public,max-age=31536000,immutable` (no
+`--delete`: hashed names are immutable and old sessions may still fetch
+them) and invalidates `/assets/*`.
 
 Post-deploy, stop the NAT instance unless a wake is imminent (CloudFormation
 launches it running; the orchestrator owns it from then on):

@@ -245,6 +245,46 @@ describe('pitminder-compute synth (rehearsal mode)', () => {
 		expect(config?.CacheBehaviors?.[0]?.PathPattern).toBe('/assets/*')
 	})
 
+	it('/assets/* serves the private S3 bucket via OAC with the Lambda as origin-group fallback', () => {
+		const distributions = template.findResources(
+			'AWS::CloudFront::Distribution',
+		)
+		const config =
+			Object.values(distributions)[0]?.Properties?.DistributionConfig
+		const assets = config?.CacheBehaviors?.[0]
+		expect(assets?.PathPattern).toBe('/assets/*')
+		// Managed CACHING_OPTIMIZED policy id + GET/HEAD only
+		expect(assets?.CachePolicyId).toBe('658327ea-f89d-4fab-a63d-7e88639e58f6')
+		expect(assets?.AllowedMethods).toEqual(['GET', 'HEAD'])
+		// The behavior targets an origin GROUP whose members are the S3
+		// bucket (OAC) and the API GW Lambda origin, failing over on
+		// 403/404/5xx — the deploy-before-sync window and stale-chunk
+		// requests fall back to serveStatic instead of 404ing.
+		const group = config?.OriginGroups?.Items?.[0]
+		expect(config?.OriginGroups?.Quantity).toBe(1)
+		expect(assets?.TargetOriginId).toBe(group?.Id)
+		expect(group?.FailoverCriteria?.StatusCodes?.Items).toEqual(
+			expect.arrayContaining([403, 404, 500, 502, 503, 504]),
+		)
+		template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1)
+		// Private bucket, never public
+		template.hasResourceProperties('AWS::S3::Bucket', {
+			PublicAccessBlockConfiguration: Match.objectLike({
+				BlockPublicAcls: true,
+				RestrictPublicBuckets: true,
+			}),
+		})
+	})
+
+	it('publishes assets-bucket-name + cloudfront-distribution-id for sync-assets.sh', () => {
+		template.hasResourceProperties('AWS::SSM::Parameter', {
+			Name: '/pitminder/prod/compute/assets-bucket-name',
+		})
+		template.hasResourceProperties('AWS::SSM::Parameter', {
+			Name: '/pitminder/prod/compute/cloudfront-distribution-id',
+		})
+	})
+
 	it('publishes the permanent zero-origin placeholder record (TEST-NET-1)', () => {
 		template.hasResourceProperties('AWS::Route53::RecordSet', {
 			Name: 'zero-origin.pitminder.com.',
