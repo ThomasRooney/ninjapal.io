@@ -6,10 +6,17 @@
 > step 8 by simply not switching NS — old prod stays authoritative + untouched.
 
 ## 0. Preflight (any time before)
-- [x] Mail records replicated into Route53 zone Z03465572HM9FQRB9AMRQ (2026-08-07):
-      apex MX → SES inbound, `_dmarc` TXT, `resend._domainkey` TXT, `send` TXT (SPF) + MX.
-- [ ] Compare full answer sets old-vs-new for every mail name via public resolvers
-      (`dig @ns1.vercel-dns.com` vs `dig @<zone NS>`); byte-identical values required.
+- [ ] Replicate the complete external-provider record set into Route53 zone
+      Z03465572HM9FQRB9AMRQ: apex MX → SES inbound, `_dmarc` TXT,
+      `resend._domainkey` TXT, `send` TXT (SPF) + MX, all three SES Easy DKIM
+      CNAMEs, `_amazonses` identity TXT, and apex/www A records for the Vercel
+      marketing project. Use `vercel dns ls pitminder.com --scope thomasrooney`,
+      `vercel domains inspect pitminder.com --scope thomasrooney`, and the SES
+      identity/DKIM APIs as the sources of truth.
+- [ ] Compare the complete name/type/value inventory old-vs-new via authoritative
+      nameservers (`dig @ns1.vercel-dns.com` vs `dig @<zone NS>`). Do not switch
+      nameservers until every expected record is byte-identical or an intentional
+      replacement is documented.
 - [ ] ACM certs still PENDING_VALIDATION (expected until step 8; validation CNAMEs already in zone).
 - [ ] Fresh rehearsal cycle within the last 7 days ends SLEEPING clean.
 - [ ] Secrets in `/pitminder/prod/app/env` diffed against current Vercel env (same
@@ -53,9 +60,15 @@
 
 ## 7. DNS record finalization (zone still dormant — safe)
 - postCutover flip per README: redeploy `-c postCutover=true -c publicOrigin=https://app.pitminder.com`;
-  this creates apex/www/app/sync alias records to the CloudFront distributions in the zone.
-- Re-run the full old-vs-new zone comparison; every name answers (values differ only where intended:
-  apex/www/app/sync now → CloudFront).
+  this creates only app/sync alias records to the CloudFront distributions in the zone.
+- Keep apex/www on the Vercel `pitminder-marketing` project until marketing is
+  deliberately migrated. Create the A records recommended by `vercel domains inspect`.
+- Re-run the full old-vs-new zone comparison. Every web and mail name must answer;
+  only app/sync intentionally change to CloudFront.
+- Hard gate: query every Route53 authoritative server for apex, www, app, sync,
+  `_amazonses`, all three SES DKIM names, Resend DKIM/SPF/DMARC, and inbound MX.
+  Verify apex/www HTTPS content and require Vercel's domain inspector to report no
+  configuration warning before the nameserver switch.
 
 ## 8. NAMESERVER SWITCH (OWNER ACTION — Vercel registrar → the 4 zone NS hosts)
 - TTLs: registrar-level NS caching means propagation 5min–48h; both stacks stay up meanwhile
@@ -70,6 +83,10 @@
 - Full pass: login (password + magic link + Google), live device telemetry over wss
   (sync.pitminder.com), steer chat streaming + persistence-after-refresh, photos upload/view,
   push notification delivery, MCP OAuth flow from Claude Code (`claude mcp add ...`).
+- Check SES identity and Easy DKIM status in eu-west-1. If either has fallen to
+  `FAILED`, first restore `_amazonses` + the three DKIM records, then re-initialize
+  with `aws ses verify-domain-identity --domain pitminder.com` and
+  `aws ses verify-domain-dkim --domain pitminder.com`; require both to reach `SUCCESS`.
 - Release the keep-warm hold → verify idle → SLEEPING within ~40 min; then a cold
   dashboard hit → warming UX → AWAKE. **This is the owner's scale-to-zero validation.**
 
@@ -78,5 +95,6 @@
   the freeze; discard RDS restore. After step 8: switch NS back (same propagation caveats).
 
 ## 11. Decommission (owner-confirmed, after ≥1 week green incl. a real cook)
-- Vercel projects (app + marketing), Railway project, Neon project, mise: drop Railway CLI;
-  STATUS.md topology rewrite; delete Neon stopgap trigger note; remove `prod-deploy-blockers` memory.
+- Vercel app, Railway project, Neon project, mise: drop Railway CLI; STATUS.md
+  topology rewrite; delete Neon stopgap trigger note; remove `prod-deploy-blockers`
+  memory. Keep Vercel marketing until a separately verified apex/www migration.
