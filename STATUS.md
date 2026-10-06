@@ -1,6 +1,6 @@
 # Project Status — PitMinder (repo: ninjapal.io)
 
-> Last updated: 2026-10-06 (**experimental brisket tenderization live**). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
+> Last updated: 2026-10-06 (**Google login wiring deployed; valid client still required**). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
 
 ## 2026-10-06 — Google sign-in preparation
 
@@ -8,6 +8,7 @@
 - The Google Cloud CLI is signed into `thomas@speakeasyapi.dev` / `speakeasy-internal`; no PitMinder/NinjaPal project appeared in the filtered accessible-project list. Browser console access requires reauthentication. Awaiting the intended owning account/project before client creation; do not create PitMinder resources in the unrelated work project by default.
 - App wiring now preserves the signed MCP authorization continuation, shows Google pending/failure/cancellation states, and returns callback failures to login. Provider error fields are stripped before retrying the signed authorization query. Existing verification requirements for account linking remain intact: verify the existing account via an email login link before linking Google.
 - Local verification: `bun check`; **293 unit tests**, including 11 new focused tests; **8 Playwright tests** with real local Postgres, mocking only Google's external service. Covered verified account reuse (same user ID), repeat sign-in, new Google users, unverified-account rejection, cancellation, missing state cookie, external redirect rejection, MCP return paths, and desktop/mobile UI. Client creation and a real Google sign-in remain required before claiming the feature works in production.
+- App commit **`fd22754` deployed to AWS**; diff changed only SSR Lambda code. Assets synced and CloudFront invalidation `IESFI3X70HPNZAZGL2R37FA8RR` completed. **2 production callback-recovery tests pass without retries** at 1440px / 390px, with no page errors or failed assets; normal demo password login also passed. These tests simulate Google's denial response and do not validate the missing client. First desktop run exceeded the test's five-second assertion budget; production callback checks now allow 30 seconds for post-deploy Lambda cold starts. Credentials have not been changed.
 - Client setup: Google Auth Platform → Web application; authorize `https://app.pitminder.com/api/auth/callback/google` and `http://localhost:5173/api/auth/callback/google`. Request only `openid email profile`. Store credentials server-side in `/pitminder/prod/app/env`, preserving all other secret keys. A secret update alone does not refresh Lambda's resolved environment; deploy an explicit configuration change and verify the resolved values. See the `appSecretVersion` rotation workflow in `infra/aws/README.md` (it also rolls ECS tasks, so inspect the diff).
 
 ## 2026-10-06 — Experimental brisket tenderization
