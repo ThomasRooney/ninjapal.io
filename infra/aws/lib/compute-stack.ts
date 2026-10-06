@@ -85,6 +85,9 @@ export interface ComputeStackProps extends cdk.StackProps {
 	 * rotate the secret → deploy with the bumped token → wake (README).
 	 */
 	appSecretVersion: string
+	/** SSR-only secret refresh (e.g. Google OAuth), without rolling ECS.
+	 * Shared credentials still require the full appSecretVersion workflow. */
+	ssrSecretVersion?: string
 	/**
 	 * Reserved concurrency for the SSR Lambda (P1-c cost guard). Deploy-time
 	 * FACT (verified live): this account's TOTAL Lambda concurrency quota is
@@ -283,6 +286,9 @@ export class ComputeStack extends cdk.Stack {
 			environment: {
 				NODE_ENV: 'production',
 				APP_SECRET_VERSION: props.appSecretVersion,
+				...(props.ssrSecretVersion
+					? { SSR_SECRET_VERSION: props.ssrSecretVersion }
+					: {}),
 				PUBLIC_ORIGIN: publicOrigin,
 				BETTER_AUTH_URL: publicOrigin,
 				PITMINDER_MCP_RESOURCE: `${publicOrigin}/api/mcp`,

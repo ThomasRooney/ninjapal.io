@@ -154,6 +154,16 @@ Order matters:
 Skipping step 1 leaves live tasks on the OLD credentials until their next
 natural restart — fine for additive rotations, wrong for revocations.
 
+For a secret used **only by SSR**, such as Google OAuth credentials, merge
+only the relevant keys into the current JSON secret and deploy with
+`-c ssrSecretVersion=<new-token>` (plus the usual context). This adds a
+separate `SSR_SECRET_VERSION` marker to the SSR Lambda, refreshing its
+resolved environment without rolling ECS or the database probe. Keep the
+same marker on subsequent deploys. Verify the diff changes only SSR's
+environment and compare resolved values after deployment. Do not use this
+shortcut for shared database/auth/worker credentials; those require the
+full rotation sequence above.
+
 ## Schema onto RDS (rehearsed 2026-08-07)
 
 RDS is private; the least-machinery path is an SSM port-forward through the

@@ -49,6 +49,7 @@ new ComputeStack(app, 'pitminder-compute', {
 	// Bump alongside every /pitminder/prod/app/env rotation so the resolved
 	// values actually replace (see ComputeStackProps docs + README ordering).
 	appSecretVersion: app.node.tryGetContext('appSecretVersion') ?? 'v1',
+	ssrSecretVersion: app.node.tryGetContext('ssrSecretVersion'),
 	// Only after a Service Quotas raise — the account's 10-concurrency
 	// default makes any reservation invalid AND is itself the cap.
 	ssrReservedConcurrency: Number(

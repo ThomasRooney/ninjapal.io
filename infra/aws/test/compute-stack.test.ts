@@ -10,7 +10,7 @@ import {
 
 // Hermetic synth: everything cross-stack is a deploy-time SSM parameter —
 // no VPC/AMI context lookups (the whole point of the data contract).
-function synth(postCutover = false) {
+function synth(postCutover = false, ssrSecretVersion?: string) {
 	const app = new App()
 	const stack = new ComputeStack(app, 'pitminder-compute', {
 		env: { account: '111111111111', region: 'eu-west-2' },
@@ -19,6 +19,7 @@ function synth(postCutover = false) {
 		postCutover,
 		natAmiId: DEFAULT_NAT_AMI_EU_WEST_2,
 		appSecretVersion: 'v1',
+		ssrSecretVersion,
 	})
 	return { stack, template: Template.fromStack(stack) }
 }
@@ -56,6 +57,22 @@ describe('pitminder-compute synth (rehearsal mode)', () => {
 			const env = taskDef.Properties?.ContainerDefinitions?.[0]?.Environment
 			expect(env).toContainEqual({ Name: 'APP_SECRET_VERSION', Value: 'v1' })
 		}
+	})
+
+	it('refreshes SSR-only secrets without changing any other resource', () => {
+		const rotated = synth(false, 'google-20261006').template.toJSON()
+		const original = template.toJSON()
+		const resources = rotated.Resources
+		const ssrId = Object.keys(resources).find(
+			(id) => resources[id].Properties?.FunctionName === 'pitminder-ssr',
+		)
+		expect(ssrId).toBeDefined()
+		const env = resources[ssrId as string].Properties.Environment.Variables
+		expect(env.SSR_SECRET_VERSION).toBe('google-20261006')
+		expect(env.APP_SECRET_VERSION).toBe('v1')
+		const { SSR_SECRET_VERSION: _marker, ...unchangedEnv } = env
+		resources[ssrId as string].Properties.Environment.Variables = unchangedEnv
+		expect(rotated).toEqual(original)
 	})
 
 	it('cost guards: stage throttling always; concurrency reservation opt-in (P1-c)', () => {
