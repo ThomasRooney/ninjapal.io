@@ -1,3 +1,4 @@
+import { GoogleSignInButton } from '@/components/google-sign-in-button'
 import { Button } from '@/components/ui/button.tsx'
 import {
 	Card,
@@ -15,11 +16,7 @@ import {
 	FormMessage,
 } from '@/components/ui/form.tsx'
 import { Input } from '@/components/ui/input.tsx'
-import {
-	authClient,
-	signInWithGoogle,
-	signInWithMagicLink,
-} from '@/lib/auth-client.ts'
+import { authClient, signInWithMagicLink } from '@/lib/auth-client.ts'
 import { clearUserCache } from '@/lib/user-cache'
 import { cn } from '@/lib/utils.ts'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -36,14 +33,18 @@ const formSchema = z.object({
 export function AuthLoginForm({
 	className,
 	redirectTo,
+	errorCallbackURL,
+	googleError,
 	...props
 }: React.ComponentPropsWithoutRef<'div'> & {
 	/**
-	 * Full-page redirect target after email+password login (used by the OAuth
+	 * Full-page redirect target after login (used by the OAuth
 	 * authorize flow to resume at /api/auth/oauth2/authorize). Defaults to the
 	 * SPA /app navigation.
 	 */
 	redirectTo?: string
+	errorCallbackURL?: string
+	googleError?: string | null
 }) {
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
@@ -168,15 +169,11 @@ export function AuthLoginForm({
 								</span>
 							</div>
 
-							<Button
-								type='button'
-								variant='outline'
-								className='w-full rounded'
-								data-testid='login-google'
-								onClick={() => signInWithGoogle()}
-							>
-								Continue with Google
-							</Button>
+							<GoogleSignInButton
+								redirectTo={redirectTo}
+								errorCallbackURL={errorCallbackURL}
+								googleError={googleError}
+							/>
 
 							<Button
 								type='button'

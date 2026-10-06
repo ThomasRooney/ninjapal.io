@@ -1,7 +1,6 @@
 import { AuthLoginForm } from '@/components/auth-login-form.tsx'
-// import { LoginForm } from '@/components/login-form'
-// import { LoginFormMagic } from '@/components/login-form-magic'
 import NavMain from '@/components/nav-main.tsx'
+import { loginContext } from '@/lib/login-context'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
@@ -13,22 +12,17 @@ function RouteComponent() {
 	// When the OAuth authorize flow redirects here it appends the signed
 	// authorization query (client_id + sig); after login, resume at the
 	// server-side authorize endpoint with that exact query.
-	const [oauthRedirect, setOauthRedirect] = useState<string | undefined>()
+	const [context, setContext] = useState(() => loginContext(''))
 
 	useEffect(() => {
-		const params = new URLSearchParams(window.location.search)
-		if (params.has('client_id') && params.has('sig')) {
-			setOauthRedirect(`/api/auth/oauth2/authorize?${params.toString()}`)
-		}
+		setContext(loginContext(window.location.search))
 	}, [])
 
 	return (
 		<div className='flex flex-col flex-grow h-screen w-full items-center justify-center'>
 			<NavMain location='auth' />
 			<div className='w-full h-full flex flex-col items-center justify-center max-w-md'>
-				{/* <LoginForm /> */}
-				{/* <LoginFormMagic /> */}
-				<AuthLoginForm redirectTo={oauthRedirect} />
+				<AuthLoginForm {...context} />
 			</div>
 		</div>
 	)

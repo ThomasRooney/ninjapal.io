@@ -6,10 +6,14 @@ export const authClient = createAuthClient({
 	plugins: [magicLinkClient(), adminClient()],
 })
 
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = async (
+	callbackURL = '/app',
+	errorCallbackURL = '/auth/login',
+) => {
 	return await authClient.signIn.social({
 		provider: 'google',
-		callbackURL: '/app',
+		callbackURL,
+		errorCallbackURL,
 	})
 }
 

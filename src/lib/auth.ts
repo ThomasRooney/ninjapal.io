@@ -54,6 +54,7 @@ const authBaseURL = process.env.BETTER_AUTH_URL ?? publicOriginEnv()
 
 export const auth = betterAuth({
 	...(authBaseURL ? { baseURL: authBaseURL } : {}),
+	onAPIError: { errorURL: '/auth/login' },
 	database: drizzleAdapter(getDb(), {
 		provider: 'pg',
 		schema: authSchema,
