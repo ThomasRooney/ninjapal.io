@@ -1,6 +1,6 @@
 # Project Status — PitMinder (repo: ninjapal.io)
 
-> Last updated: 2026-08-19 (**DNS cutover omissions recovered** — marketing + SES identity/DKIM live again). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
+> Last updated: 2026-10-06 (**experimental brisket tenderization live**). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
 
 ## 2026-10-06 — Experimental brisket tenderization
 
@@ -9,7 +9,8 @@
 - **Do not relabel this as collagen conversion %.** The video supplies relative rates without the absolute rate and calibration needed for that claim. Its on-screen Arrhenius activation-energy note also does not directly reproduce the narrated multipliers; this implementation explicitly follows the narrated approximation. Compare recorded cooks and collect tenderness outcomes before defining a target. The [2025 brisket study](https://doi.org/10.22175/mmb.18269) supports time/temperature/hold effects and reports different responses in the flat and point, not validation of this heuristic.
 - Dedicated `use-tenderization-telemetry.ts` preserves invalid samples, sorts snapshot/patch history correctly, and replays patches between the baseline and cook start. Do not substitute the overview's trailing three-hour history. Existing cook sessions end at the grill's cooking-state transition, so rest is an explicitly selected extension.
 - Further video learnings: evaporation controls the stall; bark formation and tenderization are distinct goals; rest contributes while the meat stays hot. Existing autopilot equates hitting temperature targets with readiness; leave the experimental exposure estimate advisory until calibrated. A later phase-aware readiness model can separate target reached, probe tender, and ready to serve.
-- Verified calculation and card states with unit tests and real-Postgres/Zero browser tests at desktop and mobile sizes. Production deployment verification is recorded below after release.
+- **Deployed and verified 2026-10-06**, application commit `623809c` (calculation `9b5c46e`). `bun check` clean; **282 unit tests**, **2 local real-Postgres/Zero browser tests**, **2 read-only production browser tests** pass at 1440px and 390px. Production tests exercise existing cook history, probe switching, rest selection, model help, and require no failed assets or page errors. AWS Lambda build passed; CDK change set modified **only SSR Lambda code**. Synced hashed assets to S3; CloudFront invalidation `IM1373WZ91MYYKM5JW9A0TUSH` completed. `/api/ready` confirms AWAKE, generation 6. Retained existing worker/cache image `sha-f864f4fad77675fff95c8118a755ee8604f3492a`.
+- Local verification gotchas: the old local demo `users` table has duplicate email rows; fixture ownership must use the better-auth `user.id`. Run `bun run zero-cache` with the same Node ABI used to rebuild `@rocicorp/zero-sqlite3`; the persistent pitchfork daemon had a different Node on its PATH. Do not probe Zero's `/keepalive` once: that starts a watchdog which drains the server without repeated heartbeats. Restart the Vite dev server after a production Nitro build before further browser testing.
 
 ## PRODUCTION IS NOW AWS (cutover 2026-08-07→09)
 
