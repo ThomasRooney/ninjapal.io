@@ -21,6 +21,11 @@ Ayla cloud, and syncs everything to your browser in real time:
   relive it
 - **Doneness targets** — per-probe targets with progress rings and
   "when do we eat?" ETAs
+- **Brisket tenderization (experimental)** — cook-page estimate of equivalent
+  time at 195°F / 90.6°C from each meat probe's complete temperature history.
+  Includes optional recorded rest time, excludes missing telemetry, and shows
+  history coverage. This is relative thermal exposure, not percent collagen
+  converted or a doneness target; it does not control the grill.
 
 ## Stack
 

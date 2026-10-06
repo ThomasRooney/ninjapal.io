@@ -1,6 +1,7 @@
 import { CookReplay } from '@/components/cook-replay'
 import NavApp from '@/components/nav-app.tsx'
 import { TemperatureGraph } from '@/components/temperature-graph'
+import { TenderizationCard } from '@/components/tenderization-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -209,6 +210,14 @@ function CookDetailPage() {
 						testid='stat-stall'
 					/>
 				</div>
+
+				<TenderizationCard
+					key={session.id}
+					deviceId={session.deviceId}
+					start={windowStart}
+					endedAt={session.endedAt ?? null}
+					prefersCelsius={prefersCelsius}
+				/>
 
 				{/* Full-session graph */}
 				<TemperatureGraph

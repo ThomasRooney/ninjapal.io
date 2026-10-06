@@ -2,6 +2,15 @@
 
 > Last updated: 2026-08-19 (**DNS cutover omissions recovered** — marketing + SES identity/DKIM live again). Update this file when completing milestones — it exists so any future session can get context fast without re-auditing the codebase.
 
+## 2026-10-06 — Experimental brisket tenderization
+
+- Cook detail includes a read-only **Brisket tenderization** card with probe selection, equivalent minutes at 195°F / 90.6°C, recorded time above that temperature, and history coverage. Optional 1–12 hour rest windows use actual readings, stop before the next session, and require the same probe to stay in the same brisket. No schema, worker, or automatic-control changes.
+- `src/lib/tenderization.ts`: continuous piecewise exponential interpretation of [Chris Young's video (5:05)](https://www.youtube.com/watch?v=7fW16i40ZDQ&t=305s), 1.8× per 20°F below 195°F and 2.8× above. Exact integration between linear temperature samples; five-minute maximum gap; unavailable/offline/removed probes break integration. Deliberate 60–100°C model range: lower-temperature contributions omitted, higher readings unsupported. These are modeling choices, not universal collagen thresholds. Version `young-relative-v1`.
+- **Do not relabel this as collagen conversion %.** The video supplies relative rates without the absolute rate and calibration needed for that claim. Its on-screen Arrhenius activation-energy note also does not directly reproduce the narrated multipliers; this implementation explicitly follows the narrated approximation. Compare recorded cooks and collect tenderness outcomes before defining a target. The [2025 brisket study](https://doi.org/10.22175/mmb.18269) supports time/temperature/hold effects and reports different responses in the flat and point, not validation of this heuristic.
+- Dedicated `use-tenderization-telemetry.ts` preserves invalid samples, sorts snapshot/patch history correctly, and replays patches between the baseline and cook start. Do not substitute the overview's trailing three-hour history. Existing cook sessions end at the grill's cooking-state transition, so rest is an explicitly selected extension.
+- Further video learnings: evaporation controls the stall; bark formation and tenderization are distinct goals; rest contributes while the meat stays hot. Existing autopilot equates hitting temperature targets with readiness; leave the experimental exposure estimate advisory until calibrated. A later phase-aware readiness model can separate target reached, probe tender, and ready to serve.
+- Verified calculation and card states with unit tests and real-Postgres/Zero browser tests at desktop and mobile sizes. Production deployment verification is recorded below after release.
+
 ## PRODUCTION IS NOW AWS (cutover 2026-08-07→09)
 
 - **app.pitminder.com** → CloudFront → APIGW STREAM → SSR Lambda; **sync.pitminder.com** → CloudFront → zero-cache Fargate task (zero-origin record, generation-fenced); worker on Fargate; RDS `pitminder-prod` (db `pitminder`); power machine governs wake/sleep (idle 8h both-signals, 30-min cron; wake typically 9–15 min).
