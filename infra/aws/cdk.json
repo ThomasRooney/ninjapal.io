@@ -1,5 +1,7 @@
 {
 	"app": "bun bin/app.ts",
 	"output": "cdk.out",
-	"context": {}
+	"context": {
+		"ssrSecretVersion": "google-20261006"
+	}
 }
